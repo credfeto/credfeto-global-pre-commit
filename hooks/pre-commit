@@ -1,0 +1,101 @@
+#!/bin/sh
+# Global pre-commit orchestrator.
+# Installed via: git config --global core.hooksPath /path/to/hooks
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
+
+fail() {
+    echo "" >&2
+    echo "error: pre-commit failed — $*" >&2
+    exit 1
+}
+
+info() {
+    echo "[pre-commit] $*"
+}
+
+# Only look at staged files that are being added/copied/modified
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$STAGED" ] && exit 0
+
+cd "$REPO_ROOT" || fail "cannot cd to repo root"
+
+# ── Always-on checks (run on every commit) ───────────────────────────────────
+
+info "Checking for merge commits..."
+sh "$SCRIPTS_DIR/check-merge-commits" || fail "merge commit detected"
+
+info "Checking for ignored files..."
+sh "$SCRIPTS_DIR/check-ignored-files" || fail "ignored files found in tracking"
+
+info "Scanning for secrets..."
+sh "$SCRIPTS_DIR/check-secrets" || fail "secrets detected"
+
+# ── 1. Delegate to husky if installed ────────────────────────────────────────
+if [ -f "$REPO_ROOT/.husky/pre-commit" ]; then
+    info "Delegating to husky pre-commit..."
+    sh "$REPO_ROOT/.husky/pre-commit" || fail "husky pre-commit"
+fi
+
+# ── 2. Linters via pre-commit ─────────────────────────────────────────────────
+# Use the project's own config if it has one; otherwise run the global linting
+# config bundled with these hooks.
+if command -v pre-commit > /dev/null 2>&1; then
+    REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+    if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
+        info "Running project pre-commit hooks..."
+        pre-commit run || fail "pre-commit (project config)"
+    else
+        info "Running global linters (pre-commit)..."
+        pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" \
+            || fail "pre-commit (global linters)"
+    fi
+fi
+
+# ── 3. .NET: full build + test if source/project file changes ────────────────
+DOTNET_CHANGES=$(echo "$STAGED" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
+if [ -n "$DOTNET_CHANGES" ] && command -v dotnet > /dev/null 2>&1; then
+    info "Detected .NET changes — running buildtest..."
+    sh "$SCRIPTS_DIR/buildtest" || fail "dotnet buildtest"
+fi
+
+# ── 4. NPM: run tests if TypeScript/JS changes ───────────────────────────────
+TS_CHANGES=$(echo "$STAGED" | grep -E '\.(ts|tsx|js|jsx)$' | head -1)
+if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && command -v npm > /dev/null 2>&1; then
+    info "Detected TypeScript/JS changes — running npm tests..."
+    if grep -q '"test:noe2e"' "$REPO_ROOT/package.json"; then
+        npm run test:noe2e || fail "npm run test:noe2e"
+    else
+        npm test || fail "npm test"
+    fi
+fi
+
+# ── 5. SQL: tsqllint + sqlfluff if .sql changes ──────────────────────────────
+SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
+if [ -n "$SQL_CHANGES" ]; then
+    if command -v dotnet > /dev/null 2>&1; then
+        info "Detected SQL changes — running dotnet tsqllint..."
+        dotnet tsqllint . || fail "dotnet tsqllint"
+    fi
+    if command -v sqlfluff > /dev/null 2>&1; then
+        info "Detected SQL changes — running sqlfluff lint..."
+        sqlfluff lint . || fail "sqlfluff lint"
+    fi
+fi
+
+# ── 6. CloudFormation: cfn-lint on changed templates ─────────────────────────
+if command -v cfn-lint > /dev/null 2>&1; then
+    CFN_FILES=$(echo "$STAGED" | grep -E '\.(yaml|yml|json|template)$' \
+        | while read -r f; do
+            grep -q "AWSTemplateFormatVersion" "$f" 2>/dev/null && echo "$f"
+          done)
+    if [ -n "$CFN_FILES" ]; then
+        info "Detected CloudFormation changes — running cfn-lint..."
+        # shellcheck disable=SC2086
+        cfn-lint $CFN_FILES || fail "cfn-lint"
+    fi
+fi
+
+info "All checks passed."
+exit 0

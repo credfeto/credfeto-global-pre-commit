@@ -1,0 +1,14 @@
+#! /bin/sh
+# Sourced from https://github.com/credfeto/scripts/blob/main/development/buildcheck
+
+die() {
+    echo
+    echo "$@"
+    exit 1
+}
+
+SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
+[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
+[ -z "$SOLUTION" ] && die "No Solution found in $(pwd)"
+
+dotnet buildcheck -Solution "$SOLUTION" -WarningAsErrors true -PreReleaseBuild true || die "Check failed"
