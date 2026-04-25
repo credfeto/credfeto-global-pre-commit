@@ -21,6 +21,23 @@ STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 
 cd "$REPO_ROOT" || fail "cannot cd to repo root"
 
+# ── Always-on checks (run on every commit) ───────────────────────────────────
+
+info "Checking for merge commits..."
+sh "$SCRIPTS_DIR/check-merge-commits" || fail "merge commit detected"
+
+info "Checking for merge conflict markers..."
+sh "$SCRIPTS_DIR/check-merge-conflicts" || fail "merge conflict markers found"
+
+info "Checking for case sensitivity conflicts..."
+sh "$SCRIPTS_DIR/check-case-sensitivity" || fail "case sensitivity conflicts found"
+
+info "Checking for ignored files..."
+sh "$SCRIPTS_DIR/check-ignored-files" || fail "ignored files found in tracking"
+
+info "Scanning for secrets..."
+sh "$SCRIPTS_DIR/check-secrets" || fail "secrets detected"
+
 # ── 1. Delegate to husky if installed ────────────────────────────────────────
 if [ -f "$REPO_ROOT/.husky/pre-commit" ]; then
     info "Delegating to husky pre-commit..."

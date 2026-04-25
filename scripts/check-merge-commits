@@ -1,0 +1,13 @@
+#!/bin/sh
+# Fails if this commit would be a merge commit (MERGE_HEAD present).
+# Equivalent of funfair-server-template check-no-merge-commits action
+# (which checks PR commits via GitHub API; here we catch it at commit time).
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+if [ -f "$REPO_ROOT/.git/MERGE_HEAD" ]; then
+    echo "error: merge commits are not allowed. Rebase instead of merge." >&2
+    exit 1
+fi
+
+exit 0

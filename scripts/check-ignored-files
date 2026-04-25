@@ -1,0 +1,26 @@
+#!/bin/sh
+# Fails if any tracked file is matched by .gitignore rules.
+# Equivalent of funfair-server-template check-no-ignored-files action.
+
+TRACKED=$(git ls-files | grep -v 'server\.pfx' | grep -v '\.gitignore')
+
+if [ -z "$TRACKED" ]; then
+    exit 0
+fi
+
+IGNORED=$(echo "$TRACKED" | git check-ignore --stdin -v --no-index 2>/dev/null)
+STATUS=$?
+
+# git check-ignore exits 1 when no files matched — that's a pass
+if [ $STATUS -eq 1 ] || [ -z "$IGNORED" ]; then
+    exit 0
+fi
+
+if [ $STATUS -ne 0 ]; then
+    echo "error: git check-ignore failed" >&2
+    exit 1
+fi
+
+echo "Ignored files found in tracking:" >&2
+echo "$IGNORED" | awk -F'\t' '{print "  " $NF}' | sort -u >&2
+exit 1

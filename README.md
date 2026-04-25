@@ -12,22 +12,46 @@ cd credfeto-global-pre-commit
 sh install.sh
 ```
 
-## What runs on commit
+## Checks that run on every commit
 
-The `pre-commit` hook inspects staged files and runs the relevant checks:
+These always run regardless of what files are staged:
+
+| Check | Script | Notes |
+|---|---|---|
+| No merge commits | `scripts/check-merge-commits` | Blocks if `MERGE_HEAD` present — rebase instead |
+| No merge conflict markers | `scripts/check-merge-conflicts` | Scans staged files for `<<<<<<<` / `>>>>>>>` |
+| No case sensitivity conflicts | `scripts/check-case-sensitivity` | Fails if two tracked files differ only by case |
+| No ignored files tracked | `scripts/check-ignored-files` | Fails if a tracked file matches `.gitignore` rules |
+| Secret scanning | `scripts/check-secrets` | Runs `trufflehog` if on PATH; skipped silently if not installed |
+
+## Checks that run when relevant tools/files are present
 
 | Trigger | Check | Command |
 |---|---|---|
 | `.husky/pre-commit` exists | Delegate to husky | `sh .husky/pre-commit` |
-| `.pre-commit-config.yaml` exists + `pre-commit` installed | Delegate to pre-commit framework | `pre-commit run` |
-| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` staged + `dotnet` installed | Full .NET build + test | `scripts/buildtest` |
-| `*.ts / *.tsx / *.js / *.jsx` staged + `package.json` exists + `npm` installed | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
-| `*.sql` staged + `dotnet` installed | T-SQL lint | `dotnet tsqllint .` |
-| `*.sql` staged + `sqlfluff` installed | SQL style lint | `sqlfluff lint .` |
-| `*.yaml / *.yml / *.json / *.template` staged containing `AWSTemplateFormatVersion` + `cfn-lint` installed | CloudFormation lint | `cfn-lint <changed templates>` |
+| `.pre-commit-config.yaml` + `pre-commit` installed | Delegate to pre-commit framework | `pre-commit run` |
+| `*.cs/csproj/sln/slnx/props/targets` staged + `dotnet` available | Full .NET build + test | `scripts/buildtest` |
+| `*.ts/tsx/js/jsx` staged + `package.json` + `npm` available | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
+| `*.sql` staged + `dotnet` available | T-SQL lint | `dotnet tsqllint .` |
+| `*.sql` staged + `sqlfluff` available | SQL style lint | `sqlfluff lint .` |
+| `*.yaml/yml/json/template` staged containing `AWSTemplateFormatVersion` + `cfn-lint` available | CloudFormation lint | `cfn-lint <files>` |
 
-Checks are skipped silently if the required tool is not installed. All
-triggered checks must pass — the commit is blocked on the first failure.
+Checks that require a tool (trufflehog, sqlfluff, cfn-lint) are skipped
+silently if the tool is not installed. All triggered checks must pass — the
+commit is blocked on the first failure.
+
+## Installing optional tools
+
+```sh
+# trufflehog (secret scanning)
+curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+# sqlfluff
+pip install sqlfluff
+
+# cfn-lint
+pip install cfn-lint
+```
 
 ## What is always blocked
 
@@ -35,10 +59,14 @@ triggered checks must pass — the commit is blocked on the first failure.
 
 ## Scripts
 
-`scripts/buildtest` and `scripts/buildcheck` are vendored from
-[credfeto/scripts](https://github.com/credfeto/scripts/tree/main/development).
-They run a full `dotnet restore → clean → build (--warnaserror) → test → pack`
-cycle against the solution in the repo.
+| Script | Source |
+|---|---|
+| `scripts/buildtest` | Vendored from [credfeto/scripts](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
+| `scripts/buildcheck` | Vendored from [credfeto/scripts](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
+| `scripts/check-case-sensitivity` | Equivalent of [funfair-server-template check-no-case-sensitivity-conflicts](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-case-sensitivity-conflicts/action.yml) |
+| `scripts/check-ignored-files` | Equivalent of [funfair-server-template check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
+| `scripts/check-merge-commits` | Equivalent of [funfair-server-template check-no-merge-commits](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-commits/action.yml) |
+| `scripts/check-merge-conflicts` | Equivalent of [funfair-server-template check-no-merge-conflicts](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-conflicts/action.yml) |
 
 ## Two-layer enforcement
 
