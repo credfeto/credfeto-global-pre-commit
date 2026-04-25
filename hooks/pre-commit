@@ -26,12 +26,6 @@ cd "$REPO_ROOT" || fail "cannot cd to repo root"
 info "Checking for merge commits..."
 sh "$SCRIPTS_DIR/check-merge-commits" || fail "merge commit detected"
 
-info "Checking for merge conflict markers..."
-sh "$SCRIPTS_DIR/check-merge-conflicts" || fail "merge conflict markers found"
-
-info "Checking for case sensitivity conflicts..."
-sh "$SCRIPTS_DIR/check-case-sensitivity" || fail "case sensitivity conflicts found"
-
 info "Checking for ignored files..."
 sh "$SCRIPTS_DIR/check-ignored-files" || fail "ignored files found in tracking"
 

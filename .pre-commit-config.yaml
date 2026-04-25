@@ -1,9 +1,8 @@
-# Global linting configuration — mirrors super-linter VALIDATE_* settings.
+# Global pre-commit configuration.
 # Invoked by hooks/pre-commit via: pre-commit run --config <this-file>
 # Runs on staged files only (equivalent to VALIDATE_ALL_CODEBASE: false).
 #
-# Managed hooks (shellcheck, yamllint, flake8, markdownlint, ansible-lint):
-#   pre-commit downloads and caches the tool — no system install needed.
+# Managed hooks: pre-commit downloads and caches the tool automatically.
 #   Pre-warm with: pre-commit install-hooks --config .pre-commit-config.yaml
 #
 # System hooks: tool must be on PATH (see install.sh for install commands).
@@ -15,10 +14,20 @@ default_stages: [pre-commit]
 fail_fast: false
 
 repos:
-  # ── VALIDATE_JSON / VALIDATE_XML / VALIDATE_YAML (syntax) ────────────────────
+  # ── General quality + VALIDATE_JSON / VALIDATE_XML / VALIDATE_YAML (syntax) ──
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-toml
+      - id: detect-private-key
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
       - id: check-json
       - id: check-xml
       - id: check-yaml

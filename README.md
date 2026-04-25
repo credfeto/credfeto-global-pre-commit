@@ -87,13 +87,28 @@ git config --global core.hooksPath
 
 ### Always-on (every commit)
 
+**Shell (run directly, before pre-commit):**
+
 | Check | Script | What it catches |
 |---|---|---|
 | No merge commits | `scripts/check-merge-commits` | Blocks if `MERGE_HEAD` is present — rebase instead of merge |
-| No merge conflict markers | `scripts/check-merge-conflicts` | Scans staged files for `<<<<<<<` / `>>>>>>>` |
-| No case sensitivity conflicts | `scripts/check-case-sensitivity` | Fails if two tracked files differ only by case |
 | No ignored files tracked | `scripts/check-ignored-files` | Fails if a tracked file is matched by `.gitignore` rules |
 | Secret scanning | `scripts/check-secrets` | Runs `trufflehog --only-verified`; **skipped if not installed** |
+
+**Native pre-commit hooks (via `pre-commit/pre-commit-hooks`):**
+
+| Check | Hook ID | What it catches |
+|---|---|---|
+| No merge conflict markers | `check-merge-conflict` | Scans staged files for `<<<<<<<` / `>>>>>>>` |
+| No case sensitivity conflicts | `check-case-conflict` | Fails if two tracked files differ only by case |
+| No large files | `check-added-large-files` | Blocks accidentally staged binaries/large assets |
+| End-of-file newline | `end-of-file-fixer` | Ensures files end with a newline (auto-fixes) |
+| No trailing whitespace | `trailing-whitespace` | Trims trailing whitespace (auto-fixes) |
+| Consistent line endings | `mixed-line-ending` | Prevents CRLF/LF mix |
+| Valid TOML | `check-toml` | Syntax-checks `*.toml` (`Cargo.toml`, `pyproject.toml`, etc.) |
+| No private keys | `detect-private-key` | Pattern-matches common private key headers |
+| Executables have shebangs | `check-executables-have-shebangs` | Catches executable files missing `#!` |
+| Shebang scripts are `+x` | `check-shebang-scripts-are-executable` | Inverse — shebang files that aren't executable |
 
 ### Conditional (triggered by staged file types + tool availability)
 
@@ -202,10 +217,8 @@ Run `pre-commit autoupdate --config ~/.global-hooks/.pre-commit-config.yaml` to 
 |---|---|
 | `scripts/buildtest` | Vendored from [credfeto/scripts — buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
 | `scripts/buildcheck` | Vendored from [credfeto/scripts — buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
-| `scripts/check-case-sensitivity` | Port of [check-no-case-sensitivity-conflicts](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-case-sensitivity-conflicts/action.yml) |
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
 | `scripts/check-merge-commits` | Port of [check-no-merge-commits](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-commits/action.yml) |
-| `scripts/check-merge-conflicts` | Port of [check-no-merge-conflicts](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-conflicts/action.yml) |
 | `scripts/run-eslint` | Wrapper for eslint — skips silently if no `package.json` or eslint config |
 | `scripts/run-stylelint` | Wrapper for stylelint — skips silently if no `package.json` |
 | `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer — runs per-file via pwsh |

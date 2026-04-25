@@ -15,10 +15,8 @@ chmod +x \
     "$HOOKS_DIR/pre-push" \
     "$SCRIPTS_DIR/buildtest" \
     "$SCRIPTS_DIR/buildcheck" \
-    "$SCRIPTS_DIR/check-case-sensitivity" \
     "$SCRIPTS_DIR/check-ignored-files" \
     "$SCRIPTS_DIR/check-merge-commits" \
-    "$SCRIPTS_DIR/check-merge-conflicts" \
     "$SCRIPTS_DIR/check-secrets" \
     "$SCRIPTS_DIR/run-eslint" \
     "$SCRIPTS_DIR/run-stylelint" \
@@ -57,11 +55,22 @@ echo "  ✓ active   ✗ tool not installed (skipped)   – conditional on file 
 echo ""
 
 # ── Always-on checks ──────────────────────────────────────────────────────────
-echo "Always-on:"
+echo "Always-on (shell):"
 tick  "No merge commits"           ""
-tick  "No merge conflict markers"  ""
-tick  "No case sensitivity conflicts" ""
 tick  "No ignored files tracked"   ""
+
+echo ""
+echo "Always-on (pre-commit native hooks):"
+tick  "No merge conflict markers"     "check-merge-conflict"
+tick  "No case sensitivity conflicts" "check-case-conflict"
+tick  "No large files added"          "check-added-large-files"
+tick  "End-of-file newline"           "end-of-file-fixer (auto-fix)"
+tick  "No trailing whitespace"        "trailing-whitespace (auto-fix)"
+tick  "Consistent line endings"       "mixed-line-ending"
+tick  "Valid TOML syntax"             "check-toml"
+tick  "No private keys"               "detect-private-key"
+tick  "Executables have shebangs"     "check-executables-have-shebangs"
+tick  "Shebang scripts are +x"        "check-shebang-scripts-are-executable"
 
 if has trufflehog; then
     tick  "Secret scanning (trufflehog)" "$(trufflehog --version 2>/dev/null | head -1)"
