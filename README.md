@@ -106,6 +106,31 @@ git config --global core.hooksPath
 All triggered checks must pass. Missing tools are skipped silently.
 The commit is blocked on the first failure.
 
+### Super-linter equivalent (staged files, `scripts/check-linters`)
+
+Mirrors the super-linter `VALIDATE_*` configuration but runs only on staged
+files (equivalent to `VALIDATE_ALL_CODEBASE: false`). Every check is skipped
+silently if the tool is not installed.
+
+| VALIDATE_* | Tool | File trigger |
+|---|---|---|
+| `VALIDATE_ANSIBLE` | `ansible-lint` | `*.yml` / `*.yaml` containing a `hosts:` key |
+| `VALIDATE_BASH` | `shellcheck` | `*.sh` / `*.bash` + extensionless files with a shell shebang |
+| `VALIDATE_CSS` | `stylelint` | `*.css` |
+| `VALIDATE_ENV` | `dotenv-linter` | `.env` / `.env.*` |
+| `VALIDATE_DOCKERFILE` + `VALIDATE_DOCKERFILE_HADOLINT` | `hadolint` | `Dockerfile*` |
+| `VALIDATE_GITHUB_ACTIONS` | `actionlint` | `.github/workflows/*.yml` / `.github/actions/*.yml` |
+| `VALIDATE_JSON` | `jq` | `*.json` |
+| `VALIDATE_MD` | `markdownlint` | `*.md` |
+| `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` | `*.ps1` / `*.psm1` / `*.psd1` |
+| `VALIDATE_PYTHON` | `flake8` | `*.py` |
+| `VALIDATE_PYTHON_PYLINT` | `pylint` | `*.py` |
+| `VALIDATE_TYPESCRIPT_ES` | `eslint` | `*.ts` / `*.tsx` (requires `package.json`) |
+| `VALIDATE_XML` | `xmllint` | `*.xml` |
+| `VALIDATE_YAML` | `yamllint` | `*.yml` / `*.yaml` |
+| `VALIDATE_SQLFLUFF` | — | Handled by the dedicated SQL check (step 5) |
+| `VALIDATE_CLOUDFORMATION` | — | Handled by the dedicated CFN check (step 6) |
+
 ---
 
 ## What is always blocked
@@ -117,15 +142,38 @@ The commit is blocked on the first failure.
 ## Installing optional tools
 
 ```sh
-# trufflehog (secret scanning) — https://github.com/trufflesecurity/trufflehog
+# Secret scanning
 curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
-  | sh -s -- -b /usr/local/bin
+  | sh -s -- -b /usr/local/bin          # trufflehog
 
-# sqlfluff (SQL style linting)
-pip install sqlfluff
+# Shell / Docker / Actions linting
+apt install shellcheck                  # shellcheck (Debian/Ubuntu)
+# hadolint: https://github.com/hadolint/hadolint/releases
+# actionlint: https://github.com/rhysd/actionlint/releases
 
-# cfn-lint (AWS CloudFormation linting)
-pip install cfn-lint
+# Markdown / YAML
+npm install -g markdownlint-cli         # markdownlint
+pip install yamllint                    # yamllint
+
+# CSS / TypeScript
+npm install -g stylelint stylelint-config-standard   # stylelint
+npm install -g eslint                   # eslint (or use project-local)
+
+# Python
+pip install flake8 pylint               # flake8 + pylint
+
+# SQL / CloudFormation
+pip install sqlfluff cfn-lint
+
+# PowerShell
+# pwsh: https://github.com/PowerShell/PowerShell/releases
+# PSScriptAnalyzer: Install-Module -Name PSScriptAnalyzer -Force
+
+# Env file linting
+# dotenv-linter: https://github.com/dotenv-linter/dotenv-linter/releases
+
+# JSON / XML (usually pre-installed)
+apt install jq libxml2-utils            # jq + xmllint (Debian/Ubuntu)
 ```
 
 After installing any tool, re-run `sh install.sh` to see the updated status table.
@@ -142,6 +190,7 @@ After installing any tool, re-run `sh install.sh` to see the updated status tabl
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
 | `scripts/check-merge-commits` | Port of [check-no-merge-commits](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-commits/action.yml) |
 | `scripts/check-merge-conflicts` | Port of [check-no-merge-conflicts](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-conflicts/action.yml) |
+| `scripts/check-linters` | Super-linter `VALIDATE_*` equivalent — runs per-tool linters on staged files only |
 
 ---
 

@@ -94,5 +94,9 @@ if command -v cfn-lint > /dev/null 2>&1; then
     fi
 fi
 
+# ── 7. Super-linter equivalent: per-file linters on staged files ─────────────
+info "Running linters on staged files..."
+sh "$SCRIPTS_DIR/check-linters" || fail "check-linters"
+
 info "All checks passed."
 exit 0
