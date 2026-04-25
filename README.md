@@ -1,16 +1,8 @@
 # credfeto-global-pre-commit
 
-Global git hooks that block all commits and pushes in restricted environments
-(e.g. AI agent containers). Works as the local enforcement layer alongside the
-[GitHub API proxy](https://github.com/dnyw4l3n13/github-api-proxy), which
-blocks the same operations at the API level.
-
-## How it works
-
-Git supports a global hooks directory via `core.hooksPath` (git 2.9+). When
-set, every repo on the machine uses the hooks in that directory instead of
-per-repo `.git/hooks/`. The hooks here unconditionally exit 1, so no commit
-or push can complete regardless of which repo is being used.
+Global git hooks installed via `core.hooksPath`. Applies to every repo on the
+machine without any per-repo setup. Used as the local enforcement layer
+alongside the [GitHub API proxy](https://github.com/dnyw4l3n13/github-api-proxy).
 
 ## Install
 
@@ -20,39 +12,37 @@ cd credfeto-global-pre-commit
 sh install.sh
 ```
 
-Or manually:
+## What runs on commit
 
-```sh
-git config --global core.hooksPath /path/to/credfeto-global-pre-commit/hooks
-chmod +x /path/to/credfeto-global-pre-commit/hooks/pre-commit
-chmod +x /path/to/credfeto-global-pre-commit/hooks/pre-push
-```
+The `pre-commit` hook inspects staged files and runs the relevant checks:
 
-## Verify
+| Trigger | Check | Command |
+|---|---|---|
+| `.husky/pre-commit` exists | Delegate to husky | `sh .husky/pre-commit` |
+| `.pre-commit-config.yaml` exists + `pre-commit` installed | Delegate to pre-commit framework | `pre-commit run` |
+| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` staged + `dotnet` installed | Full .NET build + test | `scripts/buildtest` |
+| `*.ts / *.tsx / *.js / *.jsx` staged + `package.json` exists + `npm` installed | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
+| `*.sql` staged + `dotnet` installed | T-SQL lint | `dotnet tsqllint .` |
+| `*.sql` staged + `sqlfluff` installed | SQL style lint | `sqlfluff lint .` |
+| `*.yaml / *.yml / *.json / *.template` staged containing `AWSTemplateFormatVersion` + `cfn-lint` installed | CloudFormation lint | `cfn-lint <changed templates>` |
 
-```sh
-git config --global core.hooksPath   # should print the hooks path
-```
+Checks are skipped silently if the required tool is not installed. All
+triggered checks must pass — the commit is blocked on the first failure.
 
-Any attempt to commit or push in any repo will now fail with:
+## What is always blocked
 
-```
-error: commits are not permitted in this environment.
-       Use pull requests via the GitHub API proxy instead.
-```
+`pre-push` unconditionally blocks all pushes regardless of repo content.
 
-## Hooks
+## Scripts
 
-| Hook | Blocks |
-|---|---|
-| `pre-commit` | `git commit` |
-| `pre-push` | `git push` |
+`scripts/buildtest` and `scripts/buildcheck` are vendored from
+[credfeto/scripts](https://github.com/credfeto/scripts/tree/main/development).
+They run a full `dotnet restore → clean → build (--warnaserror) → test → pack`
+cycle against the solution in the repo.
 
 ## Two-layer enforcement
 
 | Layer | Mechanism | Blocks |
 |---|---|---|
-| API proxy | HTTP 403 on git Data API / git-receive-pack | Programmatic commits via API or GraphQL |
-| These hooks | `core.hooksPath` exit 1 | Local `git commit` / `git push` |
-
-Together they prevent code being written to any repository through any path.
+| [GitHub API proxy](https://github.com/dnyw4l3n13/github-api-proxy) | HTTP 403 on git Data API / git-receive-pack / GraphQL git mutations | Programmatic commits via REST or GraphQL |
+| These hooks (`core.hooksPath`) | exit 1 on pre-commit / pre-push | Local `git commit` and `git push` |

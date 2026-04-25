@@ -2,10 +2,12 @@
 # Configure git globally to use the hooks in this repo.
 # Run once after cloning.
 
-HOOKS_DIR="$(cd "$(dirname "$0")/hooks" && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+HOOKS_DIR="$REPO_DIR/hooks"
+SCRIPTS_DIR="$REPO_DIR/scripts"
 
 chmod +x "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-push"
+chmod +x "$SCRIPTS_DIR/buildtest" "$SCRIPTS_DIR/buildcheck"
 git config --global core.hooksPath "$HOOKS_DIR"
 
 echo "Global git hooks installed from: $HOOKS_DIR"
-echo "All commits and pushes are now blocked in this environment."
