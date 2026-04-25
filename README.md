@@ -1,0 +1,1 @@
+# credfeto-global-pre-commit
