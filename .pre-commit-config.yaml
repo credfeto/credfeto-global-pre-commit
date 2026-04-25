@@ -1,0 +1,115 @@
+# Global linting configuration — mirrors super-linter VALIDATE_* settings.
+# Invoked by hooks/pre-commit via: pre-commit run --config <this-file>
+# Runs on staged files only (equivalent to VALIDATE_ALL_CODEBASE: false).
+#
+# Managed hooks (shellcheck, yamllint, flake8, markdownlint, ansible-lint):
+#   pre-commit downloads and caches the tool — no system install needed.
+#   Pre-warm with: pre-commit install-hooks --config .pre-commit-config.yaml
+#
+# System hooks: tool must be on PATH (see install.sh for install commands).
+#
+# VALIDATE_SQLFLUFF and VALIDATE_CLOUDFORMATION are handled by dedicated
+# checks in hooks/pre-commit and are not duplicated here.
+
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  # ── VALIDATE_JSON / VALIDATE_XML / VALIDATE_YAML (syntax) ────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-json
+      - id: check-xml
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+
+  # ── VALIDATE_BASH — shellcheck (managed) ─────────────────────────────────────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+
+  # ── VALIDATE_YAML — full style lint (managed) ─────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+
+  # ── VALIDATE_PYTHON — flake8 (managed) ───────────────────────────────────────
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+
+  # ── VALIDATE_MD — markdownlint (managed, requires node) ──────────────────────
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.43.0
+    hooks:
+      - id: markdownlint
+
+  # ── VALIDATE_ANSIBLE — ansible-lint (managed) ────────────────────────────────
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v24.12.2
+    hooks:
+      - id: ansible-lint
+
+  # ── System hooks (tool must be on PATH) ──────────────────────────────────────
+  - repo: local
+    hooks:
+      # VALIDATE_DOCKERFILE / VALIDATE_DOCKERFILE_HADOLINT
+      - id: hadolint
+        name: hadolint
+        entry: hadolint
+        language: system
+        files: (^|/)Dockerfile[^/]*$
+
+      # VALIDATE_GITHUB_ACTIONS
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        files: ^\.github/(workflows|actions)/.*\.(yml|yaml)$
+
+      # VALIDATE_PYTHON_PYLINT
+      - id: pylint
+        name: pylint
+        entry: pylint
+        language: system
+        types: [python]
+
+      # VALIDATE_CSS — wrapper skips silently if no package.json
+      - id: stylelint
+        name: stylelint
+        entry: run-stylelint
+        language: system
+        files: \.css$
+
+      # VALIDATE_ENV
+      - id: dotenv-linter
+        name: dotenv-linter
+        entry: dotenv-linter
+        language: system
+        files: (^|/)\.env(\.[^/]+)?$
+
+      # VALIDATE_TYPESCRIPT_ES — wrapper skips silently if no package.json/eslint config
+      - id: eslint
+        name: eslint
+        entry: run-eslint
+        language: system
+        files: \.(ts|tsx|js|jsx)$
+
+      # VALIDATE_XML — full xmllint validation (supplements check-xml above)
+      - id: xmllint
+        name: xmllint
+        entry: xmllint
+        args: [--noout]
+        language: system
+        types: [xml]
+
+      # VALIDATE_POWERSHELL
+      - id: psscriptanalyzer
+        name: PSScriptAnalyzer
+        entry: run-psscriptanalyzer
+        language: system
+        files: \.(ps1|psm1|psd1)$

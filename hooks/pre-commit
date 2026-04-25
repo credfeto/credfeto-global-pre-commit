@@ -44,10 +44,19 @@ if [ -f "$REPO_ROOT/.husky/pre-commit" ]; then
     sh "$REPO_ROOT/.husky/pre-commit" || fail "husky pre-commit"
 fi
 
-# ── 2. Delegate to pre-commit framework if installed ─────────────────────────
-if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ] && command -v pre-commit > /dev/null 2>&1; then
-    info "Delegating to pre-commit framework..."
-    pre-commit run || fail "pre-commit framework"
+# ── 2. Linters via pre-commit ─────────────────────────────────────────────────
+# Use the project's own config if it has one; otherwise run the global linting
+# config bundled with these hooks.
+if command -v pre-commit > /dev/null 2>&1; then
+    REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+    if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
+        info "Running project pre-commit hooks..."
+        pre-commit run || fail "pre-commit (project config)"
+    else
+        info "Running global linters (pre-commit)..."
+        pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" \
+            || fail "pre-commit (global linters)"
+    fi
 fi
 
 # ── 3. .NET: full build + test if source/project file changes ────────────────
@@ -93,10 +102,6 @@ if command -v cfn-lint > /dev/null 2>&1; then
         cfn-lint $CFN_FILES || fail "cfn-lint"
     fi
 fi
-
-# ── 7. Super-linter equivalent: per-file linters on staged files ─────────────
-info "Running linters on staged files..."
-sh "$SCRIPTS_DIR/check-linters" || fail "check-linters"
 
 info "All checks passed."
 exit 0

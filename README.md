@@ -29,7 +29,11 @@ sh install.sh
 `install.sh` will:
 1. Make all hook and script files executable
 2. Run `git config --global core.hooksPath <hooks-dir>`
-3. Print a status table of every check showing which are active and which need an optional tool installed
+3. Symlink the `run-eslint`, `run-stylelint`, and `run-psscriptanalyzer` wrapper scripts to `~/.local/bin`
+4. Pre-warm pre-commit managed hook environments (requires `pre-commit` on PATH)
+5. Print a status table of every check showing which are active and which need an optional tool installed
+
+`pre-commit` must be installed for linting to run (`pip install pre-commit`).
 
 Example output:
 
@@ -96,7 +100,8 @@ git config --global core.hooksPath
 | Trigger | Check | Command |
 |---|---|---|
 | `.husky/pre-commit` exists | Delegate to husky | `sh .husky/pre-commit` |
-| `.pre-commit-config.yaml` exists + `pre-commit` on PATH | Delegate to pre-commit framework | `pre-commit run` |
+| `pre-commit` on PATH, repo has `.pre-commit-config.yaml` | Run project pre-commit hooks | `pre-commit run` |
+| `pre-commit` on PATH, no project config | Run global linters (`.pre-commit-config.yaml`) | `pre-commit run --config <global>` |
 | `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test | `scripts/buildtest` |
 | `*.ts / *.tsx / *.js / *.jsx` + `package.json` + `npm` on PATH | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
 | `*.sql` + `dotnet` on PATH | T-SQL lint | `dotnet tsqllint .` |
@@ -106,30 +111,36 @@ git config --global core.hooksPath
 All triggered checks must pass. Missing tools are skipped silently.
 The commit is blocked on the first failure.
 
-### Super-linter equivalent (staged files, `scripts/check-linters`)
+### Super-linter equivalent (`.pre-commit-config.yaml`)
 
-Mirrors the super-linter `VALIDATE_*` configuration but runs only on staged
-files (equivalent to `VALIDATE_ALL_CODEBASE: false`). Every check is skipped
-silently if the tool is not installed.
+Mirrors the super-linter `VALIDATE_*` configuration, run by `pre-commit` against
+staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
+
+**Managed** — pre-commit downloads and caches the tool automatically; no system install required:
+
+| VALIDATE_* | Tool | Hook repo |
+|---|---|---|
+| `VALIDATE_JSON` / `VALIDATE_XML` / `VALIDATE_YAML` (syntax) | pre-commit-hooks | `pre-commit/pre-commit-hooks` |
+| `VALIDATE_BASH` | shellcheck | `shellcheck-py/shellcheck-py` |
+| `VALIDATE_YAML` (style) | yamllint | `adrienverge/yamllint` |
+| `VALIDATE_PYTHON` | flake8 | `PyCQA/flake8` |
+| `VALIDATE_MD` | markdownlint | `igorshubovych/markdownlint-cli` |
+| `VALIDATE_ANSIBLE` | ansible-lint | `ansible/ansible-lint` |
+
+**System** — tool must be on PATH:
 
 | VALIDATE_* | Tool | File trigger |
 |---|---|---|
-| `VALIDATE_ANSIBLE` | `ansible-lint` | `*.yml` / `*.yaml` containing a `hosts:` key |
-| `VALIDATE_BASH` | `shellcheck` | `*.sh` / `*.bash` + extensionless files with a shell shebang |
-| `VALIDATE_CSS` | `stylelint` | `*.css` |
-| `VALIDATE_ENV` | `dotenv-linter` | `.env` / `.env.*` |
 | `VALIDATE_DOCKERFILE` + `VALIDATE_DOCKERFILE_HADOLINT` | `hadolint` | `Dockerfile*` |
-| `VALIDATE_GITHUB_ACTIONS` | `actionlint` | `.github/workflows/*.yml` / `.github/actions/*.yml` |
-| `VALIDATE_JSON` | `jq` | `*.json` |
-| `VALIDATE_MD` | `markdownlint` | `*.md` |
-| `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` | `*.ps1` / `*.psm1` / `*.psd1` |
-| `VALIDATE_PYTHON` | `flake8` | `*.py` |
+| `VALIDATE_GITHUB_ACTIONS` | `actionlint` | `.github/workflows/*.yml` |
 | `VALIDATE_PYTHON_PYLINT` | `pylint` | `*.py` |
-| `VALIDATE_TYPESCRIPT_ES` | `eslint` | `*.ts` / `*.tsx` (requires `package.json`) |
-| `VALIDATE_XML` | `xmllint` | `*.xml` |
-| `VALIDATE_YAML` | `yamllint` | `*.yml` / `*.yaml` |
-| `VALIDATE_SQLFLUFF` | — | Handled by the dedicated SQL check (step 5) |
-| `VALIDATE_CLOUDFORMATION` | — | Handled by the dedicated CFN check (step 6) |
+| `VALIDATE_CSS` | `stylelint` (via `run-stylelint`) | `*.css` (skips if no `package.json`) |
+| `VALIDATE_ENV` | `dotenv-linter` | `.env` / `.env.*` |
+| `VALIDATE_TYPESCRIPT_ES` | `eslint` (via `run-eslint`) | `*.ts/tsx/js/jsx` (skips if no eslint config) |
+| `VALIDATE_XML` (full) | `xmllint` | `*.xml` |
+| `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` (via `run-psscriptanalyzer`) | `*.ps1/psm1/psd1` |
+| `VALIDATE_SQLFLUFF` | — | Handled by dedicated SQL check |
+| `VALIDATE_CLOUDFORMATION` | — | Handled by dedicated CFN check |
 
 ---
 
@@ -142,25 +153,29 @@ silently if the tool is not installed.
 ## Installing optional tools
 
 ```sh
+# pre-commit itself (required for linting to run)
+pip install pre-commit
+
+# Managed tools — pre-commit installs these automatically on first use.
+# Nothing to install manually for:
+#   shellcheck, yamllint, flake8, markdownlint, ansible-lint
+
+# System tools — must be on PATH:
+
 # Secret scanning
 curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
-  | sh -s -- -b /usr/local/bin          # trufflehog
+  | sh -s -- -b /usr/local/bin
 
-# Shell / Docker / Actions linting
-apt install shellcheck                  # shellcheck (Debian/Ubuntu)
+# Docker / Actions linting
 # hadolint: https://github.com/hadolint/hadolint/releases
 # actionlint: https://github.com/rhysd/actionlint/releases
 
-# Markdown / YAML
-npm install -g markdownlint-cli         # markdownlint
-pip install yamllint                    # yamllint
-
 # CSS / TypeScript
-npm install -g stylelint stylelint-config-standard   # stylelint
-npm install -g eslint                   # eslint (or use project-local)
+npm install -g stylelint stylelint-config-standard
+npm install -g eslint
 
-# Python
-pip install flake8 pylint               # flake8 + pylint
+# Python pylint
+pip install pylint
 
 # SQL / CloudFormation
 pip install sqlfluff cfn-lint
@@ -172,11 +187,12 @@ pip install sqlfluff cfn-lint
 # Env file linting
 # dotenv-linter: https://github.com/dotenv-linter/dotenv-linter/releases
 
-# JSON / XML (usually pre-installed)
-apt install jq libxml2-utils            # jq + xmllint (Debian/Ubuntu)
+# XML (usually pre-installed)
+apt install libxml2-utils               # xmllint (Debian/Ubuntu)
 ```
 
 After installing any tool, re-run `sh install.sh` to see the updated status table.
+Run `pre-commit autoupdate --config ~/.global-hooks/.pre-commit-config.yaml` to update managed hook versions.
 
 ---
 
@@ -190,7 +206,9 @@ After installing any tool, re-run `sh install.sh` to see the updated status tabl
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
 | `scripts/check-merge-commits` | Port of [check-no-merge-commits](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-commits/action.yml) |
 | `scripts/check-merge-conflicts` | Port of [check-no-merge-conflicts](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-conflicts/action.yml) |
-| `scripts/check-linters` | Super-linter `VALIDATE_*` equivalent — runs per-tool linters on staged files only |
+| `scripts/run-eslint` | Wrapper for eslint — skips silently if no `package.json` or eslint config |
+| `scripts/run-stylelint` | Wrapper for stylelint — skips silently if no `package.json` |
+| `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer — runs per-file via pwsh |
 
 ---
 

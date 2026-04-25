@@ -1,0 +1,5 @@
+#!/bin/sh
+# Wrapper for stylelint — skips silently if no package.json.
+REPO_ROOT=$(git rev-parse --show-toplevel)
+[ -f "$REPO_ROOT/package.json" ] || exit 0
+exec stylelint "$@"
