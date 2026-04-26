@@ -30,10 +30,29 @@ sh install.sh
 1. Make all hook and script files executable
 2. Run `git config --global core.hooksPath <hooks-dir>`
 3. Symlink the `run-eslint`, `run-stylelint`, and `run-psscriptanalyzer` wrapper scripts to `~/.local/bin`
-4. Pre-warm pre-commit managed hook environments (requires `pre-commit` on PATH)
-5. Print a status table of every check showing which are active and which need an optional tool installed
+4. Validate the `.pre-commit-config.yaml` schema (no managed environments to install — every hook is `language: system`)
+5. Print a status table of every check showing which are active and which need a system tool installed
 
 `pre-commit` must be installed for linting to run (`pip install pre-commit`).
+
+### Why every hook is `language: system`
+
+By default, pre-commit auto-installs each hook into its own managed environment
+(a Python venv, a node_modules, etc.) on first run — typically 1–3 minutes
+and ~150 MB on disk. That cost is a one-off on a developer workstation, but on
+ephemeral containers (Docker / CI / agent spawns) it's paid on every fresh
+spawn.
+
+This config opts out of that model: every hook is declared `language: system`
+and calls a binary already on `PATH`. Faster startup, smaller image, no
+per-spawn redownloads — but you have to install the tools yourself. `install.sh`
+prints what's missing and exact install commands.
+
+System tools required for full coverage: `pre-commit-hooks` (pip), `shellcheck`,
+`yamllint`, `flake8`, `markdownlint`, `ansible-lint`, `hadolint`, `actionlint`,
+`pylint`, `stylelint`, `dotenv-linter`, `eslint`, `xmllint`, `pwsh`,
+`trufflehog`, `sqlfluff`, `cfn-lint`. Anything missing → that hook is silently
+skipped (with a warning at install time).
 
 Example output:
 
