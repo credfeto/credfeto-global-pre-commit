@@ -125,11 +125,15 @@ repos:
         require_serial: true
 
       # ── VALIDATE_MD — markdownlint ────────────────────────────────────────
+      # MD013 (line length) is disabled for parity with PR #2 — see commit
+      # fe486d5 ("fix: repair ansible-lint crash and relax markdownlint
+      # line length"). The `--` separates flag args from filenames.
       - id: markdownlint
         name: markdownlint
         entry: markdownlint
         language: system
         types: [markdown]
+        args: [--disable, MD013, --]
 
       # ── VALIDATE_ANSIBLE — ansible-lint ───────────────────────────────────
       # Mirrors the upstream ansible-lint hook config: don't pass filenames
