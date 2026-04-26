@@ -32,11 +32,15 @@ ln -sf "$SCRIPTS_DIR/run-eslint"           "$HOME/.local/bin/run-eslint"
 ln -sf "$SCRIPTS_DIR/run-stylelint"        "$HOME/.local/bin/run-stylelint"
 ln -sf "$SCRIPTS_DIR/run-psscriptanalyzer" "$HOME/.local/bin/run-psscriptanalyzer"
 
-# ── Pre-warm pre-commit managed environments ──────────────────────────────────
+# ── Sanity-check the pre-commit config ────────────────────────────────────────
+# Every hook in this repo's .pre-commit-config.yaml uses `language: system`
+# (calling a binary already on PATH), so there are no managed environments to
+# pre-install. We still run `pre-commit validate-config` to surface YAML or
+# schema errors at install time rather than at the next git commit.
 if command -v pre-commit > /dev/null 2>&1; then
-    echo "Pre-warming pre-commit hook environments (first run may be slow)..."
-    pre-commit install-hooks --config "$REPO_DIR/.pre-commit-config.yaml" 2>&1 \
-        | grep -v "^$" || true
+    pre-commit validate-config "$REPO_DIR/.pre-commit-config.yaml" \
+        && echo "pre-commit config OK ($(grep -c '^      - id:' "$REPO_DIR/.pre-commit-config.yaml") hooks, all language: system)" \
+        || echo "WARN: pre-commit config validation failed — see above" >&2
 fi
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -127,17 +131,46 @@ fi
 # ── Super-linter equivalent via pre-commit ────────────────────────────────────
 echo ""
 echo "Super-linter equivalent (run by pre-commit, staged files only):"
-echo "  ✓ managed = pre-commit downloads the tool automatically"
-echo "  – system  = tool must be on PATH"
+echo "  – every hook is language: system — tools must be on PATH"
 echo ""
 
-# Managed hooks (pre-commit installs these — no system install needed)
-tick  "VALIDATE_JSON/XML/YAML syntax   (managed)" "pre-commit-hooks"
-tick  "VALIDATE_BASH — shellcheck      (managed)" "shellcheck-py"
-tick  "VALIDATE_YAML — yamllint        (managed)" "yamllint"
-tick  "VALIDATE_PYTHON — flake8        (managed)" "flake8"
-tick  "VALIDATE_MD — markdownlint      (managed)" "markdownlint-cli"
-tick  "VALIDATE_ANSIBLE — ansible-lint (managed)" "ansible-lint"
+# pre-commit-hooks ships ~20 small individual binaries (check-merge-conflict,
+# end-of-file-fixer, etc.). Probe a representative one rather than all 13.
+if has check-merge-conflict; then
+    skip  "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks (pip)"
+else
+    cross "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks not installed — run: pip install pre-commit-hooks"
+fi
+
+if has shellcheck; then
+    skip  "VALIDATE_BASH — shellcheck       (system)" "$(shellcheck --version 2>/dev/null | grep ^version: || echo present)"
+else
+    cross "VALIDATE_BASH — shellcheck       (system)" "not installed"
+fi
+
+if has yamllint; then
+    skip  "VALIDATE_YAML — yamllint         (system)" "$(yamllint --version 2>/dev/null)"
+else
+    cross "VALIDATE_YAML — yamllint         (system)" "not installed"
+fi
+
+if has flake8; then
+    skip  "VALIDATE_PYTHON — flake8         (system)" "$(flake8 --version 2>/dev/null | head -1)"
+else
+    cross "VALIDATE_PYTHON — flake8         (system)" "not installed"
+fi
+
+if has markdownlint; then
+    skip  "VALIDATE_MD — markdownlint       (system)" "$(markdownlint --version 2>/dev/null)"
+else
+    cross "VALIDATE_MD — markdownlint       (system)" "not installed"
+fi
+
+if has ansible-lint; then
+    skip  "VALIDATE_ANSIBLE — ansible-lint  (system)" "$(ansible-lint --version 2>/dev/null | head -1)"
+else
+    cross "VALIDATE_ANSIBLE — ansible-lint  (system)" "not installed"
+fi
 
 # System hooks (tool must be on PATH)
 if has hadolint; then
@@ -193,6 +226,12 @@ skip  "VALIDATE_CLOUDFORMATION — cfn-lint"    "handled by dedicated CFN check 
 
 # ── Optional tool install hints ───────────────────────────────────────────────
 MISSING_SYSTEM=""
+has check-merge-conflict || MISSING_SYSTEM="$MISSING_SYSTEM pre-commit-hooks"
+has shellcheck    || MISSING_SYSTEM="$MISSING_SYSTEM shellcheck"
+has yamllint      || MISSING_SYSTEM="$MISSING_SYSTEM yamllint"
+has flake8        || MISSING_SYSTEM="$MISSING_SYSTEM flake8"
+has markdownlint  || MISSING_SYSTEM="$MISSING_SYSTEM markdownlint"
+has ansible-lint  || MISSING_SYSTEM="$MISSING_SYSTEM ansible-lint"
 has trufflehog    || MISSING_SYSTEM="$MISSING_SYSTEM trufflehog"
 has sqlfluff      || MISSING_SYSTEM="$MISSING_SYSTEM sqlfluff"
 has cfn-lint      || MISSING_SYSTEM="$MISSING_SYSTEM cfn-lint"
@@ -208,6 +247,12 @@ has pwsh          || MISSING_SYSTEM="$MISSING_SYSTEM pwsh"
 if [ -n "$MISSING_SYSTEM" ]; then
     echo ""
     echo "To install missing system tools:"
+    has check-merge-conflict || echo "  pre-commit-hooks: pip install pre-commit-hooks  # provides ~20 individual check-* / end-of-file-fixer / etc. bins"
+    has shellcheck    || echo "  shellcheck:     apt install shellcheck  # or brew install shellcheck"
+    has yamllint      || echo "  yamllint:       pip install yamllint  # or apt install yamllint"
+    has flake8        || echo "  flake8:         pip install flake8    # or apt install flake8"
+    has markdownlint  || echo "  markdownlint:   npm install -g markdownlint-cli"
+    has ansible-lint  || echo "  ansible-lint:   pip install ansible-lint  # or apt install ansible-lint"
     has trufflehog    || echo "  trufflehog:     curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin"
     has hadolint      || echo "  hadolint:       brew install hadolint  # or https://github.com/hadolint/hadolint/releases"
     has actionlint    || echo "  actionlint:     brew install actionlint  # or https://github.com/rhysd/actionlint/releases"
