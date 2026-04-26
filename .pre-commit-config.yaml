@@ -56,12 +56,14 @@ repos:
     rev: v0.43.0
     hooks:
       - id: markdownlint
+        args: [--disable, MD013, --]
 
   # ── VALIDATE_ANSIBLE — ansible-lint (managed) ────────────────────────────────
   - repo: https://github.com/ansible/ansible-lint
     rev: v24.12.2
     hooks:
       - id: ansible-lint
+        additional_dependencies: [ansible-core>=2.17]
 
   # ── System hooks (tool must be on PATH) ──────────────────────────────────────
   - repo: local
