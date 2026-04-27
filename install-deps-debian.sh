@@ -60,8 +60,6 @@ sudo apt-get install -y \
     python3-flake8 \
     python3-pylint \
     libxml2-utils \
-    nodejs \
-    npm \
     curl \
     gpg \
     pipx

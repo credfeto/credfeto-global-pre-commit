@@ -43,9 +43,7 @@ sudo pacman -S --needed --noconfirm \
     python-flake8 \
     python-pylint \
     ansible-lint \
-    libxml2 \
-    nodejs \
-    npm
+    libxml2
 
 # ── AUR packages ──────────────────────────────────────────────────────────────
 # -bin variants are pre-compiled; Chaotic-AUR provides many of these as
