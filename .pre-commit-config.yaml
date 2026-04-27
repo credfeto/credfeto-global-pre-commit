@@ -1,13 +1,14 @@
+---
 # Global pre-commit configuration.
 # Invoked by hooks/pre-commit via: pre-commit run --config <this-file>
 # Runs on staged files only (equivalent to VALIDATE_ALL_CODEBASE: false).
 #
 # Every hook below uses `language: system` and calls a binary already on PATH.
-# This is intentional: pre-commit's default `language: python` / `language: node`
-# would clone every hook repo and build a per-environment venv on first run
-# (1-3 minutes per fresh container, ~150 MB on disk). On a developer workstation
-# that's a one-off cost; on ephemeral containers (Docker / CI / NanoClaw agent
-# spawns) we'd pay it on every spawn.
+# This is intentional: pre-commit's default `language: python` /
+# `language: node` would clone every hook repo and build a per-environment
+# venv on first run (1-3 minutes per fresh container, ~150 MB on disk).
+# On a developer workstation that's a one-off cost; on ephemeral containers
+# (Docker / CI / NanoClaw agent spawns) we'd pay it on every spawn.
 #
 # Going `language: system` shifts the responsibility for installing the tools
 # from pre-commit to the host (or the container image). install.sh below lists
@@ -140,7 +141,7 @@ repos:
       # (it scans the project itself), always run.
       - id: ansible-lint
         name: ansible-lint
-        entry: ansible-lint -v --force-color
+        entry: ansible-lint -v --force-color --exclude .github
         language: system
         pass_filenames: false
         always_run: true
