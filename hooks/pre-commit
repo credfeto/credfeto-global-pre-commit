@@ -38,19 +38,25 @@ sh "$SCRIPTS_DIR/clean-package-lock-registry" \
     || fail "clean-package-lock-registry"
 
 # ── 2. Delegate to husky if installed ────────────────────────────────────────
+# If the project manages its own hooks via husky, trust them and stop here.
 if [ -f "$REPO_ROOT/.husky/pre-commit" ]; then
     info "Delegating to husky pre-commit..."
     sh "$REPO_ROOT/.husky/pre-commit" || fail "husky pre-commit"
+    info "All checks passed."
+    exit 0
 fi
 
 # ── 3. Linters via pre-commit ─────────────────────────────────────────────────
-# Use the project's own config if it has one; otherwise run the global linting
-# config bundled with these hooks.
+# If the project has its own pre-commit config, run that and stop here.
+# Otherwise run the global linting config bundled with these hooks and fall
+# through to the language-specific checks below.
 if command -v pre-commit > /dev/null 2>&1; then
     REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
     if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
         info "Running project pre-commit hooks..."
         pre-commit run || fail "pre-commit (project config)"
+        info "All checks passed."
+        exit 0
     else
         info "Running global linters (pre-commit)..."
         pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" \
