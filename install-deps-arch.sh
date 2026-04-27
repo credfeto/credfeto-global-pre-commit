@@ -14,6 +14,31 @@ die() {
     exit 1
 }
 
+# Fetch the latest release tag from GitHub and install the binary to /usr/local/bin.
+# Skips if the command is already installed and functional.
+#   $1 = command name
+#   $2 = GitHub owner/repo (e.g. rhysd/actionlint)
+#   $3 = asset filename template; VERSION, ARCH (amd64/arm64), UARCH (x86_64/aarch64) substituted
+#   $4 = binary name inside tar archive (optional; defaults to $1)
+install_github_release() {
+    local cmd="$1" repo="$2" asset_tmpl="$3" binary="${4:-$1}"
+    if command -v "$cmd" &>/dev/null && "$cmd" --version &>/dev/null 2>&1; then
+        echo "  $cmd already installed, skipping"
+        return
+    fi
+    local ver
+    ver=$(curl -sSf "https://api.github.com/repos/${repo}/releases/latest" \
+        | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
+        || die "failed to fetch $cmd version"
+    local asset="${asset_tmpl//VERSION/$ver}"
+    asset="${asset//ARCH/$ARCH_GO}"
+    asset="${asset//UARCH/$ARCH_UNAME}"
+    echo "  Installing $cmd ${ver}..."
+    curl -sSfL "https://github.com/${repo}/releases/download/v${ver}/${asset}" \
+        | sudo tar -xz -C /usr/local/bin "$binary" \
+        || die "failed to install $cmd"
+}
+
 # ── AUR helper detection ──────────────────────────────────────────────────────
 if command -v paru &>/dev/null; then
     AUR=paru
@@ -77,25 +102,12 @@ sudo pacman -S --needed --noconfirm \
 # ── Binary tools from GitHub releases ────────────────────────────────────────
 # trufflehog-bin AUR package is broken (wrapper points to missing binary).
 # actionlint-bin is not universally available in AUR.
-ARCH_GO=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+ARCH_UNAME=$(uname -m)
+ARCH_GO="${ARCH_UNAME/x86_64/amd64}"
+ARCH_GO="${ARCH_GO/aarch64/arm64}"
 
-if ! command -v actionlint &>/dev/null; then
-    ACTIONLINT_VER=$(curl -sSf https://api.github.com/repos/rhysd/actionlint/releases/latest \
-        | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
-        || die "failed to fetch actionlint version"
-    curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VER}/actionlint_${ACTIONLINT_VER}_linux_${ARCH_GO}.tar.gz" \
-        | sudo tar -xz -C /usr/local/bin actionlint \
-        || die "failed to install actionlint"
-fi
-
-if ! command -v trufflehog &>/dev/null || [ ! -x "$(command -v trufflehog)" ] || ! trufflehog --version &>/dev/null; then
-    TRUFFLEHOG_VER=$(curl -sSf https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest \
-        | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
-        || die "failed to fetch trufflehog version"
-    curl -sSfL "https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VER}/trufflehog_${TRUFFLEHOG_VER}_linux_${ARCH_GO}.tar.gz" \
-        | sudo tar -xz -C /usr/local/bin trufflehog \
-        || die "failed to install trufflehog"
-fi
+install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
+install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
 
 # ── pipx packages ─────────────────────────────────────────────────────────────
 # python-pre-commit-hooks does not exist in AUR; pipx is the only option.

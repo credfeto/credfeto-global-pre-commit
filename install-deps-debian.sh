@@ -17,39 +17,43 @@ die() {
 # ── Helpers ───────────────────────────────────────────────────────────────────
 need_cmd() { command -v "$1" &>/dev/null; }
 
-# Install a tool binary from GitHub releases into /usr/local/bin.
-# Skips the download if the command is already on PATH.
-#   $1 = command name to test
-#   $2 = URL (tar.gz) or direct binary URL (no extension)
-#   $3 = "bin"    → direct binary download
-#        "tar"    → .tar.gz; $4 = binary name inside archive
-#        "tgz"    → alias for tar
-install_github_bin() {
-    local cmd="$1" url="$2" mode="${3:-bin}" inner="${4:-$1}"
-    if need_cmd "$cmd"; then
+# Fetch the latest release tag from GitHub and install the binary to /usr/local/bin.
+# Skips if the command is already installed and functional.
+#   $1 = command name
+#   $2 = GitHub owner/repo (e.g. rhysd/actionlint)
+#   $3 = asset filename template; VERSION, ARCH (amd64/arm64), UARCH (x86_64/aarch64) substituted
+#   $4 = binary name inside tar archive, or "BIN" for a direct binary download (optional; defaults to $1)
+install_github_release() {
+    local cmd="$1" repo="$2" asset_tmpl="$3" binary="${4:-$1}"
+    if need_cmd "$cmd" && "$cmd" --version &>/dev/null 2>&1; then
         echo "  $cmd already installed, skipping"
         return
     fi
-    echo "  Installing $cmd from $url …"
-    case "$mode" in
-        bin)
-            curl -sSfL "$url" -o "/usr/local/bin/$cmd" || die "failed to download $cmd"
-            chmod +x "/usr/local/bin/$cmd"
-            ;;
-        tar|tgz)
-            curl -sSfL "$url" | tar -xz -C /usr/local/bin "$inner" || die "failed to download/extract $cmd"
-            chmod +x "/usr/local/bin/$inner"
-            ;;
-    esac
+    local ver
+    ver=$(curl -sSf "https://api.github.com/repos/${repo}/releases/latest" \
+        | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
+        || die "failed to fetch $cmd version"
+    local asset="${asset_tmpl//VERSION/$ver}"
+    asset="${asset//ARCH/$ARCH_GO}"
+    asset="${asset//UARCH/$ARCH_UNAME}"
+    local url="https://github.com/${repo}/releases/download/v${ver}/${asset}"
+    echo "  Installing $cmd ${ver}..."
+    if [ "$binary" = "BIN" ]; then
+        sudo curl -sSfL "$url" -o "/usr/local/bin/$cmd" || die "failed to download $cmd"
+        sudo chmod +x "/usr/local/bin/$cmd"
+    else
+        curl -sSfL "$url" | sudo tar -xz -C /usr/local/bin "$binary" \
+            || die "failed to install $cmd"
+    fi
 }
 
 # Detect CPU architecture for selecting the right release asset.
-ARCH=$(uname -m)
-case "$ARCH" in
+ARCH_UNAME=$(uname -m)
+case "$ARCH_UNAME" in
     x86_64)  ARCH_GO=amd64 ;;
     aarch64) ARCH_GO=arm64 ;;
     *)
-        echo "Unsupported architecture: $ARCH" >&2
+        echo "Unsupported architecture: $ARCH_UNAME" >&2
         exit 1
         ;;
 esac
@@ -133,10 +137,7 @@ npm install --global \
 # releases and installed to /usr/local/bin.
 echo "==> Binary tools from GitHub releases"
 
-# hadolint — single static binary
-install_github_bin hadolint \
-    "https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-$(uname -m)" \
-    bin
+install_github_release hadolint hadolint/hadolint "hadolint-Linux-UARCH" BIN
 
 # actionlint — prefer go install, fall back to binary download
 if command -v go &>/dev/null; then
@@ -150,29 +151,11 @@ if command -v go &>/dev/null; then
         echo "  export PATH=\"\$(go env GOPATH)/bin:\$PATH\"" >&2
     fi
 else
-    ACTIONLINT_VER=$(curl -sSf https://api.github.com/repos/rhysd/actionlint/releases/latest \
-        | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
-        || die "failed to fetch actionlint version"
-    install_github_bin actionlint \
-        "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VER}/actionlint_${ACTIONLINT_VER}_linux_${ARCH_GO}.tar.gz" \
-        tar actionlint
+    install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
 fi
 
-# dotenv-linter — tar.gz release
-DOTENV_VER=$(curl -sSf https://api.github.com/repos/dotenv-linter/dotenv-linter/releases/latest \
-    | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
-    || die "failed to fetch dotenv-linter version"
-install_github_bin dotenv-linter \
-    "https://github.com/dotenv-linter/dotenv-linter/releases/download/v${DOTENV_VER}/dotenv-linter-linux-${ARCH_GO}.tar.gz" \
-    tar dotenv-linter
-
-# trufflehog — tar.gz release
-TRUFFLEHOG_VER=$(curl -sSf https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest \
-    | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
-    || die "failed to fetch trufflehog version"
-install_github_bin trufflehog \
-    "https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VER}/trufflehog_${TRUFFLEHOG_VER}_linux_${ARCH_GO}.tar.gz" \
-    tar trufflehog
+install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-ARCH.tar.gz"
+install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
 
 echo ""
 echo "All dependencies installed."
