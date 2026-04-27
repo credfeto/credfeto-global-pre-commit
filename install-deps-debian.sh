@@ -52,8 +52,9 @@ if ! sudo apt-get install -y ansible-lint 2>/dev/null; then
     pipx_ensure ansible-lint
 fi
 
-# ── PowerShell ────────────────────────────────────────────────────────────────
+# ── dotnet global tools ───────────────────────────────────────────────────────
 install_pwsh
+install_tsqllint
 
 # ── pipx packages ─────────────────────────────────────────────────────────────
 # pre-commit-hooks provides the individual check-* / end-of-file-fixer / etc.

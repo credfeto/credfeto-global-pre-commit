@@ -60,21 +60,37 @@ install_github_release() {
     fi
 }
 
+# Install or update a dotnet global tool (install if absent, update if present).
+# Skipped silently if dotnet is not on PATH.
+#   $1 = NuGet package name (e.g. PowerShell, TSQLLint)
+#   $2 = tool command name as shown by `dotnet tool list` (e.g. powershell, tsqllint)
+_install_dotnet_tool() {
+    local pkg="$1" cmd="$2"
+    if has dotnet; then
+        if dotnet tool list --global 2>/dev/null | grep -q "^${cmd} "; then
+            dotnet tool update --global "$pkg" || die "failed to update $pkg dotnet tool"
+        else
+            dotnet tool install --global "$pkg" || die "failed to install $pkg dotnet tool"
+        fi
+    else
+        echo "  dotnet not found — skipping $pkg install" >&2
+    fi
+}
+
 # Install or update PowerShell as a dotnet global tool.
 # Skipped with a warning if dotnet is not on PATH.
 install_pwsh() {
     echo "==> PowerShell (pwsh)"
-    if has dotnet; then
-        if dotnet tool list --global 2>/dev/null | grep -q '^powershell '; then
-            dotnet tool update --global PowerShell || die "failed to update PowerShell dotnet tool"
-        else
-            dotnet tool install --global PowerShell || die "failed to install PowerShell dotnet tool"
-        fi
-        if ! echo "$PATH" | grep -q "$HOME/.dotnet/tools"; then
-            echo "warning: add ~/.dotnet/tools to PATH in your shell profile (e.g. ~/.bashrc):" >&2
-            echo "  export PATH=\"\$HOME/.dotnet/tools:\$PATH\"" >&2
-        fi
-    else
-        echo "  dotnet not found — skipping pwsh install" >&2
+    _install_dotnet_tool PowerShell powershell
+    if has dotnet && ! echo "$PATH" | grep -q "$HOME/.dotnet/tools"; then
+        echo "warning: add ~/.dotnet/tools to PATH in your shell profile (e.g. ~/.bashrc):" >&2
+        echo "  export PATH=\"\$HOME/.dotnet/tools:\$PATH\"" >&2
     fi
+}
+
+# Install or update TSQLLint as a dotnet global tool.
+# Skipped silently if dotnet is not on PATH.
+install_tsqllint() {
+    echo "==> TSQLLint"
+    _install_dotnet_tool TSQLLint tsqllint
 }

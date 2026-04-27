@@ -99,8 +99,9 @@ npm install --global \
     stylelint-config-standard \
     || die "npm global install failed"
 
-# ── PowerShell ────────────────────────────────────────────────────────────────
+# ── dotnet global tools ───────────────────────────────────────────────────────
 install_pwsh
+install_tsqllint
 
 echo ""
 echo "All dependencies installed."
