@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(grep *)",
+      "Bash(pre-commit *)",
+      "Bash(shellcheck *)",
+      "Bash(yamllint *)",
+      "Bash(flake8 *)",
+      "Bash(markdownlint *)",
+      "Bash(ansible-lint *)",
+      "Bash(hadolint *)",
+      "Bash(actionlint *)",
+      "Bash(pylint *)",
+      "Bash(stylelint *)",
+      "Bash(run-stylelint *)",
+      "Bash(dotenv-linter *)",
+      "Bash(eslint *)",
+      "Bash(run-eslint *)",
+      "Bash(xmllint *)",
+      "Bash(pwsh *)",
+      "Bash(run-psscriptanalyzer *)",
+      "Bash(trufflehog *)",
+      "Bash(sqlfluff *)",
+      "Bash(cfn-lint *)",
+      "Bash(check-merge-conflict *)",
+      "Bash(check-case-conflict *)",
+      "Bash(check-added-large-files *)",
+      "Bash(end-of-file-fixer *)",
+      "Bash(trailing-whitespace-fixer *)",
+      "Bash(mixed-line-ending *)",
+      "Bash(check-toml *)",
+      "Bash(detect-private-key *)",
+      "Bash(check-executables-have-shebangs *)",
+      "Bash(check-shebang-scripts-are-executable *)",
+      "Bash(check-json *)",
+      "Bash(check-xml *)",
+      "Bash(check-yaml *)",
+      "Bash(dotnet *)",
+      "Bash(npm *)"
+    ]
+  }
+}

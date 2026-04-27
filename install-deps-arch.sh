@@ -9,10 +9,14 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/common.sh
+. "$SCRIPT_DIR/lib/common.sh"
+
 # ── AUR helper detection ──────────────────────────────────────────────────────
-if command -v paru &>/dev/null; then
+if has paru; then
     AUR=paru
-elif command -v yay &>/dev/null; then
+elif has yay; then
     AUR=yay
 else
     cat >&2 <<'EOF'
@@ -33,8 +37,20 @@ fi
 
 echo "Using AUR helper: $AUR"
 
+# ── Locale ────────────────────────────────────────────────────────────────────
+LOCALES_MISSING=0
+for loc in en_GB.UTF-8 en_US.UTF-8; do
+    locale -a 2>/dev/null | grep -qi "${loc//UTF-8/utf8}" || {
+        sudo sed -i "s/^#\($loc\)/\1/" /etc/locale.gen
+        LOCALES_MISSING=1
+    }
+done
+if [ "$LOCALES_MISSING" -eq 1 ]; then
+    sudo locale-gen || die "locale-gen failed"
+fi
+
 # ── Official repository packages ──────────────────────────────────────────────
-# These are all in the Arch extra/community repos.
+echo "==> pacman packages"
 sudo pacman -S --needed --noconfirm \
     git \
     python-pre-commit \
@@ -43,42 +59,48 @@ sudo pacman -S --needed --noconfirm \
     python-flake8 \
     python-pylint \
     ansible-lint \
-    libxml2
+    libxml2 \
+    python-pipx \
+    || die "pacman install failed"
 
 # ── AUR packages ──────────────────────────────────────────────────────────────
 # -bin variants are pre-compiled; Chaotic-AUR provides many of these as
 # binary packages so no local compilation is needed if it is configured.
+echo "==> AUR packages"
 "$AUR" -S --needed --noconfirm \
-    python-pre-commit-hooks \
     hadolint-bin \
-    actionlint-bin \
     dotenv-linter-bin \
-    trufflehog-bin \
-    python-sqlfluff \
-    python-cfn-lint
+    sqlfluff \
+    python-cfn-lint \
+    || die "AUR install failed"
+
+# ── Binary tools from GitHub releases ────────────────────────────────────────
+# trufflehog-bin AUR package is broken (wrapper points to missing binary).
+# actionlint-bin is not universally available in AUR.
+echo "==> Binary tools from GitHub releases"
+detect_arch
+install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
+install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
+
+# ── pipx packages ─────────────────────────────────────────────────────────────
+# python-pre-commit-hooks does not exist in AUR; pipx is the only option.
+# Provides check-merge-conflict, end-of-file-fixer, check-json, etc.
+echo "==> pipx packages"
+pipx_ensure pre-commit-hooks
 
 # ── npm global packages ───────────────────────────────────────────────────────
 # These JS tools are best installed via npm — AUR packages lag behind upstream
 # and the global npm path is already on PATH when nodejs is installed.
+echo "==> npm global packages"
 npm install --global \
     markdownlint-cli \
     eslint \
     stylelint \
-    stylelint-config-standard
+    stylelint-config-standard \
+    || die "npm global install failed"
 
-# ── PowerShell (dotnet global tool) ──────────────────────────────────────────
-# dotnet must be installed separately (e.g. pacman -S dotnet-sdk).
-# pwsh is installed as a global dotnet tool rather than the AUR powershell-bin
-# so it stays on the same update channel as the rest of the .NET toolchain.
-if command -v dotnet &>/dev/null; then
-    if dotnet tool list --global 2>/dev/null | grep -q '^powershell '; then
-        dotnet tool update --global PowerShell
-    else
-        dotnet tool install --global PowerShell
-    fi
-else
-    echo "warning: dotnet not found — skipping pwsh install (install dotnet-sdk first)" >&2
-fi
+# ── PowerShell ────────────────────────────────────────────────────────────────
+install_pwsh
 
 echo ""
 echo "All dependencies installed."
