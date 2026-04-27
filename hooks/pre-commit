@@ -32,13 +32,18 @@ sh "$SCRIPTS_DIR/check-ignored-files" || fail "ignored files found in tracking"
 info "Scanning for secrets..."
 sh "$SCRIPTS_DIR/check-secrets" || fail "secrets detected"
 
-# ── 1. Delegate to husky if installed ────────────────────────────────────────
+# ── 1. Auto-fixers (normalise content before linting) ────────────────────────
+
+sh "$SCRIPTS_DIR/clean-package-lock-registry" \
+    || fail "clean-package-lock-registry"
+
+# ── 2. Delegate to husky if installed ────────────────────────────────────────
 if [ -f "$REPO_ROOT/.husky/pre-commit" ]; then
     info "Delegating to husky pre-commit..."
     sh "$REPO_ROOT/.husky/pre-commit" || fail "husky pre-commit"
 fi
 
-# ── 2. Linters via pre-commit ─────────────────────────────────────────────────
+# ── 3. Linters via pre-commit ─────────────────────────────────────────────────
 # Use the project's own config if it has one; otherwise run the global linting
 # config bundled with these hooks.
 if command -v pre-commit > /dev/null 2>&1; then
@@ -53,14 +58,14 @@ if command -v pre-commit > /dev/null 2>&1; then
     fi
 fi
 
-# ── 3. .NET: full build + test if source/project file changes ────────────────
+# ── 4. .NET: full build + test if source/project file changes ────────────────
 DOTNET_CHANGES=$(echo "$STAGED" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
 if [ -n "$DOTNET_CHANGES" ] && command -v dotnet > /dev/null 2>&1; then
     info "Detected .NET changes — running buildtest..."
     sh "$SCRIPTS_DIR/buildtest" || fail "dotnet buildtest"
 fi
 
-# ── 4. NPM: run tests if TypeScript/JS changes ───────────────────────────────
+# ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────
 TS_CHANGES=$(echo "$STAGED" | grep -E '\.(ts|tsx|js|jsx)$' | head -1)
 if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && command -v npm > /dev/null 2>&1; then
     info "Detected TypeScript/JS changes — running npm tests..."
@@ -71,7 +76,7 @@ if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && command -v npm > 
     fi
 fi
 
-# ── 5. SQL: tsqllint + sqlfluff if .sql changes ──────────────────────────────
+# ── 6. SQL: tsqllint + sqlfluff if .sql changes ──────────────────────────────
 SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
 if [ -n "$SQL_CHANGES" ]; then
     if command -v dotnet > /dev/null 2>&1; then
@@ -84,7 +89,7 @@ if [ -n "$SQL_CHANGES" ]; then
     fi
 fi
 
-# ── 6. CloudFormation: cfn-lint on changed templates ─────────────────────────
+# ── 7. CloudFormation: cfn-lint on changed templates ─────────────────────────
 if command -v cfn-lint > /dev/null 2>&1; then
     CFN_FILES=$(echo "$STAGED" | grep -E '\.(yaml|yml|json|template)$' \
         | while read -r f; do
