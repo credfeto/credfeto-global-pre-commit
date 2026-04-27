@@ -60,7 +60,7 @@ sudo pacman -S --needed --noconfirm \
 # ── npm global packages ───────────────────────────────────────────────────────
 # These JS tools are best installed via npm — AUR packages lag behind upstream
 # and the global npm path is already on PATH when nodejs is installed.
-sudo npm install --global \
+npm install --global \
     markdownlint-cli \
     eslint \
     stylelint \

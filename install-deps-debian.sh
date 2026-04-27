@@ -103,7 +103,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # ── npm global packages ───────────────────────────────────────────────────────
 echo "==> npm global packages"
-sudo npm install --global \
+npm install --global \
     markdownlint-cli \
     eslint \
     stylelint \
