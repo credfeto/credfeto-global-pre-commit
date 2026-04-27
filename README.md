@@ -18,6 +18,72 @@ to all present and future clones.
 
 ---
 
+## Dependencies
+
+Every hook uses `language: system` and calls a binary already on `PATH`.
+Install all required tools before running `install.sh` using the provided script
+for your distribution.
+
+### Arch Linux
+
+```sh
+bash install-deps-arch.sh
+```
+
+Requires an AUR helper (`paru` or `yay`). The script will print instructions for
+installing one if neither is found. If [Chaotic-AUR](https://aur.chaotic.cx/) is
+configured, pre-compiled `-bin` packages are used automatically — no local
+compilation required.
+
+| Source | Packages |
+| -------- | ---------- |
+| `pacman` | `git`, `python-pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2` |
+| AUR | `hadolint-bin`, `dotenv-linter-bin`, `sqlfluff`, `python-cfn-lint` |
+| GitHub releases | `actionlint`, `trufflehog` (downloaded to `/usr/local/bin`) |
+| `pipx` | `pre-commit-hooks` (no AUR package exists) |
+| `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
+| `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
+
+Node.js is intentionally not installed by the script — use [nvm](https://github.com/nvm-sh/nvm)
+to manage it. Similarly, the .NET SDK is not installed — install it separately
+and the script will pick it up automatically.
+
+### Debian / Ubuntu
+
+Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
+
+```sh
+bash install-deps-debian.sh
+```
+
+| Source | Packages |
+| -------- | ---------- |
+| `apt` | `git`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-pylint`, `libxml2-utils`, `curl`, `gpg`, `pipx` |
+| `apt` (fallback: `pipx`) | `ansible-lint` — installed via `pipx` on older releases where the `apt` package is unavailable |
+| GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
+| `pipx` | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
+| `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
+| `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
+
+If `go` is on `PATH`, `actionlint` is installed via `go install` instead of a
+binary download. Node.js and the .NET SDK are not installed by the script — manage
+them separately (nvm for Node.js).
+
+### Notes applicable to both scripts
+
+- Safe to run multiple times — each step is idempotent.
+- `pwsh` is installed as a `dotnet` global tool (`dotnet tool install --global PowerShell`).
+  Global tools land in `~/.dotnet/tools/` which must be on `PATH`:
+
+  ```sh
+  export PATH="$HOME/.dotnet/tools:$PATH"
+  ```
+
+- `pipx` installs console scripts into `~/.local/bin/` (XDG-compliant).
+  Ensure `~/.local/bin` is on `PATH` (most modern distributions include it by default).
+
+---
+
 ## Install
 
 ```sh
@@ -27,6 +93,7 @@ sh install.sh
 ```
 
 `install.sh` will:
+
 1. Make all hook and script files executable
 2. Run `git config --global core.hooksPath <hooks-dir>`
 3. Symlink the `run-eslint`, `run-stylelint`, and `run-psscriptanalyzer` wrapper scripts to `~/.local/bin`
@@ -56,7 +123,7 @@ skipped (with a warning at install time).
 
 Example output:
 
-```
+```text
 Global pre-commit hooks installed.
 Hooks directory: /home/user/.global-hooks/hooks
 
@@ -109,7 +176,7 @@ git config --global core.hooksPath
 **Shell (run directly, before pre-commit):**
 
 | Check | Script | What it catches |
-|---|---|---|
+| --- | --- | --- |
 | No merge commits | `scripts/check-merge-commits` | Blocks if `MERGE_HEAD` is present — rebase instead of merge |
 | No ignored files tracked | `scripts/check-ignored-files` | Fails if a tracked file is matched by `.gitignore` rules |
 | Secret scanning | `scripts/check-secrets` | Runs `trufflehog --only-verified`; **skipped if not installed** |
@@ -117,7 +184,7 @@ git config --global core.hooksPath
 **Native pre-commit hooks (via `pre-commit/pre-commit-hooks`):**
 
 | Check | Hook ID | What it catches |
-|---|---|---|
+| --- | --- | --- |
 | No merge conflict markers | `check-merge-conflict` | Scans staged files for `<<<<<<<` / `>>>>>>>` |
 | No case sensitivity conflicts | `check-case-conflict` | Fails if two tracked files differ only by case |
 | No large files | `check-added-large-files` | Blocks accidentally staged binaries/large assets |
@@ -132,7 +199,7 @@ git config --global core.hooksPath
 ### Conditional (triggered by staged file types + tool availability)
 
 | Trigger | Check | Command |
-|---|---|---|
+| --- | --- | --- |
 | `.husky/pre-commit` exists | Delegate to husky | `sh .husky/pre-commit` |
 | `pre-commit` on PATH, repo has `.pre-commit-config.yaml` | Run project pre-commit hooks | `pre-commit run` |
 | `pre-commit` on PATH, no project config | Run global linters (`.pre-commit-config.yaml`) | `pre-commit run --config <global>` |
@@ -153,7 +220,7 @@ staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
 **Managed** — pre-commit downloads and caches the tool automatically; no system install required:
 
 | VALIDATE_* | Tool | Hook repo |
-|---|---|---|
+| --- | --- | --- |
 | `VALIDATE_JSON` / `VALIDATE_XML` / `VALIDATE_YAML` (syntax) | pre-commit-hooks | `pre-commit/pre-commit-hooks` |
 | `VALIDATE_BASH` | shellcheck | `shellcheck-py/shellcheck-py` |
 | `VALIDATE_YAML` (style) | yamllint | `adrienverge/yamllint` |
@@ -164,7 +231,7 @@ staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
 **System** — tool must be on PATH:
 
 | VALIDATE_* | Tool | File trigger |
-|---|---|---|
+| --- | --- | --- |
 | `VALIDATE_DOCKERFILE` + `VALIDATE_DOCKERFILE_HADOLINT` | `hadolint` | `Dockerfile*` |
 | `VALIDATE_GITHUB_ACTIONS` | `actionlint` | `.github/workflows/*.yml` |
 | `VALIDATE_PYTHON_PYLINT` | `pylint` | `*.py` |
@@ -186,44 +253,9 @@ staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
 
 ## Installing optional tools
 
-```sh
-# pre-commit itself (required for linting to run)
-pip install pre-commit
-
-# Managed tools — pre-commit installs these automatically on first use.
-# Nothing to install manually for:
-#   shellcheck, yamllint, flake8, markdownlint, ansible-lint
-
-# System tools — must be on PATH:
-
-# Secret scanning
-curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
-  | sh -s -- -b /usr/local/bin
-
-# Docker / Actions linting
-# hadolint: https://github.com/hadolint/hadolint/releases
-# actionlint: https://github.com/rhysd/actionlint/releases
-
-# CSS / TypeScript
-npm install -g stylelint stylelint-config-standard
-npm install -g eslint
-
-# Python pylint
-pip install pylint
-
-# SQL / CloudFormation
-pip install sqlfluff cfn-lint
-
-# PowerShell
-# pwsh: https://github.com/PowerShell/PowerShell/releases
-# PSScriptAnalyzer: Install-Module -Name PSScriptAnalyzer -Force
-
-# Env file linting
-# dotenv-linter: https://github.com/dotenv-linter/dotenv-linter/releases
-
-# XML (usually pre-installed)
-apt install libxml2-utils               # xmllint (Debian/Ubuntu)
-```
+Use the provided dependency scripts — see [Dependencies](#dependencies) above.
+They handle all system tools, install them idempotently, and are safe to re-run
+after updates.
 
 After installing any tool, re-run `sh install.sh` to see the updated status table.
 Run `pre-commit autoupdate --config ~/.global-hooks/.pre-commit-config.yaml` to update managed hook versions.
@@ -233,7 +265,7 @@ Run `pre-commit autoupdate --config ~/.global-hooks/.pre-commit-config.yaml` to 
 ## Scripts
 
 | Script | Source |
-|---|---|
+| --- | --- |
 | `scripts/buildtest` | Vendored from [credfeto/scripts — buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
 | `scripts/buildcheck` | Vendored from [credfeto/scripts — buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
@@ -247,6 +279,6 @@ Run `pre-commit autoupdate --config ~/.global-hooks/.pre-commit-config.yaml` to 
 ## Two-layer enforcement
 
 | Layer | Mechanism | Blocks |
-|---|---|---|
+| --- | --- | --- |
 | [GitHub API proxy](https://github.com/dnyw4l3n13/github-api-proxy) | HTTP 403 on git Data API / git-receive-pack / GraphQL git mutations | Programmatic commits via REST or GraphQL |
 | These hooks (`core.hooksPath`) | exit 1 on pre-commit / pre-push | Local `git commit` and `git push` |
