@@ -18,6 +18,7 @@ chmod +x \
     "$SCRIPTS_DIR/check-ignored-files" \
     "$SCRIPTS_DIR/check-merge-commits" \
     "$SCRIPTS_DIR/check-secrets" \
+    "$SCRIPTS_DIR/clean-package-lock-registry" \
     "$SCRIPTS_DIR/run-eslint" \
     "$SCRIPTS_DIR/run-stylelint" \
     "$SCRIPTS_DIR/run-psscriptanalyzer"

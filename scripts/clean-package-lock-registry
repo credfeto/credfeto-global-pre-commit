@@ -1,0 +1,47 @@
+#!/bin/sh
+# Normalises staged package-lock.json files by replacing private npm registry
+# URLs with the public registry URL.
+#
+# This fixes lock files that were generated while a custom registry was
+# configured globally (e.g. https://npm.markridgwell.com/), ensuring the
+# committed lock file always points to the public registry.
+#
+# Works for package-lock.json files at any depth in the repository.
+# Modified files are automatically re-staged so the fix is included in
+# the current commit.
+
+die() {
+    echo "$@" >&2
+    exit 1
+}
+
+sed_inplace() {
+    # Applies a sed substitution in-place using the correct flag for the
+    # platform (GNU sed uses -i, BSD sed requires -i ''), then re-stages.
+    if sed --version > /dev/null 2>&1; then
+        sed -i "$1" "$2"
+    else
+        sed -i '' "$1" "$2"
+    fi
+    git add "$2"
+}
+
+command -v sed > /dev/null 2>&1 || die "sed is not installed."
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+LOCK_FILES=$(printf '%s\n' "$STAGED" | grep -E '(^|/)package-lock\.json$')
+[ -z "$LOCK_FILES" ] && exit 0
+
+FOUND=0
+while IFS= read -r file; do
+    [ -f "$file" ] || continue
+    grep -q "npm.markridgwell.com" "$file" || continue
+    echo "[pre-commit] Normalising registry URL in $file"
+    sed_inplace "s|https://npm\.markridgwell\.com/|https://registry.npmjs.org/|g" "$file"
+    FOUND=1
+done << EOF
+$LOCK_FILES
+EOF
+
+[ "$FOUND" -eq 1 ] && echo "[pre-commit] package-lock.json registry URLs normalised and re-staged."
+exit 0
