@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Bash(git *)",
+      "Bash(grep *)",
       "Bash(pre-commit *)",
       "Bash(shellcheck *)",
       "Bash(yamllint *)",
