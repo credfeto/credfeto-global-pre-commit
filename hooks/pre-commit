@@ -15,6 +15,10 @@ info() {
     echo "[pre-commit] $*"
 }
 
+# Abort immediately if nothing is staged — prevents accidental empty commits.
+ALL_STAGED=$(git diff --cached --name-only)
+[ -z "$ALL_STAGED" ] && fail "nothing is staged — commit would be empty"
+
 # Only look at staged files that are being added/copied/modified
 STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$STAGED" ] && exit 0
