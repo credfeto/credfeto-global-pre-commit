@@ -5,7 +5,7 @@
 while IFS=' ' read -r _local_ref _local_sha remote_ref _remote_sha; do
     case "$remote_ref" in
         refs/heads/main|refs/heads/master)
-            if [ -n "${CLAUDE}" ]; then
+            if [ "${CLAUDECODE}" = "1" ]; then
                 echo "error: Prohibited from pushing to ${remote_ref}.  Did you read the .ai-instructions?" >&2
             else
                 echo "error: direct pushes to ${remote_ref} are not permitted." >&2

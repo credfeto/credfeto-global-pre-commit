@@ -31,7 +31,7 @@ info "Checking branch..."
 CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
 case "$CURRENT_BRANCH" in
     main|master)
-        if [ -n "${CLAUDE}" ]; then
+        if [ "${CLAUDECODE}" = "1" ]; then
             fail "Prohibited from committing to ${CURRENT_BRANCH}.  Did you read the .ai-instructions?"
         else
             fail "direct commits to ${CURRENT_BRANCH} are not permitted — use a branch and open a pull request"
