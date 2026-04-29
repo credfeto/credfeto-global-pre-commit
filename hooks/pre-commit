@@ -23,6 +23,14 @@ cd "$REPO_ROOT" || fail "cannot cd to repo root"
 
 # ── Always-on checks (run on every commit) ───────────────────────────────────
 
+info "Checking branch..."
+CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+case "$CURRENT_BRANCH" in
+    main|master)
+        fail "direct commits to ${CURRENT_BRANCH} are not permitted — use a branch and open a pull request"
+        ;;
+esac
+
 info "Checking for merge commits..."
 sh "$SCRIPTS_DIR/check-merge-commits" || fail "merge commit detected"
 
