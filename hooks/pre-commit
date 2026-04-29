@@ -15,6 +15,18 @@ info() {
     echo "[pre-commit] $*"
 }
 
+# Returns true (0) when running inside a Claude Code Bash-tool session.
+# Claude Code sets CLAUDECODE=1 in every shell it spawns via the Bash tool;
+# that value is inherited by git and therefore by this hook.
+# Source: https://code.claude.com/docs/en/env-vars
+is_ai_agent() {
+    [ "${CLAUDECODE}" = "1" ]
+}
+
+# Abort immediately if nothing is staged — prevents accidental empty commits.
+ALL_STAGED=$(git diff --cached --name-only)
+[ -z "$ALL_STAGED" ] && fail "nothing is staged — commit would be empty"
+
 # Only look at staged files that are being added/copied/modified
 STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$STAGED" ] && exit 0
@@ -22,6 +34,18 @@ STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 cd "$REPO_ROOT" || fail "cannot cd to repo root"
 
 # ── Always-on checks (run on every commit) ───────────────────────────────────
+
+info "Checking branch..."
+CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+case "$CURRENT_BRANCH" in
+    main|master)
+        if is_ai_agent; then
+            fail "Prohibited from committing to ${CURRENT_BRANCH}.  Did you read the .ai-instructions?"
+        else
+            fail "direct commits to ${CURRENT_BRANCH} are not permitted — use a branch and open a pull request"
+        fi
+        ;;
+esac
 
 info "Checking for merge commits..."
 sh "$SCRIPTS_DIR/check-merge-commits" || fail "merge commit detected"
