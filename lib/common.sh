@@ -61,11 +61,10 @@ install_github_release() {
 }
 
 # Install or update nvm (Node Version Manager) from the latest GitHub release.
-# Skips if nvm is already present. Sources nvm so it is available in the
-# current session and installs the latest LTS node if none is active.
+# Skips if nvm is already present. Sources nvm into the current session so
+# any node version already selected in nvm becomes available on PATH.
 install_nvm() {
     echo "==> nvm (Node Version Manager)"
-    # shellcheck disable=SC1090
     if [ -s "$HOME/.nvm/nvm.sh" ]; then
         echo "  nvm already installed, sourcing..."
         # shellcheck disable=SC1091
@@ -80,10 +79,6 @@ install_nvm() {
             || die "failed to install nvm"
         # shellcheck disable=SC1091
         . "$HOME/.nvm/nvm.sh"
-    fi
-    if ! has node; then
-        nvm install --lts || die "nvm install --lts failed"
-        nvm use --lts     || die "nvm use --lts failed"
     fi
 }
 
