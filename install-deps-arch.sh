@@ -88,6 +88,9 @@ install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION
 echo "==> pipx packages"
 pipx_ensure pre-commit-hooks
 
+# ── nvm + Node ────────────────────────────────────────────────────────────────
+install_nvm
+
 # ── npm global packages ───────────────────────────────────────────────────────
 # These JS tools are best installed via npm — AUR packages lag behind upstream
 # and the global npm path is already on PATH when nodejs is installed.

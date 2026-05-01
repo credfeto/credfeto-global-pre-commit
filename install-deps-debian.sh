@@ -66,6 +66,9 @@ done
 # Ensure ~/.local/bin is on PATH for this session (pipx installs land there).
 export PATH="$HOME/.local/bin:$PATH"
 
+# ── nvm + Node ────────────────────────────────────────────────────────────────
+install_nvm
+
 # ── npm global packages ───────────────────────────────────────────────────────
 echo "==> npm global packages"
 npm install --global \
