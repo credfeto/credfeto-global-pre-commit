@@ -66,8 +66,15 @@ done
 # Ensure ~/.local/bin is on PATH for this session (pipx installs land there).
 export PATH="$HOME/.local/bin:$PATH"
 
-# ── nvm + Node ────────────────────────────────────────────────────────────────
-install_nvm
+# ── nvm ───────────────────────────────────────────────────────────────────────
+# nvm is not in apt; use the official install script.
+echo "==> nvm"
+if [ ! -s "$HOME/.nvm/nvm.sh" ]; then
+    curl -sSfo- https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/install.sh | bash \
+        || die "nvm install failed"
+else
+    echo "  nvm already installed, skipping"
+fi
 
 # ── npm global packages ───────────────────────────────────────────────────────
 if has node; then

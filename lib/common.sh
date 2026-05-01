@@ -60,28 +60,6 @@ install_github_release() {
     fi
 }
 
-# Install or update nvm (Node Version Manager) from the latest GitHub release.
-# Skips if nvm is already present. Sources nvm into the current session so
-# any node version already selected in nvm becomes available on PATH.
-install_nvm() {
-    echo "==> nvm (Node Version Manager)"
-    if [ -s "$HOME/.nvm/nvm.sh" ]; then
-        echo "  nvm already installed, sourcing..."
-        # shellcheck disable=SC1091
-        . "$HOME/.nvm/nvm.sh"
-    else
-        local ver
-        ver=$(curl -sSf "https://api.github.com/repos/nvm-sh/nvm/releases/latest" \
-            | grep '"tag_name"' | cut -d'"' -f4) \
-            || die "failed to fetch nvm version"
-        echo "  Installing nvm ${ver}..."
-        curl -sSfo- "https://raw.githubusercontent.com/nvm-sh/nvm/${ver}/install.sh" | bash \
-            || die "failed to install nvm"
-        # shellcheck disable=SC1091
-        . "$HOME/.nvm/nvm.sh"
-    fi
-}
-
 # Install or update PowerShell as a dotnet global tool.
 # Skipped with a warning if dotnet is not on PATH.
 install_pwsh() {

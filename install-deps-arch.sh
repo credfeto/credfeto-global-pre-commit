@@ -70,6 +70,7 @@ echo "==> AUR packages"
 "$AUR" -S --needed --noconfirm \
     hadolint-bin \
     dotenv-linter-bin \
+    nvm \
     sqlfluff \
     python-cfn-lint \
     || die "AUR install failed"
@@ -87,9 +88,6 @@ install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION
 # Provides check-merge-conflict, end-of-file-fixer, check-json, etc.
 echo "==> pipx packages"
 pipx_ensure pre-commit-hooks
-
-# ── nvm + Node ────────────────────────────────────────────────────────────────
-install_nvm
 
 # ── npm global packages ───────────────────────────────────────────────────────
 # These JS tools are best installed via npm — AUR packages lag behind upstream
