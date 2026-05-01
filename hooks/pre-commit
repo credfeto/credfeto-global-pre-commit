@@ -61,13 +61,7 @@ sh "$SCRIPTS_DIR/check-secrets" || fail "secrets detected"
 sh "$SCRIPTS_DIR/clean-package-lock-registry" \
     || fail "clean-package-lock-registry"
 
-# ── 2. Delegate to husky if installed ────────────────────────────────────────
-if [ -f "$REPO_ROOT/.husky/pre-commit" ]; then
-    info "Delegating to husky pre-commit..."
-    sh "$REPO_ROOT/.husky/pre-commit" || fail "husky pre-commit"
-fi
-
-# ── 3. Linters via pre-commit ─────────────────────────────────────────────────
+# ── 2. Linters via pre-commit ─────────────────────────────────────────────────
 # Use the project's own config if it has one; otherwise run the global linting
 # config bundled with these hooks.
 if command -v pre-commit > /dev/null 2>&1; then
