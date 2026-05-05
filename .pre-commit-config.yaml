@@ -72,6 +72,25 @@ repos:
         language: system
         types: [text]
 
+      # ── Secrets scanning — TruffleHog ─────────────────────────────────────
+      # Mirrors the official hook from trufflesecurity/trufflehog
+      # (.pre-commit-hooks.yaml) but uses language: system so pre-commit
+      # does not clone/build the Go binary on each ephemeral container.
+      # --no-update suppresses the self-update attempt (binary is managed
+      # by the host / install script, not pre-commit).
+      - id: trufflehog
+        name: TruffleHog
+        description: Detect secrets in your data with TruffleHog.
+        entry: >-
+          trufflehog git file://.
+          --since-commit HEAD
+          --results=verified
+          --fail
+          --no-update
+          --trust-local-git-config
+        language: system
+        pass_filenames: false
+
       - id: check-executables-have-shebangs
         name: check that executables have shebangs
         entry: check-executables-have-shebangs
