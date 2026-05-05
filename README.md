@@ -143,6 +143,7 @@ Conditional (triggered by file type + tool availability):
   –  T-SQL lint — dotnet tsqllint (*.sql) dotnet 10.0.203
   ✗  SQL style — sqlfluff (*.sql)         not installed
   ✗  CloudFormation — cfn-lint            not installed
+  –  Husky pre-commit                     delegated if .husky/pre-commit present
   –  pre-commit framework                 delegated if .pre-commit-config.yaml present
 
 To install missing tools:
@@ -199,6 +200,7 @@ git config --global core.hooksPath
 
 | Trigger | Check | Command |
 | --- | --- | --- |
+| `.husky/pre-commit` exists | Delegate to husky | `sh .husky/pre-commit` |
 | `pre-commit` on PATH, repo has `.pre-commit-config.yaml` | Run project pre-commit hooks | `pre-commit run` |
 | `pre-commit` on PATH, no project config | Run global linters (`.pre-commit-config.yaml`) | `pre-commit run --config <global>` |
 | `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test | `scripts/buildtest` |

@@ -117,6 +117,12 @@ else
     cross "CloudFormation — cfn-lint"               "not installed"
 fi
 
+if [ -f "$REPO_DIR/.husky/pre-commit" ]; then
+    skip  "Husky pre-commit"                        "found .husky/pre-commit"
+else
+    skip  "Husky pre-commit"                        "delegated if .husky/pre-commit present"
+fi
+
 if has pre-commit; then
     skip  "pre-commit linters"                      "$(pre-commit --version 2>/dev/null)"
 else
