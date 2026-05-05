@@ -70,6 +70,7 @@ echo "==> AUR packages"
 "$AUR" -S --needed --noconfirm \
     hadolint-bin \
     dotenv-linter-bin \
+    nvm \
     sqlfluff \
     python-cfn-lint \
     || die "AUR install failed"
@@ -91,13 +92,17 @@ pipx_ensure pre-commit-hooks
 # ── npm global packages ───────────────────────────────────────────────────────
 # These JS tools are best installed via npm — AUR packages lag behind upstream
 # and the global npm path is already on PATH when nodejs is installed.
-echo "==> npm global packages"
-npm install --global \
-    markdownlint-cli \
-    eslint \
-    stylelint \
-    stylelint-config-standard \
-    || die "npm global install failed"
+if has node; then
+    echo "==> npm global packages"
+    npm install --global \
+        markdownlint-cli \
+        eslint \
+        stylelint \
+        stylelint-config-standard \
+        || die "npm global install failed"
+else
+    echo "  node not active in nvm — skipping npm global packages"
+fi
 
 # ── PowerShell ────────────────────────────────────────────────────────────────
 install_pwsh

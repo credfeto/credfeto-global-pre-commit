@@ -66,14 +66,28 @@ done
 # Ensure ~/.local/bin is on PATH for this session (pipx installs land there).
 export PATH="$HOME/.local/bin:$PATH"
 
+# ── nvm ───────────────────────────────────────────────────────────────────────
+# nvm is not in apt; use the official install script.
+echo "==> nvm"
+if [ ! -s "$HOME/.nvm/nvm.sh" ]; then
+    curl -sSfo- https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/install.sh | bash \
+        || die "nvm install failed"
+else
+    echo "  nvm already installed, skipping"
+fi
+
 # ── npm global packages ───────────────────────────────────────────────────────
-echo "==> npm global packages"
-npm install --global \
-    markdownlint-cli \
-    eslint \
-    stylelint \
-    stylelint-config-standard \
-    || die "npm global install failed"
+if has node; then
+    echo "==> npm global packages"
+    npm install --global \
+        markdownlint-cli \
+        eslint \
+        stylelint \
+        stylelint-config-standard \
+        || die "npm global install failed"
+else
+    echo "  node not active in nvm — skipping npm global packages"
+fi
 
 # ── Binary releases from GitHub ───────────────────────────────────────────────
 # These tools have no Debian package; binaries are downloaded from GitHub

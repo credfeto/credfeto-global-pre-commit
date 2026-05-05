@@ -23,6 +23,8 @@ is_ai_agent() {
     [ "${CLAUDECODE}" = "1" ]
 }
 
+has_cmd() { command -v "$1" > /dev/null 2>&1; }
+
 # Abort immediately if nothing is staged — prevents accidental empty commits.
 ALL_STAGED=$(git diff --cached --name-only)
 [ -z "$ALL_STAGED" ] && fail "nothing is staged — commit would be empty"
@@ -32,6 +34,13 @@ STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$STAGED" ] && exit 0
 
 cd "$REPO_ROOT" || fail "cannot cd to repo root"
+
+# Pre-compute tool availability once.
+if has_cmd dotnet;     then HAS_DOTNET=1;    else HAS_DOTNET=0;    fi
+if has_cmd npm;        then HAS_NPM=1;       else HAS_NPM=0;       fi
+if has_cmd pre-commit; then HAS_PRECOMMIT=1; else HAS_PRECOMMIT=0; fi
+if has_cmd sqlfluff;   then HAS_SQLFLUFF=1;  else HAS_SQLFLUFF=0;  fi
+if has_cmd cfn-lint;   then HAS_CFNLINT=1;   else HAS_CFNLINT=0;   fi
 
 # ── Always-on checks (run on every commit) ───────────────────────────────────
 
@@ -61,16 +70,10 @@ sh "$SCRIPTS_DIR/check-secrets" || fail "secrets detected"
 sh "$SCRIPTS_DIR/clean-package-lock-registry" \
     || fail "clean-package-lock-registry"
 
-# ── 2. Delegate to husky if installed ────────────────────────────────────────
-if [ -f "$REPO_ROOT/.husky/pre-commit" ]; then
-    info "Delegating to husky pre-commit..."
-    sh "$REPO_ROOT/.husky/pre-commit" || fail "husky pre-commit"
-fi
-
-# ── 3. Linters via pre-commit ─────────────────────────────────────────────────
+# ── 2. Linters via pre-commit ─────────────────────────────────────────────────
 # Use the project's own config if it has one; otherwise run the global linting
 # config bundled with these hooks.
-if command -v pre-commit > /dev/null 2>&1; then
+if [ "$HAS_PRECOMMIT" -eq 1 ]; then
     REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
     if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
         info "Running project pre-commit hooks..."
@@ -82,16 +85,23 @@ if command -v pre-commit > /dev/null 2>&1; then
     fi
 fi
 
+# ── 3. Changelog: lint CHANGELOG.md if changed ───────────────────────────────
+CHANGELOG_CHANGES=$(echo "$STAGED" | grep -E '(^|/)CHANGELOG\.md$' | head -1)
+if [ -n "$CHANGELOG_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
+    info "Detected CHANGELOG.md changes — running changelog lint..."
+    sh "$SCRIPTS_DIR/check-changelog" || fail "changelog lint"
+fi
+
 # ── 4. .NET: full build + test if source/project file changes ────────────────
 DOTNET_CHANGES=$(echo "$STAGED" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
-if [ -n "$DOTNET_CHANGES" ] && command -v dotnet > /dev/null 2>&1; then
+if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildtest..."
     sh "$SCRIPTS_DIR/buildtest" || fail "dotnet buildtest"
 fi
 
 # ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────
 TS_CHANGES=$(echo "$STAGED" | grep -E '\.(ts|tsx|js|jsx)$' | head -1)
-if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && command -v npm > /dev/null 2>&1; then
+if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
     info "Detected TypeScript/JS changes — running npm tests..."
     if grep -q '"test:noe2e"' "$REPO_ROOT/package.json"; then
         npm run test:noe2e || fail "npm run test:noe2e"
@@ -103,18 +113,18 @@ fi
 # ── 6. SQL: tsqllint + sqlfluff if .sql changes ──────────────────────────────
 SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
 if [ -n "$SQL_CHANGES" ]; then
-    if command -v dotnet > /dev/null 2>&1; then
+    if [ "$HAS_DOTNET" -eq 1 ]; then
         info "Detected SQL changes — running dotnet tsqllint..."
         dotnet tsqllint . || fail "dotnet tsqllint"
     fi
-    if command -v sqlfluff > /dev/null 2>&1; then
+    if [ "$HAS_SQLFLUFF" -eq 1 ]; then
         info "Detected SQL changes — running sqlfluff lint..."
         sqlfluff lint . || fail "sqlfluff lint"
     fi
 fi
 
 # ── 7. CloudFormation: cfn-lint on changed templates ─────────────────────────
-if command -v cfn-lint > /dev/null 2>&1; then
+if [ "$HAS_CFNLINT" -eq 1 ]; then
     CFN_FILES=$(echo "$STAGED" | grep -E '\.(yaml|yml|json|template)$' \
         | while read -r f; do
             grep -q "AWSTemplateFormatVersion" "$f" 2>/dev/null && echo "$f"
