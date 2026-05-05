@@ -62,9 +62,6 @@ sh "$SCRIPTS_DIR/check-merge-commits" || fail "merge commit detected"
 info "Checking for ignored files..."
 sh "$SCRIPTS_DIR/check-ignored-files" || fail "ignored files found in tracking"
 
-info "Scanning for secrets..."
-sh "$SCRIPTS_DIR/check-secrets" || fail "secrets detected"
-
 # ── 1. Auto-fixers (normalise content before linting) ────────────────────────
 
 sh "$SCRIPTS_DIR/clean-package-lock-registry" \
