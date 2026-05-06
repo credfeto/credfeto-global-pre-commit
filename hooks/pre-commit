@@ -92,6 +92,8 @@ fi
 # ── 4. .NET: full build + test if source/project file changes ────────────────
 DOTNET_CHANGES=$(echo "$STAGED" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
 if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
+    info "Detected .NET changes — running buildcheck..."
+    sh "$SCRIPTS_DIR/buildcheck" || fail "dotnet buildcheck"
     info "Detected .NET changes — running buildtest..."
     sh "$SCRIPTS_DIR/buildtest" || fail "dotnet buildtest"
 fi

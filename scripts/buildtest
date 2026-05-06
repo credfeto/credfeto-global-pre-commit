@@ -1,34 +1,22 @@
 #! /bin/sh
 # Sourced from https://github.com/credfeto/scripts/blob/main/development/buildtest
 
+RESTORE=0
+RULESET_ADJUSTMENT_FILE=
+
 die() {
     echo
     echo "$@"
+    [ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
     exit 1
 }
 
-BASEDIR=$(dirname "$(readlink -f "$0")")
-
-RULESET_ADJUSTMENT_FILE=
 TEST_BENCHMARKS=
 TEST_INTEGRATION=
-CLEAR="http-cache"
 while [ $# -gt 0 ]; do
     key="$1"
 
   case $key in
-    -a|--all)
-      CLEAR="all"
-      shift
-      ;;
-    -p|--pre-release)
-      [ -f "$SOURCE_DIR/pre-release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/pre-release.rule-settings.json"
-      shift
-      ;;
-    -r|--release)
-      [ -f "$SOURCE_DIR/release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/release.rule-settings.json"
-      shift
-      ;;
     -b|--no-benchmarks)
       TEST_BENCHMARKS="--filter-not-namespace *.BenchMark.Tests --filter-not-namespace *.BenchMark.Tests.*"
       shift
@@ -56,14 +44,7 @@ SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 SOURCE_DIR=$(dirname "$SOLUTION")
 [ -z "$SOURCE_DIR" ] && die "No Solution dir found in $SOURCE_DIR"
 
-echo "***** Clearing NuGet cache ($CLEAR)... *****"
-dotnet nuget locals "$CLEAR" --clear || die "######## Nuget Clear $CLEAR Failed ########"
-
-echo "***** Restoring tools... *****"
-dotnet tool restore || die "######## Tool Restore Failed ########"
-
-echo "***** Checking... *****"
-"$BASEDIR/buildcheck" || die "######## Build Check Failed ########"
+[ -f "$SOURCE_DIR/release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/release.rule-settings.json"
 
 cd "$SOURCE_DIR" || die "Could not change to $SOURCE_DIR"
 
@@ -79,7 +60,6 @@ if [ -f "$SOURCE_DIR/../.globalconfig" ]; then
   RULESET_FILE="$(readlink -f "$SOURCE_DIR/../.globalconfig")"
 fi
 
-RESTORE=0
 if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
   echo "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
   dotnet code-analysis "$RULESET_TYPE" \
