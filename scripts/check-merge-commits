@@ -3,11 +3,20 @@
 # Equivalent of funfair-server-template check-no-merge-commits action
 # (which checks PR commits via GitHub API; here we catch it at commit time).
 
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*"
+    exit 1
+}
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
+}
+
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
 if [ -f "$REPO_ROOT/.git/MERGE_HEAD" ]; then
-    echo "error: merge commits are not allowed. Rebase instead of merge." >&2
-    exit 1
+    die "merge commits are not allowed. Rebase instead of merge."
 fi
 
+info "no merge commits found"
 exit 0

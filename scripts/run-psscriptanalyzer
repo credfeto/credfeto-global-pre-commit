@@ -1,12 +1,21 @@
 #!/bin/sh
 # Wrapper for PSScriptAnalyzer — accepts one or more PowerShell file paths.
 # Called by pre-commit with all staged .ps1/.psm1/.psd1 files as arguments.
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
+}
+
 FAILED=0
 for f in "$@"; do
     pwsh -NoProfile -NonInteractive -Command "
         Import-Module PSScriptAnalyzer -ErrorAction Stop
         \$r = Invoke-ScriptAnalyzer -Path '$f' -Severity Error,Warning
         if (\$r) { \$r | Format-Table -AutoSize; exit 1 }
-    " || { echo "PSScriptAnalyzer failed: $f" >&2; FAILED=1; }
+    " || { printf '\n\033[31m✗\033[0m PSScriptAnalyzer failed: %s\n' "$f" >&2; FAILED=1; }
 done
+
+if [ "$FAILED" -eq 0 ]; then
+    info "PSScriptAnalyzer passed"
+fi
 [ "$FAILED" -eq 0 ]

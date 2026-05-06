@@ -11,8 +11,12 @@
 # the current commit.
 
 die() {
-    echo "$@" >&2
+    printf '\n\033[31m✗\033[0m %s\n' "$*"
     exit 1
+}
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
 sed_inplace() {
@@ -36,12 +40,13 @@ FOUND=0
 while IFS= read -r file; do
     [ -f "$file" ] || continue
     grep -q "npm.markridgwell.com" "$file" || continue
-    echo "[pre-commit] Normalising registry URL in $file"
+    info "Normalising registry URL in ${file}"
     sed_inplace "s|https://npm\.markridgwell\.com/|https://registry.npmjs.org/|g" "$file"
     FOUND=1
 done << EOF
 $LOCK_FILES
 EOF
 
-[ "$FOUND" -eq 1 ] && echo "[pre-commit] package-lock.json registry URLs normalised and re-staged."
+[ "$FOUND" -eq 1 ] && info "package-lock.json registry URLs normalised and re-staged."
+info "clean-package-lock-registry passed"
 exit 0

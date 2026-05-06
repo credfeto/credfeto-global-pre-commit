@@ -66,4 +66,5 @@ for changelog in $STAGED_CHANGELOGS; do
 done
 
 [ "$FAILED" -eq 0 ] || die "changelog lint failed"
+info "changelog lint passed"
 exit 0
