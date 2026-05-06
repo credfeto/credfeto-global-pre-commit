@@ -1,66 +1,14 @@
 #! /bin/sh
 # Sourced from https://github.com/credfeto/scripts/blob/main/development/buildcheck
 
-RESTORE=0
-RULESET_ADJUSTMENT_FILE=
-
 die() {
     echo
     echo "$@"
-    [ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
     exit 1
 }
-
-PRE_RELEASE=0
-RELEASE=0
-while [ $# -gt 0 ]; do
-    key="$1"
-
-  case $key in
-    -p|--pre-release)
-      PRE_RELEASE=1
-      shift
-      ;;
-    -r|--release)
-      RELEASE=1
-      shift
-      ;;
-    *)
-      shift
-      ;;
-  esac
-done
 
 SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 [ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
 [ -z "$SOLUTION" ] && die "No Solution found in $(pwd)"
 
-SOURCE_DIR=$(dirname "$SOLUTION")
-[ -z "$SOURCE_DIR" ] && die "No Solution dir found in $SOURCE_DIR"
-
-[ "$PRE_RELEASE" = "1" ] && [ -f "$SOURCE_DIR/pre-release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/pre-release.rule-settings.json"
-[ "$RELEASE" = "1" ] && [ -f "$SOURCE_DIR/release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/release.rule-settings.json"
-
-RULESET_TYPE=
-RULESET_FILE=
-if [ -f "$SOURCE_DIR/CodeAnalysis.ruleset" ]; then
-  RULESET_TYPE=ruleset
-  RULESET_FILE="$SOURCE_DIR/CodeAnalysis.ruleset"
-fi
-
-if [ -f "$SOURCE_DIR/../.globalconfig" ]; then
-  RULESET_TYPE=globalconfig
-  RULESET_FILE="$(readlink -f "$SOURCE_DIR/../.globalconfig")"
-fi
-
-if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
-  echo "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
-  dotnet code-analysis "$RULESET_TYPE" \
-    --ruleset "$RULESET_FILE" \
-    --changes "$RULESET_ADJUSTMENT_FILE" || die "Failed to update $RULESET_FILE"
-  RESTORE=1
-fi
-
 dotnet buildcheck -Solution "$SOLUTION" -WarningAsErrors true -PreReleaseBuild true || die "Check failed"
-
-[ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
