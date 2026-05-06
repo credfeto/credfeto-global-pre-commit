@@ -5,9 +5,13 @@ RESTORE=0
 RULESET_ADJUSTMENT_FILE=
 
 die() {
-    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    printf '\n\033[31m✗\033[0m %s\n' "$*"
     [ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
     exit 1
+}
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
 TEST_BENCHMARKS=
@@ -60,20 +64,20 @@ if [ -f "$SOURCE_DIR/../.globalconfig" ]; then
 fi
 
 if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
-  echo "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
+  info "Overriding ${RULESET_FILE} with ${RULESET_ADJUSTMENT_FILE}"
   dotnet code-analysis "$RULESET_TYPE" \
     --ruleset "$RULESET_FILE" \
     --changes "$RULESET_ADJUSTMENT_FILE" || die "Failed to update $RULESET_FILE"
   RESTORE=1
 fi
 
-echo "***** Restoring... *****"
-dotnet restore || die "######## Restore Failed ########"
+info "Restoring..."
+dotnet restore || die "Restore failed"
 
-echo "***** Cleaning... *****"
-dotnet clean "--nowarn:MSB4241" || die "######## Clean Failed ########"
+info "Cleaning..."
+dotnet clean "--nowarn:MSB4241" || die "Clean failed"
 
-echo "***** Building... *****"
+info "Building..."
 dotnet build \
   --warnaserror \
   --configuration Release \
@@ -85,9 +89,9 @@ dotnet build \
   "-p:Optimize=true" \
   "-p:SuppressNETCoreSdkPreviewMessage=true" \
   "-p:Version=0.0.0.1-test" \
-  -nodeReuse:False || die "######## Build Failed ########"
+  -nodeReuse:False || die "Build failed"
 
-echo "***** Testing... *****"
+info "Testing..."
 # shellcheck disable=SC2086
 dotnet test \
   --configuration Release \
@@ -104,10 +108,10 @@ dotnet test \
   "-p:Optimize=true" \
   "-p:SuppressNETCoreSdkPreviewMessage=true" \
   "-p:Version=0.0.0.1-test" \
-  || die "######## Tests Failed ########"
+  || die "Tests failed"
 
 if [ "$PACK" = "1" ]; then
-  echo "***** Packing... *****"
+  info "Packing..."
   dotnet pack \
     --warnaserror \
     --configuration Release \
@@ -120,9 +124,9 @@ if [ "$PACK" = "1" ]; then
     "-p:Optimize=true" \
     "-p:SuppressNETCoreSdkPreviewMessage=true" \
     "-p:Version=0.0.0.1-test" \
-    -nodeReuse:False || die "######## Packing Failed ########"
+    -nodeReuse:False || die "Packing failed"
 fi
 
 [ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
 
-echo "***** Completed *****"
+printf '\n\033[32m✓\033[0m %s\n' "Completed"
