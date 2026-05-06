@@ -6,8 +6,14 @@ die() {
     exit 1
 }
 
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
+}
+
 SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 [ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
 [ -z "$SOLUTION" ] && die "No Solution found in $(pwd)"
 
 dotnet buildcheck -Solution "$SOLUTION" -WarningAsErrors true -PreReleaseBuild true || die "Check failed"
+
+info "dotnet buildcheck passed"
