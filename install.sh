@@ -15,6 +15,7 @@ chmod +x \
     "$HOOKS_DIR/pre-push" \
     "$SCRIPTS_DIR/buildtest" \
     "$SCRIPTS_DIR/buildcheck" \
+    "$SCRIPTS_DIR/run-csharpier" \
     "$SCRIPTS_DIR/check-changelog" \
     "$SCRIPTS_DIR/check-ignored-files" \
     "$SCRIPTS_DIR/check-merge-commits" \
