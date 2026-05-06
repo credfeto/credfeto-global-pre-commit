@@ -5,8 +5,7 @@ RESTORE=0
 RULESET_ADJUSTMENT_FILE=
 
 die() {
-    echo
-    echo "$@"
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     [ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
     exit 1
 }
