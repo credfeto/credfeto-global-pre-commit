@@ -19,41 +19,25 @@ version_gte() {
     [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$2" ]
 }
 
-if ! command -v dotnet > /dev/null 2>&1; then
+if ! command -v changelog > /dev/null 2>&1; then
     exit 0
 fi
 
 STAGED_CHANGELOGS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)CHANGELOG\.md$')
 [ -z "$STAGED_CHANGELOGS" ] && exit 0
 
-# Detect install scope: local manifest takes precedence over global.
-TOOL_SCOPE=
-TOOL_VERSION=
+# Check the installed version is recent enough.
+TOOL_VERSION=$(dotnet tool list --global 2>/dev/null | grep -i "${TOOL_ID}" | awk '{print $2}')
 
-TOOL_ENTRY=$(dotnet tool list 2>/dev/null | grep -i "${TOOL_ID}")
-if [ -n "$TOOL_ENTRY" ]; then
-    TOOL_SCOPE=local
-else
-    TOOL_ENTRY=$(dotnet tool list --global 2>/dev/null | grep -i "${TOOL_ID}")
-    [ -n "$TOOL_ENTRY" ] && TOOL_SCOPE=global
+if [ -z "$TOOL_VERSION" ]; then
+    die "${TOOL_ID} is not installed globally — install with: dotnet tool install --global ${TOOL_ID}"
 fi
-
-if [ -z "$TOOL_SCOPE" ]; then
-    die "${TOOL_ID} is not installed — install it locally (dotnet tool install ${TOOL_ID}) or globally (dotnet tool install --global ${TOOL_ID})"
-fi
-
-TOOL_VERSION=$(printf '%s\n' "$TOOL_ENTRY" | awk '{print $2}')
 
 # Upgrade if below the minimum required version.
 if ! version_gte "$TOOL_VERSION" "$MIN_VERSION"; then
     info "Upgrading ${TOOL_ID} from ${TOOL_VERSION} to >= ${MIN_VERSION}..."
-    if [ "$TOOL_SCOPE" = "global" ]; then
-        dotnet tool update --global "$TOOL_ID" \
-            || die "Failed to upgrade ${TOOL_ID} (global)"
-    else
-        dotnet tool update "$TOOL_ID" \
-            || die "Failed to upgrade ${TOOL_ID} (local)"
-    fi
+    dotnet tool update --global "$TOOL_ID" \
+        || die "Failed to upgrade ${TOOL_ID}"
 fi
 
 # Lint each staged CHANGELOG.md.
@@ -62,7 +46,7 @@ FAILED=0
 for changelog in $STAGED_CHANGELOGS; do
     [ -f "$changelog" ] || continue
     info "Linting ${changelog}..."
-    dotnet changelog --lint -f "$changelog" || FAILED=1
+    changelog --lint -f "$changelog" || FAILED=1
 done
 
 [ "$FAILED" -eq 0 ] || die "changelog lint failed"
