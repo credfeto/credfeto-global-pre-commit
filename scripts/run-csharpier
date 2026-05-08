@@ -1,9 +1,14 @@
 #!/bin/sh
-# Checks C# formatting using dotnet csharpier.
+# Applies C# formatting using dotnet csharpier on staged .cs files,
+# then re-stages any files that were modified.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*"
     exit 1
+}
+
+success() {
+    printf '\n\033[32m✓\033[0m %s\n' "$*"
 }
 
 info() {
@@ -12,6 +17,28 @@ info() {
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
-dotnet csharpier check "$REPO_ROOT" || die "csharpier format check failed — run: dotnet csharpier \"$REPO_ROOT\""
+# Collect staged .cs files only — project/config files are intentionally excluded
+CS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.cs$')
 
-info "csharpier format check passed"
+if [ -z "$CS_FILES" ]; then
+    info "No staged .cs files — skipping csharpier"
+    exit 0
+fi
+
+info "Applying csharpier formatting to staged .cs files..."
+
+# Format each file; die immediately if csharpier reports an error
+while IFS= read -r f; do
+    dotnet csharpier format "${REPO_ROOT}/${f}" || die "csharpier format failed on ${f}"
+done <<EOF
+$CS_FILES
+EOF
+
+# Re-stage files so any formatting changes are included in the commit
+while IFS= read -r f; do
+    git add "${REPO_ROOT}/${f}"
+done <<EOF
+$CS_FILES
+EOF
+
+success "csharpier formatting applied and staged"
