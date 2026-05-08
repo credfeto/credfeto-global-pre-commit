@@ -29,7 +29,7 @@ info "Applying csharpier formatting to staged .cs files..."
 
 # Format each file; die immediately if csharpier reports an error
 while IFS= read -r f; do
-    dotnet csharpier "${REPO_ROOT}/${f}" || die "csharpier format failed on ${f}"
+    dotnet csharpier format "${REPO_ROOT}/${f}" || die "csharpier format failed on ${f}"
 done <<EOF
 $CS_FILES
 EOF
