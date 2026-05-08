@@ -2,7 +2,16 @@
 # Fails if any tracked file is matched by .gitignore rules.
 # Equivalent of funfair-server-template check-no-ignored-files action.
 
+# When running inside the hooks repo itself, .pre-commit-config.yaml is
+# intentionally tracked despite appearing in .gitignore (it is the global
+# config shipped with this repo).  Whitelist it only in this case.
+HOOKS_REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CURRENT_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+
 TRACKED=$(git ls-files | grep -v 'server\.pfx' | grep -v '\.gitignore')
+if [ "$CURRENT_REPO_ROOT" = "$HOOKS_REPO_DIR" ]; then
+    TRACKED=$(echo "$TRACKED" | grep -v '\.pre-commit-config\.yaml')
+fi
 
 if [ -z "$TRACKED" ]; then
     exit 0
