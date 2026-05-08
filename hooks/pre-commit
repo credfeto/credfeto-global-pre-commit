@@ -42,6 +42,34 @@ if has_cmd pre-commit; then HAS_PRECOMMIT=1; else HAS_PRECOMMIT=0; fi
 if has_cmd sqlfluff;   then HAS_SQLFLUFF=1;  else HAS_SQLFLUFF=0;  fi
 if has_cmd cfn-lint;   then HAS_CFNLINT=1;   else HAS_CFNLINT=0;   fi
 
+# ── Hooks-repo freshness check (AI agents only) ───────────────────────────────
+# Determine whether the current user can write to the hooks repo's .git dir.
+# - writable: fetch to get fresh remote refs, then warn if behind (user can pull)
+# - read-only: git fetch would fail, so use cached remote-tracking refs instead;
+#   fail hard if behind (someone else must update the installation)
+if is_ai_agent; then
+    HOOKS_REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+    if git -C "$HOOKS_REPO_DIR" remote get-url origin > /dev/null 2>&1; then
+        UPDATE_CMD="git -C \"$HOOKS_REPO_DIR\" pull && \"$HOOKS_REPO_DIR/install.sh\""
+        if [ -w "$HOOKS_REPO_DIR/.git" ]; then
+            git -C "$HOOKS_REPO_DIR" fetch --quiet origin 2>/dev/null || true
+        fi
+        UPSTREAM_REF=$(git -C "$HOOKS_REPO_DIR" \
+            rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)
+        if [ -n "$UPSTREAM_REF" ]; then
+            BEHIND=$(git -C "$HOOKS_REPO_DIR" \
+                rev-list "HEAD..${UPSTREAM_REF}" --count 2>/dev/null || echo "0")
+            if [ "${BEHIND:-0}" -gt 0 ]; then
+                if [ -w "$HOOKS_REPO_DIR/.git" ]; then
+                    info "Hooks repo is $BEHIND commit(s) behind — run: $UPDATE_CMD"
+                else
+                    fail "Hooks repo is $BEHIND commit(s) behind and you do not have write access to update it. Ask an admin to run: $UPDATE_CMD"
+                fi
+            fi
+        fi
+    fi
+fi
+
 # ── Always-on checks (run on every commit) ───────────────────────────────────
 
 info "Checking branch..."
