@@ -154,6 +154,10 @@ repos:
         language: system
         types: [markdown]
         args: [--disable, MD013, --]
+        # CHANGELOG.md format is owned by dotnet changelog tool which uses
+        # compact heading style (no blank lines between headings); exclude it
+        # to avoid MD022/MD032 false positives.
+        exclude: ^CHANGELOG\.md$
 
       # ── VALIDATE_ANSIBLE — ansible-lint ───────────────────────────────────
       # Mirrors the upstream ansible-lint hook config: don't pass filenames
