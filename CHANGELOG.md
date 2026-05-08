@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Installation scripts for Arch Linux and Debian/Ubuntu
 - NVM installation via package repo in dependency scripts
 - Comprehensive install.sh with tool check-status table
+- add .markdownlintignore to exclude CHANGELOG.md from markdown linting
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
@@ -25,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Suppress trufflehog output on clean scans
 - Only block direct pushes to main/master; allow all other branches (#5)
 - Repair ansible-lint crash; relax markdownlint line-length rule (#2)
+- remove .pre-commit-config.yaml from .gitignore as this repo is its source — was tracked but ignored
 
 ### Changed
 - Replace custom check-secrets script with official TruffleHog pre-commit hook (#13)
@@ -36,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Extract install_github_release helper in dependency scripts
 - Install nvm from package repo rather than a custom curl function
 - Only run npm steps when node is active in nvm
+- align ai/local/index.md with cs-template standard (blank line before list, git URLs in backticks)
 
 ### Deprecated
 ### Removed
