@@ -122,8 +122,8 @@ DOTNET_CHANGES=$(echo "$STAGED" | grep -E '\.(cs|csproj|sln|slnx|props|targets|g
 if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
     sh "$SCRIPTS_DIR/buildcheck" || fail "dotnet buildcheck"
-    info "Detected .NET changes — running csharpier format fix..."
-    sh "$SCRIPTS_DIR/run-csharpier" || fail "dotnet csharpier"
+    info "Detected .NET changes — running formatter fix..."
+    sh "$SCRIPTS_DIR/run-formatter" || fail "cscleanup formatter"
     info "Detected .NET changes — running buildtest..."
     sh "$SCRIPTS_DIR/buildtest" || fail "dotnet buildtest"
 fi

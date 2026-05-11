@@ -1,9 +1,9 @@
 #!/bin/sh
-# Applies C# formatting using dotnet csharpier on staged .cs files,
+# Applies C# formatting using cscleanup (Credfeto.DotNet.Repo.Formatter) on staged .cs files,
 # then re-stages any files that were modified.
 
 die() {
-    printf '\n\033[31m✗\033[0m %s\n' "$*"
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
 }
 
@@ -15,21 +15,25 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
+if ! command -v cscleanup > /dev/null 2>&1; then
+    die "cscleanup not found — install Credfeto.DotNet.Repo.Formatter: dotnet tool install --global Credfeto.DotNet.Repo.Formatter"
+fi
+
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
 # Collect staged .cs files only — project/config files are intentionally excluded
 CS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.cs$')
 
 if [ -z "$CS_FILES" ]; then
-    info "No staged .cs files — skipping csharpier"
+    info "No staged .cs files — skipping formatter"
     exit 0
 fi
 
-info "Applying csharpier formatting to staged .cs files..."
+info "Applying cscleanup formatting to staged .cs files..."
 
-# Format each file; die immediately if csharpier reports an error
+# Format each file; die immediately if cscleanup reports an error
 while IFS= read -r f; do
-    dotnet csharpier format "${REPO_ROOT}/${f}" || die "csharpier format failed on ${f}"
+    cscleanup "${REPO_ROOT}/${f}" || die "cscleanup format failed on ${f}"
 done <<EOF
 $CS_FILES
 EOF
@@ -41,4 +45,4 @@ done <<EOF
 $CS_FILES
 EOF
 
-success "csharpier formatting applied and staged"
+success "cscleanup formatting applied and staged"

@@ -15,7 +15,7 @@ chmod +x \
     "$HOOKS_DIR/pre-push" \
     "$SCRIPTS_DIR/buildtest" \
     "$SCRIPTS_DIR/buildcheck" \
-    "$SCRIPTS_DIR/run-csharpier" \
+    "$SCRIPTS_DIR/run-formatter" \
     "$SCRIPTS_DIR/check-changelog" \
     "$SCRIPTS_DIR/check-ignored-files" \
     "$SCRIPTS_DIR/check-merge-commits" \
@@ -92,6 +92,12 @@ if has dotnet; then
     skip  ".NET build + test (*.cs/csproj/sln)"    "dotnet $(dotnet --version 2>/dev/null)"
 else
     cross ".NET build + test (*.cs/csproj/sln)"    "dotnet not installed"
+fi
+
+if has cscleanup; then
+    skip  "C# format — cscleanup (*.cs)"           "$(cscleanup --version 2>/dev/null || echo present)"
+else
+    cross "C# format — cscleanup (*.cs)"           "not installed — run: dotnet tool install --global Credfeto.DotNet.Repo.Formatter"
 fi
 
 if has npm; then
