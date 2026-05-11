@@ -1,0 +1,46 @@
+#!/bin/sh
+# Applies formatting using cscleanup (Credfeto.DotNet.Repo.Formatter) on staged .cs and .csproj files,
+# then re-stages any files that were modified.
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+success() {
+    printf '\n\033[32m✓\033[0m %s\n' "$*"
+}
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
+}
+
+if ! command -v cscleanup > /dev/null 2>&1; then
+    die "cscleanup not found — install Credfeto.DotNet.Repo.Formatter: dotnet tool install --global Credfeto.DotNet.Repo.Formatter"
+fi
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Collect staged .cs and .csproj files
+FMT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cs|csproj)$')
+
+if [ -z "$FMT_FILES" ]; then
+    info "No staged .cs or .csproj files — skipping formatter"
+    exit 0
+fi
+
+# Build full paths as positional parameters for a single cscleanup invocation
+set --
+while IFS= read -r f; do
+    set -- "$@" "${REPO_ROOT}/${f}"
+done <<EOF
+$FMT_FILES
+EOF
+
+info "Applying cscleanup formatting to staged .cs and .csproj files..."
+cscleanup "$@" || die "cscleanup format failed"
+
+# Re-stage all formatted files in one git add call
+git add "$@"
+
+success "cscleanup formatting applied and staged"

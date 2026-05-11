@@ -1,4 +1,4 @@
-﻿# Changelog
+&#xFEFF;# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -29,6 +29,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - remove .pre-commit-config.yaml from .gitignore as this repo is its source — was tracked but ignored
 
 ### Changed
+- Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
+- Extended cscleanup formatter to also process staged .csproj files
+- Pass all staged files to cscleanup in a single invocation rather than one call per file
 - Replace custom check-secrets script with official TruffleHog pre-commit hook (#13)
 - Make every pre-commit hook language: system, dropping managed virtual environments (#3)
 - Remove husky delegation; pre-commit hook is now the sole orchestrator (#10)
@@ -43,3 +46,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Deprecated
 ### Removed
 ### Deployment Changes
+
+## [0.0.0] - Project created
