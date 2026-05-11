@@ -41,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - align ai/local/index.md with cs-template standard (blank line before list, git URLs in backticks)
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
 - Extended cscleanup formatter to also process staged .csproj files
+- Pass all staged files to cscleanup in a single invocation rather than one call per file
 
 ### Deprecated
 ### Removed

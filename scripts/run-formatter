@@ -29,20 +29,18 @@ if [ -z "$FMT_FILES" ]; then
     exit 0
 fi
 
+# Build full paths as positional parameters for a single cscleanup invocation
+set --
+while IFS= read -r f; do
+    set -- "$@" "${REPO_ROOT}/${f}"
+done <<EOF
+$FMT_FILES
+EOF
+
 info "Applying cscleanup formatting to staged .cs and .csproj files..."
+cscleanup "$@" || die "cscleanup format failed"
 
-# Format each file; die immediately if cscleanup reports an error
-while IFS= read -r f; do
-    cscleanup "${REPO_ROOT}/${f}" || die "cscleanup format failed on ${f}"
-done <<EOF
-$FMT_FILES
-EOF
-
-# Re-stage files so any formatting changes are included in the commit
-while IFS= read -r f; do
-    git add "${REPO_ROOT}/${f}"
-done <<EOF
-$FMT_FILES
-EOF
+# Re-stage all formatted files in one git add call
+git add "$@"
 
 success "cscleanup formatting applied and staged"
