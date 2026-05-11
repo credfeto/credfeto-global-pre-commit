@@ -1,5 +1,5 @@
 #!/bin/sh
-# Applies C# formatting using cscleanup (Credfeto.DotNet.Repo.Formatter) on staged .cs files,
+# Applies formatting using cscleanup (Credfeto.DotNet.Repo.Formatter) on staged .cs and .csproj files,
 # then re-stages any files that were modified.
 
 die() {
@@ -21,28 +21,28 @@ fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
-# Collect staged .cs files only — project/config files are intentionally excluded
-CS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.cs$')
+# Collect staged .cs and .csproj files
+FMT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cs|csproj)$')
 
-if [ -z "$CS_FILES" ]; then
-    info "No staged .cs files — skipping formatter"
+if [ -z "$FMT_FILES" ]; then
+    info "No staged .cs or .csproj files — skipping formatter"
     exit 0
 fi
 
-info "Applying cscleanup formatting to staged .cs files..."
+info "Applying cscleanup formatting to staged .cs and .csproj files..."
 
 # Format each file; die immediately if cscleanup reports an error
 while IFS= read -r f; do
     cscleanup "${REPO_ROOT}/${f}" || die "cscleanup format failed on ${f}"
 done <<EOF
-$CS_FILES
+$FMT_FILES
 EOF
 
 # Re-stage files so any formatting changes are included in the commit
 while IFS= read -r f; do
     git add "${REPO_ROOT}/${f}"
 done <<EOF
-$CS_FILES
+$FMT_FILES
 EOF
 
 success "cscleanup formatting applied and staged"
