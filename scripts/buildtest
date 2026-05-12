@@ -10,12 +10,6 @@ BASEDIR=$(dirname "$(readlink -f "$0")")
 
 CLEAR="http-cache"
 
-PACK=0
-HAS_PACKED=$(grep -R "<IsPackable>true</IsPackable>" . --include "*.csproj" | head -1)
-if [ -n "$HAS_PACKED" ]; then
-  PACK=1
-fi
-
 CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
 [ -z "$CSPROJ" ] && exit 0
 
@@ -25,6 +19,12 @@ SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 
 SOURCE_DIR=$(dirname "$SOLUTION")
 [ -z "$SOURCE_DIR" ] && die "No Solution dir found in $SOURCE_DIR"
+
+PACK=0
+HAS_PACKED=$(grep -R "<IsPackable>true</IsPackable>" . --include "*.csproj" | head -1)
+if [ -n "$HAS_PACKED" ]; then
+  PACK=1
+fi
 
 RULESET_ADJUSTMENT_FILE=
 [ -f "$SOURCE_DIR/release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/release.rule-settings.json"
