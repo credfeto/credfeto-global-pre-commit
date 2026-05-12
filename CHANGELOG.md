@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Repair ansible-lint crash; relax markdownlint line-length rule (#2)
 - remove .pre-commit-config.yaml from .gitignore as this repo is its source — was tracked but ignored
 - buildtest now skips repos with no .csproj files rather than failing
+- all shell scripts now use the correct die/info/success helper implementations with ANSI colour output
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
