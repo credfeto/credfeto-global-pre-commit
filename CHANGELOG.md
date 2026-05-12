@@ -46,6 +46,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - align ai/local/index.md with cs-template standard (blank line before list, git URLs in backticks)
 - buildtest: removed unused command-line argument parsing; hardcoded http-cache clear and release ruleset
 - buildtest: publish each project with IsPublishable=true after testing
+- split actionlint to workflows only; add composite-action-lint hook for .github/actions
+- hooks freshness check: support stripped installs with HEAD/UPSTREAM from .env when .git is absent
 
 ### Deprecated
 ### Removed

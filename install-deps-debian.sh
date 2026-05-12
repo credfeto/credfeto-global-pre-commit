@@ -11,6 +11,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
+# shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/common.sh"
 
 detect_arch
@@ -103,12 +104,19 @@ if has go; then
     else
         echo "  actionlint already installed, skipping"
     fi
+    if ! has composite-action-lint; then
+        go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest \
+            || die "failed to install composite-action-lint"
+    else
+        echo "  composite-action-lint already installed, skipping"
+    fi
     if ! echo "$PATH" | grep -q "${GOPATH:-$HOME/go}/bin"; then
         echo "warning: add \$GOPATH/bin to PATH in your shell profile (e.g. ~/.bashrc):" >&2
         echo "  export PATH=\"\$(go env GOPATH)/bin:\$PATH\"" >&2
     fi
 else
     install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
+    echo "  go not found — skipping composite-action-lint (install go and rerun)" >&2
 fi
 
 install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-ARCH.tar.gz"
