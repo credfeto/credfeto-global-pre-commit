@@ -97,6 +97,41 @@ dotnet test \
   "-p:Version=0.0.0.1-test" \
   || die "######## Tests Failed ########"
 
+PUBLISHABLE=$(grep -Rl "<IsPublishable>true</IsPublishable>" . --include "*.csproj")
+if [ -n "$PUBLISHABLE" ]; then
+  echo "***** Publishing... *****"
+  PLATFORM=$(dotnet --info 2>/dev/null | grep -E "RID:" | awk '{print $2}')
+  [ -z "$PLATFORM" ] && PLATFORM="linux-x64"
+  while IFS= read -r project; do
+    [ -f "$project" ] || continue
+    OUTFOLDER=$(mktemp -d)
+    dotnet publish "$project" \
+      --no-restore \
+      --warnaserror \
+      --configuration Release \
+      "-r:$PLATFORM" \
+      --self-contained \
+      -nodeReuse:False \
+      "-p:NoWarn=NETSDK1179" \
+      "-p:SuppressNETCoreSdkPreviewMessage=true" \
+      "-p:PublishSingleFile=true" \
+      "-p:PublishAot=false" \
+      "-p:PublishReadyToRun=False" \
+      "-p:PublishReadyToRunShowWarnings=True" \
+      "-p:DisableSwagger=False" \
+      "-p:TreatWarningsAsErrors=True" \
+      "-p:IncludeNativeLibrariesForSelfExtract=false" \
+      "-p:Version=0.0.0.1-test" \
+      "-p:FFPublishing=True" \
+      "-p:SolutionDir=$SOURCE_DIR/" \
+      "-p:IsProduction=false" \
+      --output "$OUTFOLDER" || die "Publish failed: $project"
+    rm -rf "$OUTFOLDER"
+  done <<EOF
+$PUBLISHABLE
+EOF
+fi
+
 if [ "$PACK" = "1" ]; then
   echo "***** Packing... *****"
   dotnet pack \
