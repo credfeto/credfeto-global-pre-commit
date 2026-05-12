@@ -182,7 +182,6 @@ repos:
         entry: actionlint
         language: system
         files: ^\.github/workflows/.*\.(yml|yaml)$
-        pass_filenames: false
 
       # ── VALIDATE_GITHUB_ACTIONS — composite actions ───────────────────────
       - id: composite-action-lint

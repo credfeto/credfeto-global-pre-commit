@@ -10,7 +10,8 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=lib/common.sh disable=SC1091
+# shellcheck source=lib/common.sh
+# shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/common.sh"
 
 detect_arch

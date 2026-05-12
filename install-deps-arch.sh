@@ -10,7 +10,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=lib/common.sh disable=SC1091
+# shellcheck source=lib/common.sh
+# shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/common.sh"
 
 # ── AUR helper detection ──────────────────────────────────────────────────────
@@ -92,6 +93,10 @@ if ! has composite-action-lint; then
         || die "failed to install composite-action-lint"
 else
     echo "  composite-action-lint already installed, skipping"
+fi
+if ! echo "$PATH" | grep -q "${GOPATH:-$HOME/go}/bin"; then
+    echo "warning: add \$GOPATH/bin to PATH in your shell profile (e.g. ~/.bashrc):" >&2
+    echo "  export PATH=\"\$(go env GOPATH)/bin:\$PATH\"" >&2
 fi
 
 # ── pipx packages ─────────────────────────────────────────────────────────────
