@@ -176,12 +176,20 @@ repos:
         language: system
         files: (^|/)Dockerfile[^/]*$
 
-      # ── VALIDATE_GITHUB_ACTIONS ───────────────────────────────────────────
+      # ── VALIDATE_GITHUB_ACTIONS — workflows ──────────────────────────────
       - id: actionlint
         name: actionlint
         entry: actionlint
         language: system
-        files: ^\.github/(workflows|actions)/.*\.(yml|yaml)$
+        files: ^\.github/workflows/.*\.(yml|yaml)$
+        pass_filenames: false
+
+      # ── VALIDATE_GITHUB_ACTIONS — composite actions ───────────────────────
+      - id: composite-action-lint
+        name: composite-action-lint
+        entry: composite-action-lint
+        language: system
+        files: ^\.github/actions/.*\.(yml|yaml)$
 
       # ── VALIDATE_PYTHON_PYLINT ────────────────────────────────────────────
       - id: pylint

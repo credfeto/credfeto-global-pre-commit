@@ -10,7 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=lib/common.sh
+# shellcheck source=lib/common.sh disable=SC1091
 . "$SCRIPT_DIR/lib/common.sh"
 
 # ── AUR helper detection ──────────────────────────────────────────────────────
@@ -82,6 +82,20 @@ echo "==> Binary tools from GitHub releases"
 detect_arch
 install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
 install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
+
+# ── Go tools ──────────────────────────────────────────────────────────────────
+# composite-action-lint has no AUR or binary release; requires go install.
+if has go; then
+    echo "==> Go tools"
+    if ! has composite-action-lint; then
+        go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest \
+            || die "failed to install composite-action-lint"
+    else
+        echo "  composite-action-lint already installed, skipping"
+    fi
+else
+    echo "  go not found — skipping composite-action-lint (install go and rerun)" >&2
+fi
 
 # ── pipx packages ─────────────────────────────────────────────────────────────
 # python-pre-commit-hooks does not exist in AUR; pipx is the only option.

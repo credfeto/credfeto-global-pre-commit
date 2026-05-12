@@ -182,9 +182,15 @@ else
 fi
 
 if has actionlint; then
-    skip  "VALIDATE_GITHUB_ACTIONS — actionlint (system)" "$(actionlint --version 2>/dev/null)"
+    skip  "VALIDATE_GITHUB_ACTIONS workflows — actionlint        (system)" "$(actionlint --version 2>/dev/null)"
 else
-    cross "VALIDATE_GITHUB_ACTIONS — actionlint (system)" "not installed"
+    cross "VALIDATE_GITHUB_ACTIONS workflows — actionlint        (system)" "not installed"
+fi
+
+if has composite-action-lint; then
+    skip  "VALIDATE_GITHUB_ACTIONS actions  — composite-action-lint (system)" "$(composite-action-lint --version 2>/dev/null || echo present)"
+else
+    cross "VALIDATE_GITHUB_ACTIONS actions  — composite-action-lint (system)" "not installed"
 fi
 
 if has pylint; then
@@ -238,7 +244,8 @@ has trufflehog    || MISSING_SYSTEM="$MISSING_SYSTEM trufflehog"
 has sqlfluff      || MISSING_SYSTEM="$MISSING_SYSTEM sqlfluff"
 has cfn-lint      || MISSING_SYSTEM="$MISSING_SYSTEM cfn-lint"
 has hadolint      || MISSING_SYSTEM="$MISSING_SYSTEM hadolint"
-has actionlint    || MISSING_SYSTEM="$MISSING_SYSTEM actionlint"
+has actionlint             || MISSING_SYSTEM="$MISSING_SYSTEM actionlint"
+has composite-action-lint  || MISSING_SYSTEM="$MISSING_SYSTEM composite-action-lint"
 has pylint        || MISSING_SYSTEM="$MISSING_SYSTEM pylint"
 has stylelint     || MISSING_SYSTEM="$MISSING_SYSTEM stylelint"
 has dotenv-linter || MISSING_SYSTEM="$MISSING_SYSTEM dotenv-linter"
@@ -257,7 +264,8 @@ if [ -n "$MISSING_SYSTEM" ]; then
     has ansible-lint  || echo "  ansible-lint:   pip install ansible-lint  # or apt install ansible-lint"
     has trufflehog    || echo "  trufflehog:     curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin"
     has hadolint      || echo "  hadolint:       brew install hadolint  # or https://github.com/hadolint/hadolint/releases"
-    has actionlint    || echo "  actionlint:     brew install actionlint  # or https://github.com/rhysd/actionlint/releases"
+    has actionlint             || echo "  actionlint:             brew install actionlint  # or https://github.com/rhysd/actionlint/releases"
+    has composite-action-lint  || echo "  composite-action-lint:  go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest"
     has pylint        || echo "  pylint:         pip install pylint"
     has stylelint     || echo "  stylelint:      npm install -g stylelint stylelint-config-standard"
     has dotenv-linter || echo "  dotenv-linter:  https://github.com/dotenv-linter/dotenv-linter/releases"
