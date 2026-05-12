@@ -42,28 +42,42 @@ if has_cmd sqlfluff;   then HAS_SQLFLUFF=1;  else HAS_SQLFLUFF=0;  fi
 if has_cmd cfn-lint;   then HAS_CFNLINT=1;   else HAS_CFNLINT=0;   fi
 
 # ── Hooks-repo freshness check (AI agents only) ───────────────────────────────
-# Determine whether the current user can write to the hooks repo's .git dir.
-# - writable: fetch to get fresh remote refs, then warn if behind (user can pull)
-# - read-only: git fetch would fail, so use cached remote-tracking refs instead;
-#   fail hard if behind (someone else must update the installation)
+# Two modes depending on whether the hooks repo retains its .git directory:
+#
+# .git present  — use git remote-tracking refs; fetch if writable, use cached
+#                 refs if read-only; warn (writable) or die (read-only) if behind.
+#
+# .git absent   — stripped install; read HEAD=<sha> and UPSTREAM=<url> from a
+#                 .env file in the hooks root and compare against git ls-remote.
 if is_ai_agent; then
     HOOKS_REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-    if git -C "$HOOKS_REPO_DIR" remote get-url origin > /dev/null 2>&1; then
-        UPDATE_CMD="git -C \"$HOOKS_REPO_DIR\" pull && \"$HOOKS_REPO_DIR/install.sh\""
-        if [ -w "$HOOKS_REPO_DIR/.git" ]; then
-            git -C "$HOOKS_REPO_DIR" fetch --quiet origin 2>/dev/null || true
-        fi
-        UPSTREAM_REF=$(git -C "$HOOKS_REPO_DIR" \
-            rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)
-        if [ -n "$UPSTREAM_REF" ]; then
-            BEHIND=$(git -C "$HOOKS_REPO_DIR" \
-                rev-list "HEAD..${UPSTREAM_REF}" --count 2>/dev/null || echo "0")
-            if [ "${BEHIND:-0}" -gt 0 ]; then
-                if [ -w "$HOOKS_REPO_DIR/.git" ]; then
-                    info "Hooks repo is $BEHIND commit(s) behind — run: $UPDATE_CMD"
-                else
-                    die "Hooks repo is $BEHIND commit(s) behind and you do not have write access to update it. Ask an admin to run: $UPDATE_CMD"
+    if [ -d "$HOOKS_REPO_DIR/.git" ]; then
+        if git -C "$HOOKS_REPO_DIR" remote get-url origin > /dev/null 2>&1; then
+            UPDATE_CMD="git -C \"$HOOKS_REPO_DIR\" pull && \"$HOOKS_REPO_DIR/install.sh\""
+            if [ -w "$HOOKS_REPO_DIR/.git" ]; then
+                git -C "$HOOKS_REPO_DIR" fetch --quiet origin 2>/dev/null || true
+            fi
+            UPSTREAM_REF=$(git -C "$HOOKS_REPO_DIR" \
+                rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)
+            if [ -n "$UPSTREAM_REF" ]; then
+                BEHIND=$(git -C "$HOOKS_REPO_DIR" \
+                    rev-list "HEAD..${UPSTREAM_REF}" --count 2>/dev/null || echo "0")
+                if [ "${BEHIND:-0}" -gt 0 ]; then
+                    if [ -w "$HOOKS_REPO_DIR/.git" ]; then
+                        info "Hooks repo is $BEHIND commit(s) behind — run: $UPDATE_CMD"
+                    else
+                        die "Hooks repo is $BEHIND commit(s) behind and you do not have write access to update it. Ask an admin to run: $UPDATE_CMD"
+                    fi
                 fi
+            fi
+        fi
+    elif [ -f "$HOOKS_REPO_DIR/.env" ]; then
+        ENV_HEAD=$(grep '^HEAD=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+        ENV_UPSTREAM=$(grep '^UPSTREAM=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+        if [ -n "$ENV_UPSTREAM" ] && [ -n "$ENV_HEAD" ]; then
+            REMOTE_HEAD=$(git ls-remote "$ENV_UPSTREAM" HEAD 2>/dev/null | awk '{print $1}')
+            if [ -n "$REMOTE_HEAD" ] && [ "$REMOTE_HEAD" != "$ENV_HEAD" ]; then
+                info "Hooks installation is out of date (installed: $ENV_HEAD, remote: $REMOTE_HEAD) — re-clone from $ENV_UPSTREAM and re-run install.sh"
             fi
         fi
     fi
