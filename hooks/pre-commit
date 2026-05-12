@@ -5,14 +5,13 @@
 REPO_ROOT=$(git rev-parse --show-toplevel)
 SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
 
-fail() {
-    echo "" >&2
-    echo "error: pre-commit failed — $*" >&2
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
 }
 
 info() {
-    echo "[pre-commit] $*"
+    printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
 # Returns true (0) when running inside a Claude Code Bash-tool session.
@@ -27,13 +26,13 @@ has_cmd() { command -v "$1" > /dev/null 2>&1; }
 
 # Abort immediately if nothing is staged — prevents accidental empty commits.
 ALL_STAGED=$(git diff --cached --name-only)
-[ -z "$ALL_STAGED" ] && fail "nothing is staged — commit would be empty"
+[ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
 
 # Only look at staged files that are being added/copied/modified
 STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$STAGED" ] && exit 0
 
-cd "$REPO_ROOT" || fail "cannot cd to repo root"
+cd "$REPO_ROOT" || die "cannot cd to repo root"
 
 # Pre-compute tool availability once.
 if has_cmd dotnet;     then HAS_DOTNET=1;    else HAS_DOTNET=0;    fi
@@ -63,7 +62,7 @@ if is_ai_agent; then
                 if [ -w "$HOOKS_REPO_DIR/.git" ]; then
                     info "Hooks repo is $BEHIND commit(s) behind — run: $UPDATE_CMD"
                 else
-                    fail "Hooks repo is $BEHIND commit(s) behind and you do not have write access to update it. Ask an admin to run: $UPDATE_CMD"
+                    die "Hooks repo is $BEHIND commit(s) behind and you do not have write access to update it. Ask an admin to run: $UPDATE_CMD"
                 fi
             fi
         fi
@@ -77,23 +76,23 @@ CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
 case "$CURRENT_BRANCH" in
     main|master)
         if is_ai_agent; then
-            fail "Prohibited from committing to ${CURRENT_BRANCH}.  Did you read the .ai-instructions?"
+            die "Prohibited from committing to ${CURRENT_BRANCH}.  Did you read the .ai-instructions?"
         else
-            fail "direct commits to ${CURRENT_BRANCH} are not permitted — use a branch and open a pull request"
+            die "direct commits to ${CURRENT_BRANCH} are not permitted — use a branch and open a pull request"
         fi
         ;;
 esac
 
 info "Checking for merge commits..."
-sh "$SCRIPTS_DIR/check-merge-commits" || fail "merge commit detected"
+sh "$SCRIPTS_DIR/check-merge-commits" || die "merge commit detected"
 
 info "Checking for ignored files..."
-sh "$SCRIPTS_DIR/check-ignored-files" || fail "ignored files found in tracking"
+sh "$SCRIPTS_DIR/check-ignored-files" || die "ignored files found in tracking"
 
 # ── 1. Auto-fixers (normalise content before linting) ────────────────────────
 
 sh "$SCRIPTS_DIR/clean-package-lock-registry" \
-    || fail "clean-package-lock-registry"
+    || die "clean-package-lock-registry"
 
 # ── 2. Linters via pre-commit ─────────────────────────────────────────────────
 # Use the project's own config if it has one; otherwise run the global linting
@@ -102,11 +101,11 @@ if [ "$HAS_PRECOMMIT" -eq 1 ]; then
     REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
     if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
         info "Running project pre-commit hooks..."
-        pre-commit run || fail "pre-commit (project config)"
+        pre-commit run || die "pre-commit (project config)"
     else
         info "Running global linters (pre-commit)..."
         pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" \
-            || fail "pre-commit (global linters)"
+            || die "pre-commit (global linters)"
     fi
 fi
 
@@ -114,18 +113,18 @@ fi
 CHANGELOG_CHANGES=$(echo "$STAGED" | grep -E '(^|/)CHANGELOG\.md$' | head -1)
 if [ -n "$CHANGELOG_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected CHANGELOG.md changes — running changelog lint..."
-    sh "$SCRIPTS_DIR/check-changelog" || fail "changelog lint"
+    sh "$SCRIPTS_DIR/check-changelog" || die "changelog lint"
 fi
 
 # ── 4. .NET: format check + build + test if source/project file changes ──────
 DOTNET_CHANGES=$(echo "$STAGED" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
 if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
-    sh "$SCRIPTS_DIR/buildcheck" || fail "dotnet buildcheck"
+    sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
     info "Detected .NET changes — running formatter fix..."
-    sh "$SCRIPTS_DIR/run-formatter" || fail "cscleanup formatter"
+    sh "$SCRIPTS_DIR/run-formatter" || die "cscleanup formatter"
     info "Detected .NET changes — running buildtest..."
-    sh "$SCRIPTS_DIR/buildtest" || fail "dotnet buildtest"
+    sh "$SCRIPTS_DIR/buildtest" || die "dotnet buildtest"
 fi
 
 # ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────
@@ -133,9 +132,9 @@ TS_CHANGES=$(echo "$STAGED" | grep -E '\.(ts|tsx|js|jsx)$' | head -1)
 if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
     info "Detected TypeScript/JS changes — running npm tests..."
     if grep -q '"test:noe2e"' "$REPO_ROOT/package.json"; then
-        npm run test:noe2e || fail "npm run test:noe2e"
+        npm run test:noe2e || die "npm run test:noe2e"
     else
-        npm test || fail "npm test"
+        npm test || die "npm test"
     fi
 fi
 
@@ -144,11 +143,11 @@ SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
 if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
         info "Detected SQL changes — running dotnet tsqllint..."
-        dotnet tsqllint . || fail "dotnet tsqllint"
+        dotnet tsqllint . || die "dotnet tsqllint"
     fi
     if [ "$HAS_SQLFLUFF" -eq 1 ]; then
         info "Detected SQL changes — running sqlfluff lint..."
-        sqlfluff lint . || fail "sqlfluff lint"
+        sqlfluff lint . || die "sqlfluff lint"
     fi
 fi
 
@@ -161,7 +160,7 @@ if [ "$HAS_CFNLINT" -eq 1 ]; then
     if [ -n "$CFN_FILES" ]; then
         info "Detected CloudFormation changes — running cfn-lint..."
         # shellcheck disable=SC2086
-        cfn-lint $CFN_FILES || fail "cfn-lint"
+        cfn-lint $CFN_FILES || die "cfn-lint"
     fi
 fi
 

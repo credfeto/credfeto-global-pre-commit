@@ -2,6 +2,11 @@
 # Fails if any tracked file is matched by .gitignore rules.
 # Equivalent of funfair-server-template check-no-ignored-files action.
 
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
 # When running inside the hooks repo itself, .pre-commit-config.yaml is
 # intentionally tracked despite appearing in .gitignore (it is the global
 # config shipped with this repo).  Whitelist it only in this case.
@@ -26,10 +31,9 @@ if [ $STATUS -eq 1 ] || [ -z "$IGNORED" ]; then
 fi
 
 if [ $STATUS -ne 0 ]; then
-    echo "error: git check-ignore failed" >&2
-    exit 1
+    die "git check-ignore failed"
 fi
 
-echo "Ignored files found in tracking:" >&2
+printf '\n\033[31m✗\033[0m %s\n' "Ignored files found in tracking:" >&2
 echo "$IGNORED" | awk -F'\t' '{print "  " $NF}' | sort -u >&2
 exit 1

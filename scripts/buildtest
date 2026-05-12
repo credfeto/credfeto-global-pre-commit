@@ -2,46 +2,27 @@
 # Sourced from https://github.com/credfeto/scripts/blob/main/development/buildtest
 
 die() {
-    echo
-    echo "$@"
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
+}
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
 BASEDIR=$(dirname "$(readlink -f "$0")")
 
-RULESET_ADJUSTMENT_FILE=
-TEST_BENCHMARKS=
-TEST_INTEGRATION=
 CLEAR="http-cache"
-while [ $# -gt 0 ]; do
-    key="$1"
 
-  case $key in
-    -a|--all)
-      CLEAR="all"
-      shift
-      ;;
-    -p|--pre-release)
-      [ -f "$SOURCE_DIR/pre-release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/pre-release.rule-settings.json"
-      shift
-      ;;
-    -r|--release)
-      [ -f "$SOURCE_DIR/release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/release.rule-settings.json"
-      shift
-      ;;
-    -b|--no-benchmarks)
-      TEST_BENCHMARKS="--filter-not-namespace *.BenchMark.Tests --filter-not-namespace *.BenchMark.Tests.*"
-      shift
-      ;;
-    -i|--no-integration)
-      TEST_INTEGRATION="--filter-not-namespace *.Integration.Tests --filter-not-namespace *.Integration.Tests.*"
-      shift
-      ;;
-    *)
-      shift
-      ;;
-  esac
-done
+CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
+[ -z "$CSPROJ" ] && { info "No .csproj files found — skipping"; exit 0; }
+
+SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
+[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
+[ -z "$SOLUTION" ] && { info "No solution file found — skipping"; exit 0; }
+
+SOURCE_DIR=$(dirname "$SOLUTION")
+[ -z "$SOURCE_DIR" ] && die "No Solution dir found in $SOURCE_DIR"
 
 PACK=0
 HAS_PACKED=$(grep -R "<IsPackable>true</IsPackable>" . --include "*.csproj" | head -1)
@@ -49,20 +30,16 @@ if [ -n "$HAS_PACKED" ]; then
   PACK=1
 fi
 
-SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
-[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
-[ -z "$SOLUTION" ] && die "No Solution found in $(pwd)"
+RULESET_ADJUSTMENT_FILE=
+[ -f "$SOURCE_DIR/release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/release.rule-settings.json"
 
-SOURCE_DIR=$(dirname "$SOLUTION")
-[ -z "$SOURCE_DIR" ] && die "No Solution dir found in $SOURCE_DIR"
-
-echo "***** Clearing NuGet cache ($CLEAR)... *****"
+info "Clearing NuGet cache ($CLEAR)..."
 dotnet nuget locals "$CLEAR" --clear || die "######## Nuget Clear $CLEAR Failed ########"
 
-echo "***** Restoring tools... *****"
+info "Restoring tools..."
 dotnet tool restore || die "######## Tool Restore Failed ########"
 
-echo "***** Checking... *****"
+info "Checking..."
 "$BASEDIR/buildcheck" || die "######## Build Check Failed ########"
 
 cd "$SOURCE_DIR" || die "Could not change to $SOURCE_DIR"
@@ -81,20 +58,20 @@ fi
 
 RESTORE=0
 if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
-  echo "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
+  info "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
   dotnet code-analysis "$RULESET_TYPE" \
     --ruleset "$RULESET_FILE" \
     --changes "$RULESET_ADJUSTMENT_FILE" || die "Failed to update $RULESET_FILE"
   RESTORE=1
 fi
 
-echo "***** Restoring... *****"
+info "Restoring..."
 dotnet restore || die "######## Restore Failed ########"
 
-echo "***** Cleaning... *****"
+info "Cleaning..."
 dotnet clean "--nowarn:MSB4241" || die "######## Clean Failed ########"
 
-echo "***** Building... *****"
+info "Building..."
 dotnet build \
   --warnaserror \
   --configuration Release \
@@ -108,15 +85,12 @@ dotnet build \
   "-p:Version=0.0.0.1-test" \
   -nodeReuse:False || die "######## Build Failed ########"
 
-echo "***** Testing... *****"
-# shellcheck disable=SC2086
+info "Testing..."
 dotnet test \
   --configuration Release \
   --no-restore \
   --no-build \
   --long-running 10 \
-  $TEST_BENCHMARKS \
-  $TEST_INTEGRATION \
   --parallel-algorithm aggressive \
   --ignore-exit-code 8 \
   "-p:ApiCompatGenerateSuppressionFile=true" \
@@ -127,8 +101,43 @@ dotnet test \
   "-p:Version=0.0.0.1-test" \
   || die "######## Tests Failed ########"
 
+PUBLISHABLE=$(grep -Rl "<IsPublishable>true</IsPublishable>" . --include "*.csproj")
+if [ -n "$PUBLISHABLE" ]; then
+  info "Publishing..."
+  PLATFORM=$(dotnet --info 2>/dev/null | grep -E "RID:" | awk '{print $2}')
+  [ -z "$PLATFORM" ] && PLATFORM="linux-x64"
+  while IFS= read -r project; do
+    [ -f "$project" ] || continue
+    OUTFOLDER=$(mktemp -d "${TMPDIR:-/tmp}/buildtest-publish.XXXXXXXXXX")
+    dotnet publish "$project" \
+      --no-restore \
+      --warnaserror \
+      --configuration Release \
+      --runtime "$PLATFORM" \
+      --self-contained \
+      -nodeReuse:False \
+      "-p:NoWarn=NETSDK1179" \
+      "-p:SuppressNETCoreSdkPreviewMessage=true" \
+      "-p:PublishSingleFile=true" \
+      "-p:PublishAot=false" \
+      "-p:PublishReadyToRun=False" \
+      "-p:PublishReadyToRunShowWarnings=True" \
+      "-p:DisableSwagger=False" \
+      "-p:TreatWarningsAsErrors=True" \
+      "-p:IncludeNativeLibrariesForSelfExtract=false" \
+      "-p:Version=0.0.0.1-test" \
+      "-p:FFPublishing=True" \
+      "-p:SolutionDir=$SOURCE_DIR/" \
+      "-p:IsProduction=false" \
+      --output "$OUTFOLDER" || die "Publish failed: $project"
+    rm -rf "$OUTFOLDER"
+  done <<EOF
+$PUBLISHABLE
+EOF
+fi
+
 if [ "$PACK" = "1" ]; then
-  echo "***** Packing... *****"
+  info "Packing..."
   dotnet pack \
     --warnaserror \
     --configuration Release \
@@ -144,6 +153,6 @@ if [ "$PACK" = "1" ]; then
     -nodeReuse:False || die "######## Packing Failed ########"
 fi
 
-[ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
+[ "$RESTORE" = "1" ] && git checkout "$RULESET_FILE"
 
-echo "***** Completed *****"
+info "Completed"

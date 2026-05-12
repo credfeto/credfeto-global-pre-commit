@@ -27,7 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Only block direct pushes to main/master; allow all other branches (#5)
 - Repair ansible-lint crash; relax markdownlint line-length rule (#2)
 - remove .pre-commit-config.yaml from .gitignore as this repo is its source — was tracked but ignored
-- buildcheck now skips repos with no .csproj files rather than failing
+- buildtest now skips repos with no .csproj files rather than failing
+- all shell scripts now use the correct die/info/success helper implementations with ANSI colour output
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
@@ -43,6 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Install nvm from package repo rather than a custom curl function
 - Only run npm steps when node is active in nvm
 - align ai/local/index.md with cs-template standard (blank line before list, git URLs in backticks)
+- buildtest: removed unused command-line argument parsing; hardcoded http-cache clear and release ruleset
+- buildtest: publish each project with IsPublishable=true after testing
 
 ### Deprecated
 ### Removed
