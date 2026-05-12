@@ -33,13 +33,13 @@ fi
 RULESET_ADJUSTMENT_FILE=
 [ -f "$SOURCE_DIR/release.rule-settings.json" ] && RULESET_ADJUSTMENT_FILE="$SOURCE_DIR/release.rule-settings.json"
 
-echo "***** Clearing NuGet cache ($CLEAR)... *****"
+info "Clearing NuGet cache ($CLEAR)..."
 dotnet nuget locals "$CLEAR" --clear || die "######## Nuget Clear $CLEAR Failed ########"
 
-echo "***** Restoring tools... *****"
+info "Restoring tools..."
 dotnet tool restore || die "######## Tool Restore Failed ########"
 
-echo "***** Checking... *****"
+info "Checking..."
 "$BASEDIR/buildcheck" || die "######## Build Check Failed ########"
 
 cd "$SOURCE_DIR" || die "Could not change to $SOURCE_DIR"
@@ -58,20 +58,20 @@ fi
 
 RESTORE=0
 if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
-  echo "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
+  info "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
   dotnet code-analysis "$RULESET_TYPE" \
     --ruleset "$RULESET_FILE" \
     --changes "$RULESET_ADJUSTMENT_FILE" || die "Failed to update $RULESET_FILE"
   RESTORE=1
 fi
 
-echo "***** Restoring... *****"
+info "Restoring..."
 dotnet restore || die "######## Restore Failed ########"
 
-echo "***** Cleaning... *****"
+info "Cleaning..."
 dotnet clean "--nowarn:MSB4241" || die "######## Clean Failed ########"
 
-echo "***** Building... *****"
+info "Building..."
 dotnet build \
   --warnaserror \
   --configuration Release \
@@ -85,7 +85,7 @@ dotnet build \
   "-p:Version=0.0.0.1-test" \
   -nodeReuse:False || die "######## Build Failed ########"
 
-echo "***** Testing... *****"
+info "Testing..."
 dotnet test \
   --configuration Release \
   --no-restore \
@@ -103,7 +103,7 @@ dotnet test \
 
 PUBLISHABLE=$(grep -Rl "<IsPublishable>true</IsPublishable>" . --include "*.csproj")
 if [ -n "$PUBLISHABLE" ]; then
-  echo "***** Publishing... *****"
+  info "Publishing..."
   PLATFORM=$(dotnet --info 2>/dev/null | grep -E "RID:" | awk '{print $2}')
   [ -z "$PLATFORM" ] && PLATFORM="linux-x64"
   while IFS= read -r project; do
@@ -137,7 +137,7 @@ EOF
 fi
 
 if [ "$PACK" = "1" ]; then
-  echo "***** Packing... *****"
+  info "Packing..."
   dotnet pack \
     --warnaserror \
     --configuration Release \
@@ -155,4 +155,4 @@ fi
 
 [ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
 
-echo "***** Completed *****"
+info "Completed"
