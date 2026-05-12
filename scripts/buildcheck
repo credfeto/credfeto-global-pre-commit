@@ -7,9 +7,6 @@ die() {
     exit 1
 }
 
-CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
-[ -z "$CSPROJ" ] && exit 0
-
 SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 [ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
 [ -z "$SOLUTION" ] && die "No Solution found in $(pwd)"
