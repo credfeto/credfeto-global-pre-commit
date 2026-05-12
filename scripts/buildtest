@@ -108,12 +108,12 @@ if [ -n "$PUBLISHABLE" ]; then
   [ -z "$PLATFORM" ] && PLATFORM="linux-x64"
   while IFS= read -r project; do
     [ -f "$project" ] || continue
-    OUTFOLDER=$(mktemp -d)
+    OUTFOLDER=$(mktemp -d "${TMPDIR:-/tmp}/buildtest-publish.XXXXXXXXXX")
     dotnet publish "$project" \
       --no-restore \
       --warnaserror \
       --configuration Release \
-      "-r:$PLATFORM" \
+      --runtime "$PLATFORM" \
       --self-contained \
       -nodeReuse:False \
       "-p:NoWarn=NETSDK1179" \
@@ -153,6 +153,6 @@ if [ "$PACK" = "1" ]; then
     -nodeReuse:False || die "######## Packing Failed ########"
 fi
 
-[ "$RESTORE" = "1" ] && git checkout "$RULESET_ADJUSTMENT_FILE"
+[ "$RESTORE" = "1" ] && git checkout "$RULESET_FILE"
 
 info "Completed"
