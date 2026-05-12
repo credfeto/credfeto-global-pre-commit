@@ -1,4 +1,4 @@
-&#xFEFF;# Changelog
+﻿&#xFEFF;# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Only block direct pushes to main/master; allow all other branches (#5)
 - Repair ansible-lint crash; relax markdownlint line-length rule (#2)
 - remove .pre-commit-config.yaml from .gitignore as this repo is its source — was tracked but ignored
+- buildcheck now skips repos with no .csproj files rather than failing
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
