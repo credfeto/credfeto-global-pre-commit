@@ -53,6 +53,7 @@ fi
 echo "==> pacman packages"
 sudo pacman -S --needed --noconfirm \
     git \
+    go \
     python-pre-commit \
     shellcheck \
     yamllint \
@@ -85,16 +86,12 @@ install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION
 
 # ── Go tools ──────────────────────────────────────────────────────────────────
 # composite-action-lint has no AUR or binary release; requires go install.
-if has go; then
-    echo "==> Go tools"
-    if ! has composite-action-lint; then
-        go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest \
-            || die "failed to install composite-action-lint"
-    else
-        echo "  composite-action-lint already installed, skipping"
-    fi
+echo "==> Go tools"
+if ! has composite-action-lint; then
+    go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest \
+        || die "failed to install composite-action-lint"
 else
-    echo "  go not found — skipping composite-action-lint (install go and rerun)" >&2
+    echo "  composite-action-lint already installed, skipping"
 fi
 
 # ── pipx packages ─────────────────────────────────────────────────────────────
