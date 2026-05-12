@@ -43,6 +43,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Install nvm from package repo rather than a custom curl function
 - Only run npm steps when node is active in nvm
 - align ai/local/index.md with cs-template standard (blank line before list, git URLs in backticks)
+- buildtest: removed unused command-line argument parsing; hardcoded http-cache clear and release ruleset
 
 ### Deprecated
 ### Removed
