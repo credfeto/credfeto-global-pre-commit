@@ -175,6 +175,7 @@ repos:
         entry: hadolint
         language: system
         files: (^|/)Dockerfile[^/]*$
+        args: [--config, .github/linters/.hadolint.yaml]
 
       # ── VALIDATE_GITHUB_ACTIONS — workflows ──────────────────────────────
       - id: actionlint
