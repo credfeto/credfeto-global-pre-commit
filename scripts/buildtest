@@ -90,10 +90,16 @@ dotnet build \
   "-p:Version=0.0.0.1-test" \
   -nodeReuse:False || die "######## Build Failed ########"
 
-# Stage any API compat suppression files generated or updated by the build.
-find "$SOURCE_DIR" -name "ApiCompatSuppressions.xml" 2>/dev/null | while IFS= read -r f; do
-    git add "$f" 2>/dev/null || true
-done
+# Fail if the build generated or modified any ApiCompatSuppressions.xml files —
+# these indicate newly suppressed API compatibility breaks that must be reviewed,
+# staged and committed intentionally rather than silently auto-included.
+COMPAT_CHANGED=$(find "$SOURCE_DIR" -name "ApiCompatSuppressions.xml" 2>/dev/null | while IFS= read -r f; do
+    git diff --name-only -- "$f" 2>/dev/null
+    git ls-files --others --exclude-standard -- "$f" 2>/dev/null
+done)
+if [ -n "$COMPAT_CHANGED" ]; then
+    die "ApiCompatSuppressions.xml was created or modified by the build — review, stage and commit it explicitly:$(printf '\n  %s' "$COMPAT_CHANGED")"
+fi
 
 info "Testing..."
 dotnet test \
