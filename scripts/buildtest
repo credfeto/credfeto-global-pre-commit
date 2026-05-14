@@ -90,6 +90,11 @@ dotnet build \
   "-p:Version=0.0.0.1-test" \
   -nodeReuse:False || die "######## Build Failed ########"
 
+# Stage any API compat suppression files generated or updated by the build.
+find "$SOURCE_DIR" -name "ApiCompatSuppressions.xml" 2>/dev/null | while IFS= read -r f; do
+    git add "$f" 2>/dev/null || true
+done
+
 info "Testing..."
 dotnet test \
   --configuration Release \
