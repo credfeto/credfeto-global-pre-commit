@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - all shell scripts now use the correct die/info/success helper implementations with ANSI colour output
 - buildtest: always restore ruleset file on exit, even when a die error occurs
 - hadolint: ignore DL3018 by using the existing config at .github/linters/.hadolint.yaml
+- Simplified check-ignored-files output parsing by removing verbose flag from git check-ignore and replacing awk with sed
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
