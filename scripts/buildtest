@@ -124,29 +124,42 @@ if [ -n "$PUBLISHABLE" ]; then
   [ -z "$PLATFORM" ] && PLATFORM="linux-x64"
   while IFS= read -r project; do
     [ -f "$project" ] || continue
-    OUTFOLDER=$(mktemp -d "${TMPDIR:-/tmp}/buildtest-publish.XXXXXXXXXX")
-    dotnet publish "$project" \
-      --no-restore \
-      --warnaserror \
-      --configuration Release \
-      --runtime "$PLATFORM" \
-      --self-contained \
-      -nodeReuse:False \
-      "-p:NoWarn=NETSDK1179" \
-      "-p:SuppressNETCoreSdkPreviewMessage=true" \
-      "-p:PublishSingleFile=true" \
-      "-p:PublishAot=false" \
-      "-p:PublishReadyToRun=False" \
-      "-p:PublishReadyToRunShowWarnings=True" \
-      "-p:DisableSwagger=False" \
-      "-p:TreatWarningsAsErrors=True" \
-      "-p:IncludeNativeLibrariesForSelfExtract=false" \
-      "-p:Version=0.0.0.1-test" \
-      "-p:FFPublishing=True" \
-      "-p:SolutionDir=$SOURCE_DIR/" \
-      "-p:IsProduction=false" \
-      --output "$OUTFOLDER" || die "Publish failed: $project"
-    rm -rf "$OUTFOLDER"
+
+    FRAMEWORKS=$(sed -n 's/.*<TargetFrameworks>\([^<]*\)<\/TargetFrameworks>.*/\1/p' "$project" | head -1)
+    [ -z "$FRAMEWORKS" ] && FRAMEWORKS=$(sed -n 's/.*<TargetFramework>\([^<]*\)<\/TargetFramework>.*/\1/p' "$project" | head -1)
+    [ -z "$FRAMEWORKS" ] && die "No TargetFramework or TargetFrameworks found in $project — specify a TargetFramework"
+
+    FRAMEWORKS_NL=$(printf '%s' "$FRAMEWORKS" | tr ';' '\n')
+    while IFS= read -r fw; do
+      fw=$(printf '%s' "$fw" | tr -d '[:space:]')
+      [ -z "$fw" ] && continue
+      OUTFOLDER=$(mktemp -d "${TMPDIR:-/tmp}/buildtest-publish.XXXXXXXXXX")
+      dotnet publish "$project" \
+        --no-restore \
+        --warnaserror \
+        --configuration Release \
+        --runtime "$PLATFORM" \
+        --self-contained \
+        --framework "$fw" \
+        -nodeReuse:False \
+        "-p:NoWarn=NETSDK1179" \
+        "-p:SuppressNETCoreSdkPreviewMessage=true" \
+        "-p:PublishSingleFile=true" \
+        "-p:PublishAot=false" \
+        "-p:PublishReadyToRun=False" \
+        "-p:PublishReadyToRunShowWarnings=True" \
+        "-p:DisableSwagger=False" \
+        "-p:TreatWarningsAsErrors=True" \
+        "-p:IncludeNativeLibrariesForSelfExtract=false" \
+        "-p:Version=0.0.0.1-test" \
+        "-p:FFPublishing=True" \
+        "-p:SolutionDir=$SOURCE_DIR/" \
+        "-p:IsProduction=false" \
+        --output "$OUTFOLDER" || die "Publish failed: $project (framework: $fw)"
+      rm -rf "$OUTFOLDER"
+    done <<FRAMEWORKS_EOF
+$FRAMEWORKS_NL
+FRAMEWORKS_EOF
   done <<EOF
 $PUBLISHABLE
 EOF
