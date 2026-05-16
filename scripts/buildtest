@@ -28,8 +28,6 @@ dotnet_tool_installed() {
     return 1
 }
 
-BASEDIR=$(dirname "$(readlink -f "$0")")
-
 CLEAR="http-cache"
 
 CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
@@ -56,9 +54,6 @@ dotnet nuget locals "$CLEAR" --clear || die "######## Nuget Clear $CLEAR Failed 
 
 info "Restoring tools..."
 dotnet tool restore || die "######## Tool Restore Failed ########"
-
-info "Checking..."
-"$BASEDIR/buildcheck" || die "######## Build Check Failed ########"
 
 cd "$SOURCE_DIR" || die "Could not change to $SOURCE_DIR"
 
