@@ -71,7 +71,7 @@ fi
 
 RESTORE=0
 if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
-  dotnet_tool_installed code-analysis code-analysis || die "code-analysis dotnet tool is not installed — install with: dotnet tool install --local code-analysis"
+  dotnet_tool_installed code-analysis Credfeto.DotNet.Code.Analysis.Overrides.Cmd || die "code-analysis dotnet tool is not installed — install with: dotnet tool install --local Credfeto.DotNet.Code.Analysis.Overrides.Cmd"
   info "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
   dotnet code-analysis "$RULESET_TYPE" \
     --ruleset "$RULESET_FILE" \

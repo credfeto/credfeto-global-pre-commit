@@ -23,7 +23,7 @@ dotnet_tool_installed() {
     return 1
 }
 
-dotnet_tool_installed buildcheck buildcheck || die "buildcheck dotnet tool is not installed — install with: dotnet tool install --local buildcheck"
+dotnet_tool_installed buildcheck FunFair.BuildCheck || die "buildcheck dotnet tool is not installed — install with: dotnet tool install --local FunFair.BuildCheck"
 
 SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 [ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
