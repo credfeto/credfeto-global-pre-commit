@@ -24,6 +24,17 @@ is_ai_agent() {
 
 has_cmd() { command -v "$1" > /dev/null 2>&1; }
 
+# Returns 0 if $1 (command name) or $2 (package ID) is found in local or global dotnet tool list.
+dotnet_tool_installed() {
+    _list=$(dotnet tool list 2>/dev/null)
+    printf '%s\n' "$_list" | grep -qi "[[:space:]]$1$" && return 0
+    printf '%s\n' "$_list" | grep -qi "^$2[[:space:]]" && return 0
+    _list=$(dotnet tool list --global 2>/dev/null)
+    printf '%s\n' "$_list" | grep -qi "[[:space:]]$1$" && return 0
+    printf '%s\n' "$_list" | grep -qi "^$2[[:space:]]" && return 0
+    return 1
+}
+
 # Abort immediately if nothing is staged — prevents accidental empty commits.
 ALL_STAGED=$(git diff --cached --name-only)
 [ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
@@ -156,6 +167,7 @@ fi
 SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
 if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
+        dotnet_tool_installed tsqllint TSQLLint || die "tsqllint dotnet tool is not installed — install with: dotnet tool install --local TSQLLint"
         info "Detected SQL changes — running dotnet tsqllint..."
         dotnet tsqllint . || die "dotnet tsqllint"
     fi

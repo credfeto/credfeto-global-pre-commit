@@ -2,7 +2,8 @@
 # Applies formatting using cscleanup (Credfeto.DotNet.Repo.Formatter) on staged .cs and .csproj files,
 # then re-stages any files that were modified.
 
-TOOL_ID="credfeto.dotnet.repo.formatter"
+TOOL_CMD="cscleanup"
+TOOL_PKG="Credfeto.DotNet.Repo.Formatter"
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -17,15 +18,19 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
-# Returns 0 if $1 (package ID) is installed as a local or global dotnet tool.
+# Returns 0 if $1 (command name) or $2 (package ID) is found in local or global dotnet tool list.
 dotnet_tool_installed() {
-    dotnet tool list 2>/dev/null | grep -qi "^$1[[:space:]]" && return 0
-    dotnet tool list --global 2>/dev/null | grep -qi "^$1[[:space:]]" && return 0
+    _list=$(dotnet tool list 2>/dev/null)
+    printf '%s\n' "$_list" | grep -qi "[[:space:]]$1$" && return 0
+    printf '%s\n' "$_list" | grep -qi "^$2[[:space:]]" && return 0
+    _list=$(dotnet tool list --global 2>/dev/null)
+    printf '%s\n' "$_list" | grep -qi "[[:space:]]$1$" && return 0
+    printf '%s\n' "$_list" | grep -qi "^$2[[:space:]]" && return 0
     return 1
 }
 
-if ! dotnet_tool_installed "$TOOL_ID"; then
-    die "cscleanup not found — install Credfeto.DotNet.Repo.Formatter: dotnet tool install --global Credfeto.DotNet.Repo.Formatter"
+if ! dotnet_tool_installed "$TOOL_CMD" "$TOOL_PKG"; then
+    die "${TOOL_CMD} is not installed — install with: dotnet tool install --local ${TOOL_PKG}"
 fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)

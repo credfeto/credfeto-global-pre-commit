@@ -94,8 +94,8 @@ else
     cross ".NET build + test (*.cs/csproj/sln)"    "dotnet not installed"
 fi
 
-CSCLEANUP_VERSION=$(dotnet tool list 2>/dev/null | grep -i "^credfeto.dotnet.repo.formatter[[:space:]]" | awk '{print $2}')
-[ -z "$CSCLEANUP_VERSION" ] && CSCLEANUP_VERSION=$(dotnet tool list --global 2>/dev/null | grep -i "^credfeto.dotnet.repo.formatter[[:space:]]" | awk '{print $2}')
+CSCLEANUP_VERSION=$(dotnet tool list 2>/dev/null | awk 'tolower($3)=="cscleanup"{print $2}')
+[ -z "$CSCLEANUP_VERSION" ] && CSCLEANUP_VERSION=$(dotnet tool list --global 2>/dev/null | awk 'tolower($3)=="cscleanup"{print $2}')
 if [ -n "$CSCLEANUP_VERSION" ]; then
     skip  "C# format — cscleanup (*.cs)"           "v${CSCLEANUP_VERSION}"
 else

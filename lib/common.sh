@@ -65,7 +65,8 @@ install_github_release() {
 install_pwsh() {
     echo "==> PowerShell (pwsh)"
     if has dotnet; then
-        if dotnet tool list --global 2>/dev/null | grep -q '^powershell '; then
+        _pwsh_list=$(dotnet tool list --global 2>/dev/null)
+        if printf '%s\n' "$_pwsh_list" | grep -qi "[[:space:]]pwsh$" || printf '%s\n' "$_pwsh_list" | grep -qi "^powershell[[:space:]]"; then
             dotnet tool update --global PowerShell || die "failed to update PowerShell dotnet tool"
         else
             dotnet tool install --global PowerShell || die "failed to install PowerShell dotnet tool"
