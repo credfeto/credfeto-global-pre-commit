@@ -10,14 +10,16 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
-# Returns 0 if $1 (command name) or $2 (package ID) is found in local or global dotnet tool list.
+# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
 dotnet_tool_installed() {
-    _list=$(dotnet tool list 2>/dev/null)
-    printf '%s\n' "$_list" | grep -qi "[[:space:]]$1$" && return 0
-    printf '%s\n' "$_list" | grep -qi "^$2[[:space:]]" && return 0
-    _list=$(dotnet tool list --global 2>/dev/null)
-    printf '%s\n' "$_list" | grep -qi "[[:space:]]$1$" && return 0
-    printf '%s\n' "$_list" | grep -qi "^$2[[:space:]]" && return 0
+    dotnet tool list 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    dotnet tool list --global 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
     return 1
 }
 

@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - buildtest publish now iterates over all TargetFrameworks, passing --framework for each; dies early if no framework is specified in the csproj
 - Use dotnet tool list to detect dotnet tools rather than command -v so local tool manifest installs are found
 - dotnet_tool_installed now checks both command name and package ID columns in dotnet tool list output; all install suggestions now use --local with the package ID; version check removed from check-changelog
+- dotnet_tool_installed now requires command name and package ID to match on the same row using awk, preventing false positives from independent column matches
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
