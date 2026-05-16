@@ -10,6 +10,21 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
+# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
+dotnet_tool_installed() {
+    dotnet tool list 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    dotnet tool list --global 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    return 1
+}
+
+dotnet_tool_installed buildcheck buildcheck || die "buildcheck dotnet tool is not installed — install with: dotnet tool install --local buildcheck"
+
 SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 [ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
 [ -z "$SOLUTION" ] && { info "No solution file found — skipping"; exit 0; }

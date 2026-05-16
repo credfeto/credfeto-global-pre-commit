@@ -1,9 +1,8 @@
 #!/bin/sh
 # Lints staged CHANGELOG.md files using `dotnet changelog --lint`.
-# Ensures Credfeto.Changelog.Cmd >= 1.10.194.1792, upgrading in-place if needed.
 
-MIN_VERSION="1.10.194.1792"
-TOOL_ID="credfeto.changelog.cmd"
+TOOL_CMD="changelog"
+TOOL_PKG="credfeto.changelog.cmd"
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -14,31 +13,25 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
-# Returns 0 (true) if version $1 >= version $2.
-version_gte() {
-    [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$2" ]
+# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
+dotnet_tool_installed() {
+    dotnet tool list 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    dotnet tool list --global 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    return 1
 }
 
-if ! command -v changelog > /dev/null 2>&1; then
-    exit 0
+if ! dotnet_tool_installed "$TOOL_CMD" "$TOOL_PKG"; then
+    die "${TOOL_CMD} is not installed — install with: dotnet tool install --local ${TOOL_PKG}"
 fi
 
 STAGED_CHANGELOGS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)CHANGELOG\.md$')
 [ -z "$STAGED_CHANGELOGS" ] && exit 0
-
-# Check the installed version is recent enough.
-TOOL_VERSION=$(dotnet tool list --global 2>/dev/null | grep -i "${TOOL_ID}" | awk '{print $2}')
-
-if [ -z "$TOOL_VERSION" ]; then
-    die "${TOOL_ID} is not installed globally — install with: dotnet tool install --global ${TOOL_ID}"
-fi
-
-# Upgrade if below the minimum required version.
-if ! version_gte "$TOOL_VERSION" "$MIN_VERSION"; then
-    info "Upgrading ${TOOL_ID} from ${TOOL_VERSION} to >= ${MIN_VERSION}..."
-    dotnet tool update --global "$TOOL_ID" \
-        || die "Failed to upgrade ${TOOL_ID}"
-fi
 
 # Lint each staged CHANGELOG.md.
 FAILED=0
@@ -46,7 +39,7 @@ FAILED=0
 for changelog in $STAGED_CHANGELOGS; do
     [ -f "$changelog" ] || continue
     info "Linting ${changelog}..."
-    changelog --lint -f "$changelog" || FAILED=1
+    dotnet changelog --lint -f "$changelog" || FAILED=1
 done
 
 [ "$FAILED" -eq 0 ] || die "changelog lint failed"

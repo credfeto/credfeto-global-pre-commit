@@ -2,6 +2,9 @@
 # Applies formatting using cscleanup (Credfeto.DotNet.Repo.Formatter) on staged .cs and .csproj files,
 # then re-stages any files that were modified.
 
+TOOL_CMD="cscleanup"
+TOOL_PKG="Credfeto.DotNet.Repo.Formatter"
+
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
@@ -15,8 +18,21 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
-if ! command -v cscleanup > /dev/null 2>&1; then
-    die "cscleanup not found — install Credfeto.DotNet.Repo.Formatter: dotnet tool install --global Credfeto.DotNet.Repo.Formatter"
+# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
+dotnet_tool_installed() {
+    dotnet tool list 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    dotnet tool list --global 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    return 1
+}
+
+if ! dotnet_tool_installed "$TOOL_CMD" "$TOOL_PKG"; then
+    die "${TOOL_CMD} is not installed — install with: dotnet tool install --local ${TOOL_PKG}"
 fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -38,7 +54,7 @@ $FMT_FILES
 EOF
 
 info "Applying cscleanup formatting to staged .cs and .csproj files..."
-cscleanup "$@" || die "cscleanup format failed"
+dotnet cscleanup "$@" || die "cscleanup format failed"
 
 # Re-stage all formatted files in one git add call
 git add "$@"

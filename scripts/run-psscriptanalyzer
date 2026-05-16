@@ -7,9 +7,24 @@ die() {
     exit 1
 }
 
+# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
+dotnet_tool_installed() {
+    dotnet tool list 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    dotnet tool list --global 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    return 1
+}
+
+dotnet_tool_installed pwsh PowerShell || die "pwsh dotnet tool is not installed — install with: dotnet tool install --local PowerShell"
+
 FAILED=0
 for f in "$@"; do
-    pwsh -NoProfile -NonInteractive -Command "
+    dotnet pwsh -NoProfile -NonInteractive -Command "
         Import-Module PSScriptAnalyzer -ErrorAction Stop
         \$r = Invoke-ScriptAnalyzer -Path '$f' -Severity Error,Warning
         if (\$r) { \$r | Format-Table -AutoSize; exit 1 }
