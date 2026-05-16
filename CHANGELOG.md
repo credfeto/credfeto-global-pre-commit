@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - hadolint: ignore DL3018 by using the existing config at .github/linters/.hadolint.yaml
 - Simplified check-ignored-files output parsing by removing verbose flag from git check-ignore and replacing awk with sed
 - buildtest publish now iterates over all TargetFrameworks, passing --framework for each; dies early if no framework is specified in the csproj
+- Use dotnet tool list to detect dotnet tools rather than command -v so local tool manifest installs are found
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

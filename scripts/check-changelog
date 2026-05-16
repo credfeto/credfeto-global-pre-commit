@@ -19,23 +19,25 @@ version_gte() {
     [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$2" ]
 }
 
-if ! command -v changelog > /dev/null 2>&1; then
-    exit 0
+# Returns 0 if $1 (package ID) is installed as a local or global dotnet tool.
+dotnet_tool_installed() {
+    dotnet tool list 2>/dev/null | grep -qi "^$1[[:space:]]" && return 0
+    dotnet tool list --global 2>/dev/null | grep -qi "^$1[[:space:]]" && return 0
+    return 1
+}
+
+if ! dotnet_tool_installed "$TOOL_ID"; then
+    die "${TOOL_ID} is not installed — install with: dotnet tool install --global ${TOOL_ID}"
 fi
 
 STAGED_CHANGELOGS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)CHANGELOG\.md$')
 [ -z "$STAGED_CHANGELOGS" ] && exit 0
 
-# Check the installed version is recent enough.
-TOOL_VERSION=$(dotnet tool list --global 2>/dev/null | grep -i "${TOOL_ID}" | awk '{print $2}')
-
-if [ -z "$TOOL_VERSION" ]; then
-    die "${TOOL_ID} is not installed globally — install with: dotnet tool install --global ${TOOL_ID}"
-fi
-
-# Upgrade if below the minimum required version.
-if ! version_gte "$TOOL_VERSION" "$MIN_VERSION"; then
-    info "Upgrading ${TOOL_ID} from ${TOOL_VERSION} to >= ${MIN_VERSION}..."
+# Upgrade global install if below the minimum required version.
+# Local versions are pinned in the tool manifest — skip version check for those.
+GLOBAL_VERSION=$(dotnet tool list --global 2>/dev/null | grep -i "^${TOOL_ID}[[:space:]]" | awk '{print $2}')
+if [ -n "$GLOBAL_VERSION" ] && ! version_gte "$GLOBAL_VERSION" "$MIN_VERSION"; then
+    info "Upgrading ${TOOL_ID} from ${GLOBAL_VERSION} to >= ${MIN_VERSION}..."
     dotnet tool update --global "$TOOL_ID" \
         || die "Failed to upgrade ${TOOL_ID}"
 fi
@@ -46,7 +48,7 @@ FAILED=0
 for changelog in $STAGED_CHANGELOGS; do
     [ -f "$changelog" ] || continue
     info "Linting ${changelog}..."
-    changelog --lint -f "$changelog" || FAILED=1
+    dotnet changelog --lint -f "$changelog" || FAILED=1
 done
 
 [ "$FAILED" -eq 0 ] || die "changelog lint failed"

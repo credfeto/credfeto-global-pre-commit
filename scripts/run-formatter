@@ -2,6 +2,8 @@
 # Applies formatting using cscleanup (Credfeto.DotNet.Repo.Formatter) on staged .cs and .csproj files,
 # then re-stages any files that were modified.
 
+TOOL_ID="credfeto.dotnet.repo.formatter"
+
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
@@ -15,7 +17,14 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
-if ! command -v cscleanup > /dev/null 2>&1; then
+# Returns 0 if $1 (package ID) is installed as a local or global dotnet tool.
+dotnet_tool_installed() {
+    dotnet tool list 2>/dev/null | grep -qi "^$1[[:space:]]" && return 0
+    dotnet tool list --global 2>/dev/null | grep -qi "^$1[[:space:]]" && return 0
+    return 1
+}
+
+if ! dotnet_tool_installed "$TOOL_ID"; then
     die "cscleanup not found — install Credfeto.DotNet.Repo.Formatter: dotnet tool install --global Credfeto.DotNet.Repo.Formatter"
 fi
 
@@ -38,7 +47,7 @@ $FMT_FILES
 EOF
 
 info "Applying cscleanup formatting to staged .cs and .csproj files..."
-cscleanup "$@" || die "cscleanup format failed"
+dotnet cscleanup "$@" || die "cscleanup format failed"
 
 # Re-stage all formatted files in one git add call
 git add "$@"
