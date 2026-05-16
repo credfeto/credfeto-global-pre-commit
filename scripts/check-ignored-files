@@ -22,7 +22,7 @@ if [ -z "$TRACKED" ]; then
     exit 0
 fi
 
-IGNORED=$(echo "$TRACKED" | git check-ignore --stdin -v --no-index 2>/dev/null)
+IGNORED=$(echo "$TRACKED" | git check-ignore --stdin --no-index 2>/dev/null)
 STATUS=$?
 
 # git check-ignore exits 1 when no files matched — that's a pass
@@ -35,5 +35,5 @@ if [ $STATUS -ne 0 ]; then
 fi
 
 printf '\n\033[31m✗\033[0m %s\n' "Ignored files found in tracking:" >&2
-echo "$IGNORED" | awk -F'\t' '{print "  " $NF}' | sort -u >&2
+echo "$IGNORED" | sed 's/^/  /' | sort -u >&2
 exit 1
