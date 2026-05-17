@@ -39,7 +39,7 @@ FAILED=0
 for changelog in $STAGED_CHANGELOGS; do
     [ -f "$changelog" ] || continue
     info "Linting ${changelog}..."
-    dotnet changelog --lint -f "$changelog" || FAILED=1
+    dotnet changelog -u -f "$changelog" > /dev/null || FAILED=1
 done
 
 [ "$FAILED" -eq 0 ] || die "changelog lint failed"
