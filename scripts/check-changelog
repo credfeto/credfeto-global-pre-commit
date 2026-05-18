@@ -35,12 +35,13 @@ STAGED_CHANGELOGS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(
 
 # Lint each staged CHANGELOG.md.
 FAILED=0
-# shellcheck disable=SC2086
-for changelog in $STAGED_CHANGELOGS; do
+while IFS= read -r changelog; do
     [ -f "$changelog" ] || continue
     info "Linting ${changelog}..."
     dotnet changelog --lint -f "$changelog" || FAILED=1
-done
+done <<EOF
+$STAGED_CHANGELOGS
+EOF
 
 [ "$FAILED" -eq 0 ] || die "changelog lint failed"
 exit 0
