@@ -2,7 +2,7 @@
 # Acceptance tests for the global pre-commit hook orchestrator.
 # Each test creates an isolated git repository and removes it on completion.
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$REPO_DIR/hooks"
 HOOK="$HOOKS_DIR/pre-commit"
 
