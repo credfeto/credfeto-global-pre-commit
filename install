@@ -22,7 +22,37 @@ chmod +x \
     "$SCRIPTS_DIR/clean-package-lock-registry" \
     "$SCRIPTS_DIR/run-eslint" \
     "$SCRIPTS_DIR/run-stylelint" \
-    "$SCRIPTS_DIR/run-psscriptanalyzer"
+    "$SCRIPTS_DIR/run-psscriptanalyzer" \
+    "$REPO_DIR/acceptance-test" \
+    "$REPO_DIR/install-deps-arch" \
+    "$REPO_DIR/install-deps-debian"
+
+# ── Install platform dependencies ─────────────────────────────────────────────
+distro_family() {
+    [ -f /etc/os-release ] || return 0
+    _id=$(grep '^ID=' /etc/os-release | cut -d= -f2- | tr -d '"')
+    _like=$(grep '^ID_LIKE=' /etc/os-release | cut -d= -f2- | tr -d '"')
+    case "$_id $_like" in
+        *arch*)            printf 'arch' ;;
+        *debian*|*ubuntu*) printf 'debian' ;;
+    esac
+}
+
+DISTRO=$(distro_family)
+case "$DISTRO" in
+    arch)
+        echo "Detected Arch-based Linux — running install-deps-arch..."
+        "$REPO_DIR/install-deps-arch"
+        ;;
+    debian)
+        echo "Detected Debian-based Linux — running install-deps-debian..."
+        "$REPO_DIR/install-deps-debian"
+        ;;
+    *)
+        echo "Platform not recognised — skipping dependency install."
+        echo "Run ./install-deps-arch or ./install-deps-debian manually."
+        ;;
+esac
 
 # ── Register globally with git ────────────────────────────────────────────────
 git config --global core.hooksPath "$HOOKS_DIR"

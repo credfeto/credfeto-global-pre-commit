@@ -13,7 +13,7 @@ blocks the same operations at the API level.
 
 Git supports a machine-wide hooks directory via `core.hooksPath` (git ≥ 2.9).
 When set, git uses that directory for every repository instead of the
-per-repo `.git/hooks/`. The `install.sh` script sets this once and it applies
+per-repo `.git/hooks/`. The `install` script sets this once and it applies
 to all present and future clones.
 
 ---
@@ -21,13 +21,13 @@ to all present and future clones.
 ## Dependencies
 
 Every hook uses `language: system` and calls a binary already on `PATH`.
-Install all required tools before running `install.sh` using the provided script
-for your distribution.
+Running `install` auto-detects the platform (Arch-based or Debian-based) and
+calls the appropriate deps script automatically. You can also run them manually:
 
 ### Arch Linux
 
 ```sh
-bash install-deps-arch.sh
+./install-deps-arch
 ```
 
 Requires an AUR helper (`paru` or `yay`). The script will print instructions for
@@ -53,7 +53,7 @@ and the script will pick it up automatically.
 Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
 ```sh
-bash install-deps-debian.sh
+./install-deps-debian
 ```
 
 | Source | Packages |
@@ -89,16 +89,17 @@ them separately (nvm for Node.js).
 ```sh
 git clone https://github.com/credfeto/credfeto-global-pre-commit.git ~/.global-hooks
 cd ~/.global-hooks
-sh install.sh
+./install
 ```
 
-`install.sh` will:
+`install` will:
 
 1. Make all hook and script files executable
-2. Run `git config --global core.hooksPath <hooks-dir>`
-3. Symlink the `run-eslint`, `run-stylelint`, and `run-psscriptanalyzer` wrapper scripts to `~/.local/bin`
-4. Validate the `.pre-commit-config.yaml` schema (no managed environments to install — every hook is `language: system`)
-5. Print a status table of every check showing which are active and which need a system tool installed
+2. Auto-detect the platform and run `install-deps-arch` or `install-deps-debian`
+3. Run `git config --global core.hooksPath <hooks-dir>`
+4. Symlink the `run-eslint`, `run-stylelint`, and `run-psscriptanalyzer` wrapper scripts to `~/.local/bin`
+5. Validate the `.pre-commit-config.yaml` schema (no managed environments to install — every hook is `language: system`)
+6. Print a status table of every check showing which are active and which need a system tool installed
 
 `pre-commit` must be installed for linting to run (`pip install pre-commit`).
 
@@ -112,7 +113,7 @@ spawn.
 
 This config opts out of that model: every hook is declared `language: system`
 and calls a binary already on `PATH`. Faster startup, smaller image, no
-per-spawn redownloads — but you have to install the tools yourself. `install.sh`
+per-spawn redownloads — but you have to install the tools yourself. `install`
 prints what's missing and exact install commands.
 
 System tools required for full coverage: `pre-commit-hooks` (pip), `shellcheck`,
@@ -156,7 +157,7 @@ To install missing tools:
 ```sh
 cd ~/.global-hooks
 git pull
-sh install.sh
+./install
 ```
 
 ### Verify the install
@@ -255,7 +256,7 @@ Use the provided dependency scripts — see [Dependencies](#dependencies) above.
 They handle all system tools, install them idempotently, and are safe to re-run
 after updates.
 
-After installing any tool, re-run `sh install.sh` to see the updated status table.
+After installing any tool, re-run `./install` to see the updated status table.
 Run `pre-commit autoupdate --config ~/.global-hooks/.pre-commit-config.yaml` to update managed hook versions.
 
 ---

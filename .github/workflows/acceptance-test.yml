@@ -1,0 +1,53 @@
+--- # Checkout, install deps + hooks, run acceptance tests, always clean up global hooks
+name: "Acceptance Tests"
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{github.workflow}}-${{github.ref}}
+  cancel-in-progress: true
+
+jobs:
+  acceptance-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Initialise Workspace"
+        if: runner.environment == 'self-hosted'
+        shell: bash
+        run: sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE"
+
+      - name: "Set Active Environment"
+        shell: bash
+        run: |
+          {
+            echo "ACTIVE_RUNNER_NAME=${{runner.name}}"
+            echo "ACTIVE_HOSTNAME=$HOSTNAME"
+            echo "ACTIVE_USER=$USER"
+          } >> "$GITHUB_ENV"
+
+      - name: "Checkout Source"
+        uses: actions/checkout@v6.0.2
+        with:
+          clean: true
+          fetch-depth: 1
+
+      - name: "Install"
+        shell: bash
+        run: ./install
+
+      - name: "Run Acceptance Tests"
+        shell: bash
+        run: ./acceptance-test
+
+      - name: "Remove global pre-commit hooks"
+        if: always()
+        shell: bash
+        run: git config --global --unset core.hooksPath || true
