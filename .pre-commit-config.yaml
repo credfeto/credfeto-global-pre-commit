@@ -208,7 +208,7 @@ repos:
       # ── VALIDATE_ENV ──────────────────────────────────────────────────────
       - id: dotenv-linter
         name: dotenv-linter
-        entry: dotenv-linter
+        entry: dotenv-linter check
         language: system
         files: (^|/)\.env(\.[^/]+)?$
 

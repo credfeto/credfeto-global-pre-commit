@@ -1,0 +1,215 @@
+#!/bin/sh
+# Acceptance tests for the global pre-commit hook orchestrator.
+# Each test creates an isolated git repository and removes it on completion.
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+HOOKS_DIR="$REPO_DIR/hooks"
+HOOK="$HOOKS_DIR/pre-commit"
+
+PASS=0
+FAIL=0
+HOOK_OUTPUT=""
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+success() {
+    printf '\n\033[32m✓\033[0m %s\n' "$*"
+}
+
+fail_msg() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+}
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
+}
+
+[ -x "$HOOK" ] || die "hook not found or not executable: $HOOK"
+command -v git > /dev/null 2>&1 || die "git is not installed"
+
+# Create an isolated git repo on the given branch (default: feature/acceptance-test).
+# Prints the repo path; stores it in CURRENT_REPO for cleanup.
+make_repo() {
+    BRANCH="${1:-feature/acceptance-test}"
+    T=$(mktemp -d)
+    CURRENT_REPO="$T"
+    git -C "$T" init --quiet
+    git -C "$T" symbolic-ref HEAD "refs/heads/$BRANCH"
+    git -C "$T" config user.email "test@example.com"
+    git -C "$T" config user.name "Test User"
+    git -C "$T" config core.hooksPath "$HOOKS_DIR"
+    printf '%s' "$T"
+}
+
+destroy_repo() {
+    rm -rf "$1"
+    CURRENT_REPO=""
+}
+
+# Safety net: remove any repo or output file that survives an interrupted test.
+CURRENT_REPO=""
+cleanup() {
+    [ -n "$CURRENT_REPO" ] && rm -rf "$CURRENT_REPO"
+    rm -f "$HOOK_OUTPUT"
+}
+trap cleanup EXIT INT TERM
+
+# Run the hook in the given repo directory.
+# Exit code is returned; combined stdout+stderr is stored in $HOOK_OUTPUT.
+run_hook() {
+    HOOK_OUTPUT=$(mktemp)
+    ( cd "$1" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
+    return $?
+}
+
+# Record a test result and clean up the captured output.
+# assert_exit <name> <expected-exit> <actual-exit>
+assert_exit() {
+    NAME="$1"
+    EXPECTED="$2"
+    ACTUAL="$3"
+    if [ "$ACTUAL" = "$EXPECTED" ]; then
+        PASS=$((PASS + 1))
+        success "PASS  $NAME"
+    else
+        FAIL=$((FAIL + 1))
+        fail_msg "FAIL  $NAME (expected exit $EXPECTED, got $ACTUAL)"
+        if [ -f "$HOOK_OUTPUT" ]; then
+            cat "$HOOK_OUTPUT" >&2
+        fi
+    fi
+    rm -f "$HOOK_OUTPUT"
+    HOOK_OUTPUT=""
+}
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+
+test_nothing_staged_fails() {
+    T=$(make_repo)
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "nothing staged → exits non-zero" 1 "$RC"
+}
+
+test_commit_on_main_rejected() {
+    T=$(make_repo "main")
+    printf 'hello\n' > "$T/file.txt"
+    git -C "$T" add file.txt
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "commit on main branch → rejected" 1 "$RC"
+}
+
+test_commit_on_master_rejected() {
+    T=$(make_repo "master")
+    printf 'hello\n' > "$T/file.txt"
+    git -C "$T" add file.txt
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "commit on master branch → rejected" 1 "$RC"
+}
+
+test_merge_commit_rejected() {
+    T=$(make_repo "feature/merge-test")
+    printf 'hello\n' > "$T/file.txt"
+    git -C "$T" add file.txt
+    printf 'deadbeef1234\n' > "$T/.git/MERGE_HEAD"
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "merge commit detected → rejected" 1 "$RC"
+}
+
+test_ignored_tracked_file_rejected() {
+    T=$(make_repo "feature/ignored-file-test")
+    printf '*.secret\n' > "$T/.gitignore"
+    printf 'password=hunter2\n' > "$T/config.secret"
+    git -C "$T" add .gitignore
+    git -C "$T" add -f config.secret
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "ignored tracked file → rejected" 1 "$RC"
+}
+
+# Pre-commit config snippet used by the two dotenv tests below.
+# Mirrors the global config entry but scoped to dotenv-linter only so no
+# other linter can interfere with the result.
+DOTENV_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: dotenv-linter
+        name: dotenv-linter
+        entry: dotenv-linter check
+        language: system
+        files: (^|/)\.env(\.[^/]+)?$
+'
+
+test_broken_env_file_rejected() {
+    if ! command -v dotenv-linter > /dev/null 2>&1; then
+        info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken .env.example → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-env-test")
+    printf '%s' "$DOTENV_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # DuplicatedKey is a reliable dotenv-linter error.
+    printf 'FOO=bar\nFOO=baz\n' > "$T/.env.example"
+    git -C "$T" add .pre-commit-config.yaml .env.example
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken .env.example (duplicate key) → rejected" 1 "$RC"
+}
+
+test_valid_env_file_passes() {
+    if ! command -v dotenv-linter > /dev/null 2>&1; then
+        info "SKIP  valid .env.example → passes (dotenv-linter not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  valid .env.example → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-env-test")
+    printf '%s' "$DOTENV_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # Keys in alphabetical order, no duplicates — passes dotenv-linter.
+    printf 'APP_ENV=production\nAPP_NAME=myapp\n' > "$T/.env.example"
+    git -C "$T" add .pre-commit-config.yaml .env.example
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid .env.example → passes" 0 "$RC"
+}
+
+test_clean_commit_on_branch_passes() {
+    T=$(make_repo "feature/clean-test")
+    # Use an empty pre-commit config so the full linter suite is not invoked
+    # when pre-commit is available on this machine.
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# Test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "clean commit on feature branch → passes" 0 "$RC"
+}
+
+# ── Run ───────────────────────────────────────────────────────────────────────
+
+info "Running acceptance tests..."
+test_nothing_staged_fails
+test_commit_on_main_rejected
+test_commit_on_master_rejected
+test_merge_commit_rejected
+test_ignored_tracked_file_rejected
+test_broken_env_file_rejected
+test_valid_env_file_passes
+test_clean_commit_on_branch_passes
+
+printf '\n'
+info "Results: $PASS passed, $FAIL failed"
+
+[ "$FAIL" -eq 0 ] || die "$FAIL test(s) failed"
+success "All acceptance tests passed."

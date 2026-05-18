@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - NVM installation via package repo in dependency scripts
 - Comprehensive install.sh with tool check-status table
 - add .markdownlintignore to exclude CHANGELOG.md from markdown linting
+- Acceptance test script to verify pre-commit hook orchestration with isolated temporary repositories
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
@@ -39,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Remove duplicate buildcheck call from buildtest — buildcheck is invoked separately by the pre-commit hook
 - Fix incorrect package IDs in dotnet_tool_installed calls: buildcheck is FunFair.BuildCheck and code-analysis is Credfeto.DotNet.Code.Analysis.Overrides.Cmd
 - Removed shellcheck suppression comments and fixed underlying issues: used while/read loops and xargs in place of unquoted variable expansion, and added .shellcheckrc with external-sources=true to allow following sourced files
+- dotenv-linter entry updated to use check subcommand for v4 compatibility
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
