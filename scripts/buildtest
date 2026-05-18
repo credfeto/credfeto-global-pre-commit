@@ -15,6 +15,14 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
+# Returns true (0) when running inside a Claude Code Bash-tool session.
+# Claude Code sets CLAUDECODE=1 in every shell it spawns via the Bash tool;
+# that value is inherited by subprocesses (e.g. git hooks).
+# Source: https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables
+is_ai_agent() {
+    [ "${CLAUDECODE}" = "1" ]
+}
+
 # Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
 dotnet_tool_installed() {
     dotnet tool list 2>/dev/null \
@@ -26,6 +34,18 @@ dotnet_tool_installed() {
             'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
         && return 0
     return 1
+}
+
+require_dotnet_tool() {
+    dotnet_tool_installed "$1" "$2" && return 0
+    if is_ai_agent; then
+        _repo=$(git rev-parse --show-toplevel 2>/dev/null)
+        if [ -n "$_repo" ] && { [ -f "$_repo/.config/dotnet-tools.json" ] || [ -f "$_repo/dotnet-tools.json" ]; }; then
+            die "dotnet-tools.json exists in this repository but $2 ($1) is not installed — add $2 to the manifest and run 'dotnet tool restore'. Do not install it directly."
+        fi
+        die "Required package ($2) is not installed so cannot run $1.  Operator needs to provide this to the environment.  Do not install it yourself"
+    fi
+    die "$1 dotnet tool is not installed — install with: dotnet tool install --local $2"
 }
 
 CLEAR="http-cache"
@@ -71,7 +91,7 @@ fi
 
 RESTORE=0
 if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
-  dotnet_tool_installed code-analysis Credfeto.DotNet.Code.Analysis.Overrides.Cmd || die "code-analysis dotnet tool is not installed — install with: dotnet tool install --local Credfeto.DotNet.Code.Analysis.Overrides.Cmd"
+  require_dotnet_tool code-analysis Credfeto.DotNet.Code.Analysis.Overrides.Cmd
   info "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
   dotnet code-analysis "$RULESET_TYPE" \
     --ruleset "$RULESET_FILE" \
