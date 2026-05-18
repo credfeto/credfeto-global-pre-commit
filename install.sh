@@ -23,7 +23,7 @@ chmod +x \
     "$SCRIPTS_DIR/run-eslint" \
     "$SCRIPTS_DIR/run-stylelint" \
     "$SCRIPTS_DIR/run-psscriptanalyzer" \
-    "$SCRIPTS_DIR/acceptance-test"
+    "$REPO_DIR/acceptance-test"
 
 # ── Register globally with git ────────────────────────────────────────────────
 git config --global core.hooksPath "$HOOKS_DIR"

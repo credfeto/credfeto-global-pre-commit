@@ -24,4 +24,6 @@ The `chmod +x` list in `install.sh` must exactly match the set of files that:
 - Exist in `scripts/`, **and**
 - Are executable entry points (called by a hook or directly by a user).
 
+Root-level executables (e.g. `acceptance-test`) use `$REPO_DIR/<name>` in the chmod block rather than `$SCRIPTS_DIR/<name>` — they do not go in `scripts/`.
+
 Before committing any change that adds, removes, or renames a script, verify the `chmod +x` list is consistent with the actual contents of `scripts/`.
