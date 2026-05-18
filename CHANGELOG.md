@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - add .markdownlintignore to exclude CHANGELOG.md from markdown linting
 - Acceptance test script to verify pre-commit hook orchestration with isolated temporary repositories
 - Auto-detect Arch-based or Debian-based Linux in install and run the appropriate install-deps script automatically
+- GitHub Actions workflow to install dependencies, run acceptance tests, and always clean up the global pre-commit hooks on the runner
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
