@@ -124,4 +124,4 @@ install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION
 echo ""
 echo "All dependencies installed."
 echo "You may need to start a new shell for PATH changes (pipx) to take effect."
-echo "Run ./install.sh to register the global git hooks."
+echo "Run ./install to register the global git hooks."

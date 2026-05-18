@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Comprehensive install.sh with tool check-status table
 - add .markdownlintignore to exclude CHANGELOG.md from markdown linting
 - Acceptance test script to verify pre-commit hook orchestration with isolated temporary repositories
+- Auto-detect Arch-based or Debian-based Linux in install and run the appropriate install-deps script automatically
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
@@ -60,6 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - buildtest: publish each project with IsPublishable=true after testing
 - split actionlint to workflows only; add composite-action-lint hook for .github/actions
 - hooks freshness check: support stripped installs with HEAD/UPSTREAM from .env when .git is absent
+- Renamed install.sh, install-deps-arch.sh, and install-deps-debian.sh to remove .sh extension, matching the no-extension convention used by scripts in scripts/
 
 ### Deprecated
 ### Removed
