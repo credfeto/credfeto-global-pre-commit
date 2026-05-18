@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fix incorrect package IDs in dotnet_tool_installed calls: buildcheck is FunFair.BuildCheck and code-analysis is Credfeto.DotNet.Code.Analysis.Overrides.Cmd
 - Removed shellcheck suppression comments and fixed underlying issues: used while/read loops and xargs in place of unquoted variable expansion, and added .shellcheckrc with external-sources=true to allow following sourced files
 - dotenv-linter entry updated to use check subcommand for v4 compatibility
+- end-of-file-fixer no longer modifies CHANGELOG.md, which is owned by the dotnet changelog tool
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

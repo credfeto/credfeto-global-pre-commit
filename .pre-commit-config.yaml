@@ -47,6 +47,9 @@ repos:
         entry: end-of-file-fixer
         language: system
         types: [text]
+        # CHANGELOG.md is owned by dotnet changelog tool; its trailing newline
+        # state must not be altered by this fixer.
+        exclude: ^CHANGELOG\.md$
 
       - id: trailing-whitespace
         name: trim trailing whitespace
