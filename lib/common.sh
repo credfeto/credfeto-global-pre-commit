@@ -47,8 +47,8 @@ install_github_release() {
         | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
         || die "failed to fetch $cmd version"
     local asset="${asset_tmpl//VERSION/$ver}"
-    asset="${asset//ARCH/$ARCH_GO}"
     asset="${asset//UARCH/$ARCH_UNAME}"
+    asset="${asset//ARCH/$ARCH_GO}"
     local url="https://github.com/${repo}/releases/download/v${ver}/${asset}"
     echo "  Installing $cmd ${ver}..."
     if [ "$binary" = "BIN" ]; then
