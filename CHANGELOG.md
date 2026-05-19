@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Acceptance test script to verify pre-commit hook orchestration with isolated temporary repositories
 - Auto-detect Arch-based or Debian-based Linux in install and run the appropriate install-deps script automatically
 - GitHub Actions workflow to install dependencies, run acceptance tests, and always clean up the global pre-commit hooks on the runner
+- Added acceptance tests for PSScriptAnalyzer (pwsh) linter hook covering pass and fail cases
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
@@ -44,6 +45,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Removed shellcheck suppression comments and fixed underlying issues: used while/read loops and xargs in place of unquoted variable expansion, and added .shellcheckrc with external-sources=true to allow following sourced files
 - dotenv-linter entry updated to use check subcommand for v4 compatibility
 - end-of-file-fixer no longer modifies CHANGELOG.md, which is owned by the dotnet changelog tool
+- install-deps-debian: fall back to pipx for pylint on Ubuntu 24.04 where python3-pylint apt package was removed
+- install-deps-debian: use lowercase hadolint-linux-ARCH asset name for hadolint v2.14.0+
+- install-deps-debian: fix dotenv-linter asset template to use x86_64/aarch64 (UARCH) naming
+- Fixed substitution order in install_github_release so UARCH is expanded before ARCH, preventing UARCH from being mangled into Uamd64
+- install_github_release: use python3 JSON parsing for GitHub releases/latest to handle minified API responses reliably
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

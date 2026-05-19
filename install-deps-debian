@@ -31,7 +31,6 @@ sudo apt-get install -y \
     shellcheck \
     yamllint \
     python3-flake8 \
-    python3-pylint \
     libxml2-utils \
     curl \
     gpg \
@@ -50,6 +49,13 @@ echo "==> ansible-lint"
 if ! sudo apt-get install -y ansible-lint 2>/dev/null; then
     echo "  ansible-lint not in apt, installing via pipx"
     pipx_ensure ansible-lint
+fi
+
+# pylint — apt package removed in Ubuntu 24.04+; fall back to pipx.
+echo "==> pylint"
+if ! sudo apt-get install -y python3-pylint 2>/dev/null; then
+    echo "  python3-pylint not in apt, installing pylint via pipx"
+    pipx_ensure pylint
 fi
 
 # ── PowerShell ────────────────────────────────────────────────────────────────
@@ -94,7 +100,7 @@ fi
 # releases and installed to /usr/local/bin.
 echo "==> Binary tools from GitHub releases"
 
-install_github_release hadolint hadolint/hadolint "hadolint-Linux-UARCH" BIN
+install_github_release hadolint hadolint/hadolint "hadolint-linux-UARCH" BIN
 
 # actionlint — prefer go install, fall back to binary download
 if has go; then
@@ -118,7 +124,7 @@ else
     echo "  go not found — skipping composite-action-lint (install go and rerun)" >&2
 fi
 
-install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-ARCH.tar.gz"
+install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-UARCH.tar.gz"
 install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
 
 echo ""
