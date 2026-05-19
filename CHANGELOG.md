@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Removed shellcheck suppression comments and fixed underlying issues: used while/read loops and xargs in place of unquoted variable expansion, and added .shellcheckrc with external-sources=true to allow following sourced files
 - dotenv-linter entry updated to use check subcommand for v4 compatibility
 - end-of-file-fixer no longer modifies CHANGELOG.md, which is owned by the dotnet changelog tool
+- install-deps-debian: fall back to pipx for pylint on Ubuntu 24.04 where python3-pylint apt package was removed
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

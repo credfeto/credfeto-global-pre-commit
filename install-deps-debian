@@ -31,7 +31,6 @@ sudo apt-get install -y \
     shellcheck \
     yamllint \
     python3-flake8 \
-    python3-pylint \
     libxml2-utils \
     curl \
     gpg \
@@ -50,6 +49,13 @@ echo "==> ansible-lint"
 if ! sudo apt-get install -y ansible-lint 2>/dev/null; then
     echo "  ansible-lint not in apt, installing via pipx"
     pipx_ensure ansible-lint
+fi
+
+# pylint — apt package removed in Ubuntu 24.04+; fall back to pipx.
+echo "==> pylint"
+if ! sudo apt-get install -y python3-pylint 2>/dev/null; then
+    echo "  python3-pylint not in apt, installing pylint via pipx"
+    pipx_ensure pylint
 fi
 
 # ── PowerShell ────────────────────────────────────────────────────────────────
