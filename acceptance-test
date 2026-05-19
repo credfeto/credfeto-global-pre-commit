@@ -146,6 +146,19 @@ DOTENV_PRECOMMIT_CONFIG='repos:
         files: (^|/)\.env(\.[^/]+)?$
 '
 
+# Pre-commit config snippet used by the two xmllint tests below.
+# Scoped to xmllint only so no other linter can interfere with the result.
+XMLLINT_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: xmllint
+        name: xmllint
+        entry: xmllint
+        args: [--noout]
+        language: system
+        types: [xml]
+'
+
 # Pre-commit config snippet used by the two PSScriptAnalyzer tests below.
 # Uses run-psscriptanalyzer only so no other linter can interfere with the result.
 PSSCRIPTANALYZER_PRECOMMIT_CONFIG="repos:
@@ -194,6 +207,43 @@ test_valid_env_file_passes() {
     run_hook "$T"; RC=$?
     destroy_repo "$T"
     assert_exit "valid .env.example → passes" 0 "$RC"
+}
+
+test_broken_xml_rejected() {
+    if ! command -v xmllint > /dev/null 2>&1; then
+        info "SKIP  malformed .xml → rejected (xmllint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  malformed .xml → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-xml-test")
+    printf '%s' "$XMLLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # Unclosed tag makes this invalid XML.
+    printf '<root><child></root>\n' > "$T/data.xml"
+    git -C "$T" add .pre-commit-config.yaml data.xml
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "malformed .xml (unclosed tag) → rejected" 1 "$RC"
+}
+
+test_valid_xml_passes() {
+    if ! command -v xmllint > /dev/null 2>&1; then
+        info "SKIP  well-formed .xml → passes (xmllint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  well-formed .xml → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-xml-test")
+    printf '%s' "$XMLLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    printf '<root><child/></root>\n' > "$T/data.xml"
+    git -C "$T" add .pre-commit-config.yaml data.xml
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "well-formed .xml → passes" 0 "$RC"
 }
 
 test_broken_ps1_rejected() {
@@ -264,6 +314,8 @@ test_ignored_tracked_file_rejected
 test_broken_env_file_rejected
 test_valid_env_file_passes
 test_clean_commit_on_branch_passes
+test_broken_xml_rejected
+test_valid_xml_passes
 test_broken_ps1_rejected
 test_clean_ps1_passes
 
