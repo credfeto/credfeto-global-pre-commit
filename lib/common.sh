@@ -44,7 +44,7 @@ install_github_release() {
     fi
     local ver
     ver=$(curl -sSf "https://api.github.com/repos/${repo}/releases/latest" \
-        | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v') \
+        | python3 -c "import json,sys; print(json.load(sys.stdin)['tag_name'].lstrip('v'))") \
         || die "failed to fetch $cmd version"
     local asset="${asset_tmpl//VERSION/$ver}"
     asset="${asset//UARCH/$ARCH_UNAME}"
