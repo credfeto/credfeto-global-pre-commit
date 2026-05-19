@@ -100,7 +100,7 @@ fi
 # releases and installed to /usr/local/bin.
 echo "==> Binary tools from GitHub releases"
 
-install_github_release hadolint hadolint/hadolint "hadolint-Linux-UARCH" BIN
+install_github_release hadolint hadolint/hadolint "hadolint-linux-UARCH" BIN
 
 # actionlint — prefer go install, fall back to binary download
 if has go; then
@@ -124,7 +124,7 @@ else
     echo "  go not found — skipping composite-action-lint (install go and rerun)" >&2
 fi
 
-install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-ARCH.tar.gz"
+install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-UARCH.tar.gz"
 install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
 
 echo ""

@@ -46,6 +46,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - dotenv-linter entry updated to use check subcommand for v4 compatibility
 - end-of-file-fixer no longer modifies CHANGELOG.md, which is owned by the dotnet changelog tool
 - install-deps-debian: fall back to pipx for pylint on Ubuntu 24.04 where python3-pylint apt package was removed
+- install-deps-debian: use lowercase hadolint-linux-ARCH asset name for hadolint v2.14.0+
+- install-deps-debian: fix dotenv-linter asset template to use x86_64/aarch64 (UARCH) naming
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
