@@ -146,6 +146,18 @@ DOTENV_PRECOMMIT_CONFIG='repos:
         files: (^|/)\.env(\.[^/]+)?$
 '
 
+# Pre-commit config snippet used by the two PSScriptAnalyzer tests below.
+# Uses run-psscriptanalyzer only so no other linter can interfere with the result.
+PSSCRIPTANALYZER_PRECOMMIT_CONFIG="repos:
+  - repo: local
+    hooks:
+      - id: run-psscriptanalyzer
+        name: run-psscriptanalyzer
+        entry: $REPO_DIR/scripts/run-psscriptanalyzer
+        language: system
+        files: \.(ps1|psm1|psd1)\$
+"
+
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
         info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
@@ -184,6 +196,51 @@ test_valid_env_file_passes() {
     assert_exit "valid .env.example → passes" 0 "$RC"
 }
 
+test_broken_ps1_rejected() {
+    if ! command -v pwsh > /dev/null 2>&1; then
+        info "SKIP  broken .ps1 → rejected (pwsh not installed)"
+        return
+    fi
+    if ! pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop; exit 0" > /dev/null 2>&1; then
+        info "SKIP  broken .ps1 → rejected (PSScriptAnalyzer module not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken .ps1 → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-ps1-test")
+    printf '%s' "$PSSCRIPTANALYZER_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    printf 'Write-Host "hello"\n' > "$T/test.ps1"
+    git -C "$T" add .pre-commit-config.yaml test.ps1
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken .ps1 (PSAvoidUsingWriteHost violation) → rejected" 1 "$RC"
+}
+
+test_clean_ps1_passes() {
+    if ! command -v pwsh > /dev/null 2>&1; then
+        info "SKIP  clean .ps1 → passes (pwsh not installed)"
+        return
+    fi
+    if ! pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop; exit 0" > /dev/null 2>&1; then
+        info "SKIP  clean .ps1 → passes (PSScriptAnalyzer module not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  clean .ps1 → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/clean-ps1-test")
+    printf '%s' "$PSSCRIPTANALYZER_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # shellcheck disable=SC2016
+    printf 'function Get-Greeting {\n    param ([string]$Name)\n    Write-Output "Hello, $Name"\n}\n' > "$T/test.ps1"
+    git -C "$T" add .pre-commit-config.yaml test.ps1
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "clean .ps1 → passes" 0 "$RC"
+}
+
 test_clean_commit_on_branch_passes() {
     T=$(make_repo "feature/clean-test")
     # Use an empty pre-commit config so the full linter suite is not invoked
@@ -207,6 +264,8 @@ test_ignored_tracked_file_rejected
 test_broken_env_file_rejected
 test_valid_env_file_passes
 test_clean_commit_on_branch_passes
+test_broken_ps1_rejected
+test_clean_ps1_passes
 
 printf '\n'
 info "Results: $PASS passed, $FAIL failed"
