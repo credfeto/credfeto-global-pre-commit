@@ -237,6 +237,18 @@ COMPOSITE_ACTION_LINT_PRECOMMIT_CONFIG='repos:
         files: ^\.github/actions/.*\.(yml|yaml)$
 '
 
+# Pre-commit config snippet used by the two pylint tests below.
+# Scoped to pylint only so no other linter can interfere with the result.
+PYLINT_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: pylint
+        language: system
+        types: [python]
+'
+
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
         info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
@@ -634,6 +646,44 @@ test_valid_composite_action_passes() {
     assert_exit "valid composite action (shell specified) → passes" 0 "$RC"
 }
 
+test_broken_py_rejected() {
+    if ! command -v pylint > /dev/null 2>&1; then
+        info "SKIP  broken .py file → rejected (pylint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken .py file → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-py-test")
+    printf '%s' "$PYLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # Referencing an undefined variable is a reliable pylint error (E0602).
+    printf 'def bad():\n    print(undefined_var)\n' > "$T/bad.py"
+    git -C "$T" add .pre-commit-config.yaml bad.py
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken .py file (undefined variable) → rejected" 1 "$RC"
+}
+
+test_valid_py_passes() {
+    if ! command -v pylint > /dev/null 2>&1; then
+        info "SKIP  valid .py file → passes (pylint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  valid .py file → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-py-test")
+    printf '%s' "$PYLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # A minimal, pylint-clean module.
+    printf '"""A valid module."""\n\n\ndef greet(name):\n    """Return a greeting."""\n    return f"Hello, {name}"\n' > "$T/good.py"
+    git -C "$T" add .pre-commit-config.yaml good.py
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid .py file → passes" 0 "$RC"
+}
+
 # ── Run ───────────────────────────────────────────────────────────────────────
 
 info "Running acceptance tests..."
@@ -662,6 +712,8 @@ test_invalid_sql_rejected
 test_valid_sql_passes
 test_broken_composite_action_rejected
 test_valid_composite_action_passes
+test_broken_py_rejected
+test_valid_py_passes
 
 printf '\n'
 info "Results: $PASS passed, $FAIL failed"
