@@ -54,7 +54,8 @@ if [ -f "$HOME/.dotnet/dotnet" ]; then
     die "Corrupt environment: dotnet found at \$HOME/.dotnet/dotnet — remove it; the canonical install is /usr/share/dotnet/dotnet"
 fi
 if has_cmd dotnet; then
-    _DOTNET_REAL=$(readlink -f "$(command -v dotnet)" 2>/dev/null)
+    _DOTNET_BIN=$(command -v dotnet)
+    _DOTNET_REAL=$(readlink -f "$_DOTNET_BIN" 2>/dev/null || echo "$_DOTNET_BIN")
     if [ "$_DOTNET_REAL" != "/usr/share/dotnet/dotnet" ]; then
         die "Corrupt environment: dotnet resolves to ${_DOTNET_REAL} but must be at /usr/share/dotnet/dotnet"
     fi

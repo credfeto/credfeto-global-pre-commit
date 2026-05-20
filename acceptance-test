@@ -33,7 +33,7 @@ command -v git > /dev/null 2>&1 || die "git is not installed"
 # ── PATH sanitisation ─────────────────────────────────────────────────────────
 # The hook enforces that dotnet (if present) must resolve to
 # /usr/share/dotnet/dotnet.  On machines where dotnet lives elsewhere
-# (e.g. /usr/share/dotnet/dotnet) we strip it from the PATH used by general
+# (e.g. /usr/local/bin/dotnet) we strip it from the PATH used by general
 # tests so those tests are not aborted by the environment-sanity check.
 # Tests that specifically exercise the dotnet-path validation use their own
 # controlled PATH/HOME and do not go through run_hook.
@@ -42,7 +42,7 @@ _ACTUAL_DOTNET_BIN=$(command -v dotnet 2>/dev/null || true)
 _ACTUAL_DOTNET_REAL=$(readlink -f "$_ACTUAL_DOTNET_BIN" 2>/dev/null || echo "$_ACTUAL_DOTNET_BIN")
 if [ -n "$_ACTUAL_DOTNET_BIN" ] && [ "$_ACTUAL_DOTNET_REAL" != "$_EXPECTED_DOTNET" ]; then
     _DOTNET_DIR=$(dirname "$_ACTUAL_DOTNET_BIN")
-    TEST_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "^${_DOTNET_DIR}\$" | tr '\n' ':' | sed 's/:$//')
+    TEST_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -Fxv "$_DOTNET_DIR" | tr '\n' ':' | sed 's/:$//')
 else
     TEST_PATH="$PATH"
 fi
@@ -443,7 +443,6 @@ test_corrupt_home_dotnet_rejected() {
     RC=$?
     destroy_repo "$T"
     rm -rf "$FAKE_HOME"
-    rm -f "$HOOK_OUTPUT"
     assert_exit "dotnet at \$HOME/.dotnet/dotnet → rejected" 1 "$RC"
 }
 
@@ -464,24 +463,26 @@ test_dotnet_wrong_path_rejected() {
     ( cd "$T" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
     RC=$?
     destroy_repo "$T"
-    rm -f "$HOOK_OUTPUT"
     assert_exit "dotnet at wrong path (${_ACTUAL_DOTNET_REAL}) → rejected" 1 "$RC"
 }
 
 test_dotnet_correct_path_passes() {
-    if [ ! -f "$_EXPECTED_DOTNET" ]; then
-        info "SKIP  dotnet at correct path → passes ($_EXPECTED_DOTNET not present)"
+    if [ "$_ACTUAL_DOTNET_REAL" != "$_EXPECTED_DOTNET" ]; then
+        info "SKIP  dotnet at correct path → passes (dotnet not at $_EXPECTED_DOTNET)"
         return
     fi
+    # Build a PATH that puts the expected dotnet directory first so
+    # command -v dotnet inside the hook resolves to exactly $_EXPECTED_DOTNET.
+    _EXPECTED_DOTNET_DIR=$(dirname "$_EXPECTED_DOTNET")
+    _CORRECT_PATH="${_EXPECTED_DOTNET_DIR}:${TEST_PATH}"
     T=$(make_repo "feature/correct-dotnet-test")
     printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
     printf '# test\n' > "$T/README.md"
     git -C "$T" add .pre-commit-config.yaml README.md
     HOOK_OUTPUT=$(mktemp)
-    ( cd "$T" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
+    ( cd "$T" && PATH="$_CORRECT_PATH" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
     RC=$?
     destroy_repo "$T"
-    rm -f "$HOOK_OUTPUT"
     assert_exit "dotnet at correct path → passes" 0 "$RC"
 }
 
