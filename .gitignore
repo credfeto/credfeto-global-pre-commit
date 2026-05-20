@@ -338,7 +338,7 @@ src/Data
 # Mac files
 .DS_Store
 
-# Dotnet
+# Dotnet 
 .dotnet/
 
 # Jetbrains
@@ -372,3 +372,5 @@ dotnet-tools.json
 /build/
 /coverage/
 node_modules
+
+.pre-commit-config.yaml
