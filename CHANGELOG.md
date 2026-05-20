@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added acceptance tests for PSScriptAnalyzer (pwsh) linter hook covering pass and fail cases
 - Add acceptance tests for xmllint hook to verify well-formed XML passes and malformed XML is rejected (#89)
 - Add acceptance tests for eslint linter
+- Add acceptance tests for actionlint hook
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
