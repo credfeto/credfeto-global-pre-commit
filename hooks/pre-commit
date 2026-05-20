@@ -54,6 +54,10 @@ if has_cmd pre-commit; then HAS_PRECOMMIT=1; else HAS_PRECOMMIT=0; fi
 if has_cmd sqlfluff;   then HAS_SQLFLUFF=1;  else HAS_SQLFLUFF=0;  fi
 if has_cmd cfn-lint;   then HAS_CFNLINT=1;   else HAS_CFNLINT=0;   fi
 
+# Execution-state flags exported for local scripts to avoid re-running tools.
+SQLFLUFF_EXECUTED=0
+export SQLFLUFF_EXECUTED
+
 # ── Hooks-repo freshness check (AI agents only) ───────────────────────────────
 # Two modes depending on whether the hooks repo retains its .git directory:
 #
@@ -181,6 +185,7 @@ if [ -n "$SQL_CHANGES" ]; then
             info "Staging files modified by sqlfluff fix..."
             echo "$SQLFLUFF_FIXED" | xargs git add --
         fi
+        SQLFLUFF_EXECUTED=1
     fi
 fi
 
