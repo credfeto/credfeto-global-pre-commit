@@ -54,6 +54,13 @@ if has_cmd pre-commit; then HAS_PRECOMMIT=1; else HAS_PRECOMMIT=0; fi
 if has_cmd sqlfluff;   then HAS_SQLFLUFF=1;  else HAS_SQLFLUFF=0;  fi
 if has_cmd cfn-lint;   then HAS_CFNLINT=1;   else HAS_CFNLINT=0;   fi
 
+# Execution-state flags exported for local scripts to avoid re-running tools.
+# Use := to preserve a value already exported by the calling script (e.g. the
+# local hook pre-sets this to 1 before invoking the global hook so that sqlfluff
+# runs exactly once — in the local hook — rather than in both).
+: "${SQLFLUFF_EXECUTED:=0}"
+export SQLFLUFF_EXECUTED
+
 # ── Hooks-repo freshness check (AI agents only) ───────────────────────────────
 # Two modes depending on whether the hooks repo retains its .git directory:
 #
@@ -173,9 +180,15 @@ if [ -n "$SQL_CHANGES" ]; then
         info "Detected SQL changes — running dotnet tsqllint..."
         dotnet tsqllint . || die "dotnet tsqllint"
     fi
-    if [ "$HAS_SQLFLUFF" -eq 1 ]; then
-        info "Detected SQL changes — running sqlfluff lint..."
-        sqlfluff lint . || die "sqlfluff lint"
+    if [ "$HAS_SQLFLUFF" -eq 1 ] && [ "${SQLFLUFF_EXECUTED:-0}" != "1" ]; then
+        info "Detected SQL changes — running sqlfluff fix..."
+        sqlfluff fix . || die "sqlfluff fix"
+        SQLFLUFF_FIXED=$(git diff --name-only | grep -E '\.sql$' || true)
+        if [ -n "$SQLFLUFF_FIXED" ]; then
+            info "Staging files modified by sqlfluff fix..."
+            echo "$SQLFLUFF_FIXED" | xargs git add --
+        fi
+        export SQLFLUFF_EXECUTED=1
     fi
 fi
 

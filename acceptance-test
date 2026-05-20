@@ -411,6 +411,48 @@ test_clean_commit_on_branch_passes() {
     assert_exit "clean commit on feature branch → passes" 0 "$RC"
 }
 
+test_invalid_sql_rejected() {
+    if ! command -v sqlfluff > /dev/null 2>&1; then
+        info "SKIP  invalid .sql → rejected (sqlfluff not installed)"
+        return
+    fi
+    # tsqllint is required when dotnet is present; local manifests are not visible from
+    # isolated temp repos, so only global tools or PATH binaries count here.
+    if command -v dotnet > /dev/null 2>&1 && ! command -v tsqllint > /dev/null 2>&1 && ! dotnet tool list --global 2>/dev/null | grep -qi tsqllint; then
+        info "SKIP  invalid .sql → rejected (tsqllint not installed globally)"
+        return
+    fi
+    T=$(make_repo "feature/invalid-sql-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '[sqlfluff]\ndialect = ansi\n' > "$T/.sqlfluff"
+    printf 'SELECT FROM WHERE;\n' > "$T/broken.sql"
+    git -C "$T" add .pre-commit-config.yaml .sqlfluff broken.sql
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "invalid .sql (parse error) → rejected" 1 "$RC"
+}
+
+test_valid_sql_passes() {
+    if ! command -v sqlfluff > /dev/null 2>&1; then
+        info "SKIP  valid .sql → passes (sqlfluff not installed)"
+        return
+    fi
+    # tsqllint is required when dotnet is present; local manifests are not visible from
+    # isolated temp repos, so only global tools or PATH binaries count here.
+    if command -v dotnet > /dev/null 2>&1 && ! command -v tsqllint > /dev/null 2>&1 && ! dotnet tool list --global 2>/dev/null | grep -qi tsqllint; then
+        info "SKIP  valid .sql → passes (tsqllint not installed globally)"
+        return
+    fi
+    T=$(make_repo "feature/valid-sql-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '[sqlfluff]\ndialect = ansi\n' > "$T/.sqlfluff"
+    printf 'SELECT id FROM users;\n' > "$T/clean.sql"
+    git -C "$T" add .pre-commit-config.yaml .sqlfluff clean.sql
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid .sql → passes" 0 "$RC"
+}
+
 # ── Run ───────────────────────────────────────────────────────────────────────
 
 info "Running acceptance tests..."
@@ -430,6 +472,8 @@ test_broken_js_rejected
 test_valid_js_passes
 test_broken_workflow_rejected
 test_valid_workflow_passes
+test_invalid_sql_rejected
+test_valid_sql_passes
 
 printf '\n'
 info "Results: $PASS passed, $FAIL failed"

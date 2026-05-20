@@ -73,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - split actionlint to workflows only; add composite-action-lint hook for .github/actions
 - hooks freshness check: support stripped installs with HEAD/UPSTREAM from .env when .git is absent
 - Renamed install.sh, install-deps-arch.sh, and install-deps-debian.sh to remove .sh extension, matching the no-extension convention used by scripts in scripts/
+- sqlfluff check now runs fix (auto-correcting style violations) and re-stages any modified files; exports SQLFLUFF_EXECUTED so local scripts can skip a redundant run
 
 ### Deprecated
 ### Removed
