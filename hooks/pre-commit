@@ -174,8 +174,13 @@ if [ -n "$SQL_CHANGES" ]; then
         dotnet tsqllint . || die "dotnet tsqllint"
     fi
     if [ "$HAS_SQLFLUFF" -eq 1 ]; then
-        info "Detected SQL changes — running sqlfluff lint..."
-        sqlfluff lint . || die "sqlfluff lint"
+        info "Detected SQL changes — running sqlfluff fix..."
+        sqlfluff fix . || die "sqlfluff fix"
+        SQLFLUFF_FIXED=$(git diff --name-only | grep -E '\.sql$' || true)
+        if [ -n "$SQLFLUFF_FIXED" ]; then
+            info "Staging files modified by sqlfluff fix..."
+            echo "$SQLFLUFF_FIXED" | xargs git add --
+        fi
     fi
 fi
 
