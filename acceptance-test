@@ -183,6 +183,18 @@ ESLINT_PRECOMMIT_CONFIG="repos:
         files: \.(ts|tsx|js|jsx)\$
 "
 
+# Pre-commit config snippet used by the two actionlint tests below.
+# Scoped to actionlint only so no other linter can interfere with the result.
+ACTIONLINT_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        files: ^\.github/workflows/.*\.(yml|yaml)$
+'
+
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
         info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
@@ -348,6 +360,45 @@ test_valid_js_passes() {
     assert_exit "valid .js (no violations) → passes" 0 "$RC"
 }
 
+test_broken_workflow_rejected() {
+    if ! command -v actionlint > /dev/null 2>&1; then
+        info "SKIP  broken workflow → rejected (actionlint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken workflow → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-workflow-test")
+    printf '%s' "$ACTIONLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    mkdir -p "$T/.github/workflows"
+    # Referencing an undefined step output triggers an actionlint error.
+    printf "name: Broken\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo \"\${{ steps.undefined.outputs.value }}\"\n" > "$T/.github/workflows/broken.yml"
+    git -C "$T" add .pre-commit-config.yaml ".github/workflows/broken.yml"
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken workflow (undefined step output) → rejected" 1 "$RC"
+}
+
+test_valid_workflow_passes() {
+    if ! command -v actionlint > /dev/null 2>&1; then
+        info "SKIP  valid workflow → passes (actionlint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  valid workflow → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-workflow-test")
+    printf '%s' "$ACTIONLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    mkdir -p "$T/.github/workflows"
+    printf 'name: Valid\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo "Hello World"\n' > "$T/.github/workflows/valid.yml"
+    git -C "$T" add .pre-commit-config.yaml ".github/workflows/valid.yml"
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid workflow → passes" 0 "$RC"
+}
+
 test_clean_commit_on_branch_passes() {
     T=$(make_repo "feature/clean-test")
     # Use an empty pre-commit config so the full linter suite is not invoked
@@ -377,6 +428,8 @@ test_broken_ps1_rejected
 test_clean_ps1_passes
 test_broken_js_rejected
 test_valid_js_passes
+test_broken_workflow_rejected
+test_valid_workflow_passes
 
 printf '\n'
 info "Results: $PASS passed, $FAIL failed"
