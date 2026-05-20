@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - GitHub Actions workflow to install dependencies, run acceptance tests, and always clean up the global pre-commit hooks on the runner
 - Added acceptance tests for PSScriptAnalyzer (pwsh) linter hook covering pass and fail cases
 - Add acceptance tests for xmllint hook to verify well-formed XML passes and malformed XML is rejected (#89)
+- Add acceptance tests for eslint linter
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)

@@ -171,6 +171,18 @@ PSSCRIPTANALYZER_PRECOMMIT_CONFIG="repos:
         files: \.(ps1|psm1|psd1)\$
 "
 
+# Pre-commit config snippet used by the two eslint tests below.
+# Uses run-eslint (full path) so no other linter can interfere with the result.
+ESLINT_PRECOMMIT_CONFIG="repos:
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: $REPO_DIR/scripts/run-eslint
+        language: system
+        files: \.(ts|tsx|js|jsx)\$
+"
+
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
         info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
@@ -291,6 +303,51 @@ test_clean_ps1_passes() {
     assert_exit "clean .ps1 → passes" 0 "$RC"
 }
 
+test_broken_js_rejected() {
+    if ! command -v eslint > /dev/null 2>&1; then
+        info "SKIP  broken .js → rejected (eslint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken .js → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-js-test")
+    printf '%s' "$ESLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # Minimal flat config enabling no-unused-vars as an error.
+    printf 'module.exports = [{ rules: { "no-unused-vars": "error" } }];\n' > "$T/eslint.config.cjs"
+    # No-op test script so the hook's npm-test step does not fail independently.
+    printf '{"scripts":{"test":"true"}}' > "$T/package.json"
+    # An unused variable reliably triggers no-unused-vars.
+    printf 'var unused = 1;\n' > "$T/bad.js"
+    git -C "$T" add .pre-commit-config.yaml bad.js
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken .js (unused variable) → rejected" 1 "$RC"
+}
+
+test_valid_js_passes() {
+    if ! command -v eslint > /dev/null 2>&1; then
+        info "SKIP  valid .js → passes (eslint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  valid .js → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-js-test")
+    printf '%s' "$ESLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    printf 'module.exports = [{ rules: { "no-unused-vars": "error" } }];\n' > "$T/eslint.config.cjs"
+    # No-op test script so the hook's npm-test step does not fail independently.
+    printf '{"scripts":{"test":"true"}}' > "$T/package.json"
+    # All variables are used — no violations.
+    printf 'var x = 1;\nconsole.log(x);\n' > "$T/clean.js"
+    git -C "$T" add .pre-commit-config.yaml clean.js
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid .js (no violations) → passes" 0 "$RC"
+}
+
 test_clean_commit_on_branch_passes() {
     T=$(make_repo "feature/clean-test")
     # Use an empty pre-commit config so the full linter suite is not invoked
@@ -318,6 +375,8 @@ test_broken_xml_rejected
 test_valid_xml_passes
 test_broken_ps1_rejected
 test_clean_ps1_passes
+test_broken_js_rejected
+test_valid_js_passes
 
 printf '\n'
 info "Results: $PASS passed, $FAIL failed"
