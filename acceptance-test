@@ -30,6 +30,23 @@ info() {
 [ -x "$HOOK" ] || die "hook not found or not executable: $HOOK"
 command -v git > /dev/null 2>&1 || die "git is not installed"
 
+# ── PATH sanitisation ─────────────────────────────────────────────────────────
+# The hook enforces that dotnet (if present) must resolve to
+# /usr/share/dotnet/dotnet.  On machines where dotnet lives elsewhere
+# (e.g. /usr/local/bin/dotnet) we strip it from the PATH used by general
+# tests so those tests are not aborted by the environment-sanity check.
+# Tests that specifically exercise the dotnet-path validation use their own
+# controlled PATH/HOME and do not go through run_hook.
+_EXPECTED_DOTNET="/usr/share/dotnet/dotnet"
+_ACTUAL_DOTNET_BIN=$(command -v dotnet 2>/dev/null || true)
+_ACTUAL_DOTNET_REAL=$(readlink -f "$_ACTUAL_DOTNET_BIN" 2>/dev/null || echo "$_ACTUAL_DOTNET_BIN")
+if [ -n "$_ACTUAL_DOTNET_BIN" ] && [ "$_ACTUAL_DOTNET_REAL" != "$_EXPECTED_DOTNET" ]; then
+    _DOTNET_DIR=$(dirname "$_ACTUAL_DOTNET_BIN")
+    TEST_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -Fxv "$_DOTNET_DIR" | tr '\n' ':' | sed 's/:$//')
+else
+    TEST_PATH="$PATH"
+fi
+
 # Create an isolated git repo on the given branch (default: feature/acceptance-test).
 # Prints the repo path; stores it in CURRENT_REPO for cleanup.
 make_repo() {
@@ -57,11 +74,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Run the hook in the given repo directory.
-# Exit code is returned; combined stdout+stderr is stored in $HOOK_OUTPUT.
+# Run the hook in the given repo directory using TEST_PATH (dotnet stripped
+# when not at the expected location).  Exit code is returned; combined
+# stdout+stderr is stored in $HOOK_OUTPUT.
 run_hook() {
     HOOK_OUTPUT=$(mktemp)
-    ( cd "$1" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
+    ( cd "$1" && PATH="$TEST_PATH" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
     return $?
 }
 
@@ -411,6 +429,63 @@ test_clean_commit_on_branch_passes() {
     assert_exit "clean commit on feature branch → passes" 0 "$RC"
 }
 
+test_corrupt_home_dotnet_rejected() {
+    FAKE_HOME=$(mktemp -d)
+    mkdir -p "$FAKE_HOME/.dotnet"
+    printf '#!/bin/sh\necho fake dotnet\n' > "$FAKE_HOME/.dotnet/dotnet"
+    chmod +x "$FAKE_HOME/.dotnet/dotnet"
+    T=$(make_repo "feature/corrupt-dotnet-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    HOOK_OUTPUT=$(mktemp)
+    ( cd "$T" && HOME="$FAKE_HOME" && PATH="$TEST_PATH" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
+    RC=$?
+    destroy_repo "$T"
+    rm -rf "$FAKE_HOME"
+    assert_exit "dotnet at \$HOME/.dotnet/dotnet → rejected" 1 "$RC"
+}
+
+test_dotnet_wrong_path_rejected() {
+    if [ -z "$_ACTUAL_DOTNET_BIN" ]; then
+        info "SKIP  dotnet at wrong path → rejected (dotnet not installed)"
+        return
+    fi
+    if [ "$_ACTUAL_DOTNET_REAL" = "$_EXPECTED_DOTNET" ]; then
+        info "SKIP  dotnet at wrong path → rejected (dotnet is already at expected path)"
+        return
+    fi
+    T=$(make_repo "feature/wrong-dotnet-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    HOOK_OUTPUT=$(mktemp)
+    ( cd "$T" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
+    RC=$?
+    destroy_repo "$T"
+    assert_exit "dotnet at wrong path (${_ACTUAL_DOTNET_REAL}) → rejected" 1 "$RC"
+}
+
+test_dotnet_correct_path_passes() {
+    if [ "$_ACTUAL_DOTNET_REAL" != "$_EXPECTED_DOTNET" ]; then
+        info "SKIP  dotnet at correct path → passes (dotnet not at $_EXPECTED_DOTNET)"
+        return
+    fi
+    # Build a PATH that puts the expected dotnet directory first so
+    # command -v dotnet inside the hook resolves to exactly $_EXPECTED_DOTNET.
+    _EXPECTED_DOTNET_DIR=$(dirname "$_EXPECTED_DOTNET")
+    _CORRECT_PATH="${_EXPECTED_DOTNET_DIR}:${TEST_PATH}"
+    T=$(make_repo "feature/correct-dotnet-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    HOOK_OUTPUT=$(mktemp)
+    ( cd "$T" && PATH="$_CORRECT_PATH" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
+    RC=$?
+    destroy_repo "$T"
+    assert_exit "dotnet at correct path → passes" 0 "$RC"
+}
+
 test_invalid_sql_rejected() {
     if ! command -v sqlfluff > /dev/null 2>&1; then
         info "SKIP  invalid .sql → rejected (sqlfluff not installed)"
@@ -472,6 +547,9 @@ test_broken_js_rejected
 test_valid_js_passes
 test_broken_workflow_rejected
 test_valid_workflow_passes
+test_corrupt_home_dotnet_rejected
+test_dotnet_wrong_path_rejected
+test_dotnet_correct_path_passes
 test_invalid_sql_rejected
 test_valid_sql_passes
 
