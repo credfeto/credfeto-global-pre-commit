@@ -225,6 +225,18 @@ STYLELINT_PRECOMMIT_CONFIG="repos:
         files: \\.css\$
 "
 
+# Pre-commit config snippet used by the two composite-action-lint tests below.
+# Scoped to composite-action-lint only so no other linter can interfere with the result.
+COMPOSITE_ACTION_LINT_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: composite-action-lint
+        name: composite-action-lint
+        entry: composite-action-lint
+        language: system
+        files: ^\.github/actions/.*\.(yml|yaml)$
+'
+
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
         info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
@@ -582,6 +594,46 @@ test_valid_sql_passes() {
     assert_exit "valid .sql → passes" 0 "$RC"
 }
 
+test_broken_composite_action_rejected() {
+    if ! command -v composite-action-lint > /dev/null 2>&1; then
+        info "SKIP  broken composite action → rejected (composite-action-lint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken composite action → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-composite-action-test")
+    printf '%s' "$COMPOSITE_ACTION_LINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    mkdir -p "$T/.github/actions/bad-action"
+    # A run step without a shell field reliably triggers a composite-action-lint error.
+    printf 'name: "Bad Action"\ndescription: "Missing shell"\nruns:\n  using: composite\n  steps:\n    - run: echo "hello"\n' > "$T/.github/actions/bad-action/action.yml"
+    git -C "$T" add .pre-commit-config.yaml ".github/actions/bad-action/action.yml"
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken composite action (run step missing shell) → rejected" 1 "$RC"
+}
+
+test_valid_composite_action_passes() {
+    if ! command -v composite-action-lint > /dev/null 2>&1; then
+        info "SKIP  valid composite action → passes (composite-action-lint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  valid composite action → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-composite-action-test")
+    printf '%s' "$COMPOSITE_ACTION_LINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    mkdir -p "$T/.github/actions/good-action"
+    # All run steps include shell — no violations.
+    printf 'name: "Good Action"\ndescription: "Valid composite action"\nruns:\n  using: composite\n  steps:\n    - run: echo "hello"\n      shell: bash\n' > "$T/.github/actions/good-action/action.yml"
+    git -C "$T" add .pre-commit-config.yaml ".github/actions/good-action/action.yml"
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid composite action (shell specified) → passes" 0 "$RC"
+}
+
 # ── Run ───────────────────────────────────────────────────────────────────────
 
 info "Running acceptance tests..."
@@ -608,6 +660,8 @@ test_broken_css_rejected
 test_valid_css_passes
 test_invalid_sql_rejected
 test_valid_sql_passes
+test_broken_composite_action_rejected
+test_valid_composite_action_passes
 
 printf '\n'
 info "Results: $PASS passed, $FAIL failed"
