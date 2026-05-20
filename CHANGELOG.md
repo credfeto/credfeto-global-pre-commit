@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add acceptance tests for xmllint hook to verify well-formed XML passes and malformed XML is rejected (#89)
 - Add acceptance tests for eslint linter
 - Add acceptance tests for actionlint hook
+- Environment sanity checks: reject commits if dotnet is found at $HOME/.dotnet/dotnet (corrupt install) or if dotnet on PATH does not resolve to /usr/share/dotnet/dotnet
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
