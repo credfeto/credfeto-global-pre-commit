@@ -305,28 +305,6 @@ src/Data
 *.sdcs
 .redgate
 
-################################################################
-# RIDER settings
-
-.idea/workspace.xml
-*/.idea/*
-!/src/.idea/*
-
-# Default ignored files
-/src/.idea/**/shelf/*
-/src/.idea/**/workspace.xml
-
-# Datasource local storage ignored files
-/src/.idea/**/dataSources/*
-/src/.idea/**/dataSources.local.xml
-
-# Editor-based HTTP Client requests
-/src/.idea/**/httpRequests/*
-
-# settings updater
-!/src/.idea/*/projectSettingsUpdater.xml
-
-################################################################
 
 ################################################################
 # Angular Settings
@@ -342,7 +320,7 @@ src/Data
 .dotnet/
 
 # Jetbrains
-/.idea/
+.idea
 
 # Lock files
 *.lock
@@ -372,3 +350,5 @@ dotnet-tools.json
 /build/
 /coverage/
 node_modules
+
+.pre-commit-config.yaml
