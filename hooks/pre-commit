@@ -4,6 +4,7 @@
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
+HOOKS_REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -47,6 +48,21 @@ STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 
 cd "$REPO_ROOT" || die "cannot cd to repo root"
 
+# Block staged changes to protected lint/config/instruction files in this repo.
+if [ "$REPO_ROOT" = "$HOOKS_REPO_DIR" ]; then
+    RE_PROTECTED_BASE='(^|/)\.sqlfluff[^/]*$|(^|/)\.tsqllint[^/]*$|(^|/)\.editorconfig$|(^|/)\.globalconfig$|(^|/)\.ai-instructions$|(^|/)global\.json$|(^|/)Directory\.Build\.props$|^ai/.*\.md$|^\.github/linters/.+|(^|/)\.csharpierrc$|(^|/)\.[^/]*lint[^/]*$'
+    RE_PROTECTED_SUPERLINTER='(^|/)\.shellcheckrc$|(^|/)\.checkov\.yaml$|(^|/)\.clang-format$|(^|/)\.ansible-lint(\.yml)?$|(^|/)\.arm-ttk\.psd1$|(^|/)\.cfnlintrc\.yml$|(^|/)\.coffee-lint\.json$|(^|/)\.stylelintrc\.json$|(^|/)\.hadolint\.ya?ml$|(^|/)\.editorconfig-checker\.json$|(^|/)actionlint\.yml$|(^|/)zizmor\.yaml$|(^|/)\.gitleaks\.toml$|(^|/)\.golangci\.yml$|(^|/)\.groovylintrc\.json$|(^|/)\.htmlhintrc$|(^|/)(sun_checks|google_checks)\.xml$|(^|/)eslint\.config\.mjs$|(^|/)\.jscpd\.json$|(^|/)\.chktexrc$|(^|/)\.luacheckrc$|(^|/)\.markdown-lint\.yml$|(^|/)\.openapirc\.yml$|(^|/)php\.ini$|(^|/)phpcs\.xml$|(^|/)phpstan\.neon$|(^|/)psalm\.xml$|(^|/)\.powershell-psscriptanalyzer\.psd1$|(^|/)\.pre-commit-config\.yaml$|(^|/)\.protolintrc\.yml$|(^|/)\.python-black$|(^|/)\.flake8$|(^|/)\.isort\.cfg$|(^|/)\.mypy\.ini$|(^|/)\.python-lint$|(^|/)\.ruff\.toml$|(^|/)\.lintr$|(^|/)\.ruby-lint\.yml$|(^|/)\.scalafmt\.conf$|(^|/)\.snakefmt\.toml$|(^|/)\.codespellrc$|(^|/)\.tflint\.hcl$|(^|/)trivy\.yaml$|(^|/)\.textlintrc$|(^|/)\.yaml-lint\.yml$|(^|/)\.clj-kondo/config\.edn$'
+    RE_PROTECTED_IGNORES='(^|/)\.markdownlintignore$|(^|/)\.eslintignore$|(^|/)\.stylelintignore$|(^|/)\.sqlfluffignore$|(^|/)\.ansible-lint-ignore$|(^|/)\.prettierignore$'
+    RE_PROTECTED_ALL="${RE_PROTECTED_BASE}|${RE_PROTECTED_SUPERLINTER}|${RE_PROTECTED_IGNORES}"
+
+    PROTECTED_CHANGES=$(printf '%s\n' "$ALL_STAGED" | grep -E "$RE_PROTECTED_ALL" || true)
+    if [ -n "$PROTECTED_CHANGES" ]; then
+        printf '\n\033[31m✗\033[0m %s\n' "Protected files cannot be added or changed:" >&2
+        echo "$PROTECTED_CHANGES" | sed 's/^/  /' | sort -u >&2
+        die "remove protected file changes from this commit"
+    fi
+fi
+
 # ── .NET install-location sanity ─────────────────────────────────────────────
 # A per-user dotnet at $HOME/.dotnet shadows the system binary and causes
 # build/test inconsistencies.  The only valid install is /usr/share/dotnet/dotnet.
@@ -84,7 +100,6 @@ export SQLFLUFF_EXECUTED
 # .git absent   — stripped install; read HEAD=<sha> and UPSTREAM=<url> from a
 #                 .env file in the hooks root and compare against git ls-remote.
 if is_ai_agent; then
-    HOOKS_REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
     if [ -d "$HOOKS_REPO_DIR/.git" ]; then
         if git -C "$HOOKS_REPO_DIR" remote get-url origin > /dev/null 2>&1; then
             UPDATE_CMD="git -C \"$HOOKS_REPO_DIR\" pull && \"$HOOKS_REPO_DIR/install.sh\""
