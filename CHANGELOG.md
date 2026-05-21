@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Environment sanity checks: reject commits if dotnet is found at $HOME/.dotnet/dotnet (corrupt install) or if dotnet on PATH does not resolve to /usr/share/dotnet/dotnet
 - Added acceptance tests for stylelint hook (pass and fail cases)
 - Added pass/fail acceptance tests for composite-action-lint hook
+- Acceptance tests for pylint hook (pass and fail cases)
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
