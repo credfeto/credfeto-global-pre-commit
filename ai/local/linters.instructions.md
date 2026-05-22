@@ -20,6 +20,10 @@ Whenever a linter is added, removed, or reconfigured in `.pre-commit-config.yaml
 
 Remove the corresponding test(s) from `acceptance-test` so the test count stays accurate.
 
+## Protected files (MANDATORY — never delete)
+
+`.pre-commit-config.yaml` is the global pre-commit configuration for this repository. It **must never be deleted, gitignored, or removed from git tracking** under any circumstances. If you find it listed in `.gitignore`, remove the entry. If it is absent from the working tree, restore it from `origin/main`. Violation of this rule will cause pre-commit to fail for all users of this repo.
+
 ## Before every commit (MANDATORY)
 
 Run `./acceptance-test` from the repo root and confirm all tests pass before staging or committing any change to this repository. Do not commit if any test fails.
