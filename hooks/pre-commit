@@ -207,7 +207,7 @@ if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
         dotnet_tool_installed tsqllint TSQLLint || die "tsqllint dotnet tool is not installed — install with: dotnet tool install --local TSQLLint"
         info "Detected SQL changes — running dotnet tsqllint..."
-        dotnet tsqllint . || die "dotnet tsqllint"
+        DOTNET_ROLL_FORWARD=Major dotnet tsqllint . || die "dotnet tsqllint"
     fi
     if [ "$HAS_SQLFLUFF" -eq 1 ] && [ "${SQLFLUFF_EXECUTED:-0}" != "1" ]; then
         info "Detected SQL changes — running sqlfluff fix..."

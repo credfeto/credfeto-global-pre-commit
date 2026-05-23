@@ -57,6 +57,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - install-deps-debian: fix dotenv-linter asset template to use x86_64/aarch64 (UARCH) naming
 - Fixed substitution order in install_github_release so UARCH is expanded before ARCH, preventing UARCH from being mangled into Uamd64
 - install_github_release: use python3 JSON parsing for GitHub releases/latest to handle minified API responses reliably
+- Set DOTNET_ROLL_FORWARD=Major when running dotnet tsqllint to allow roll-forward to newer .NET runtimes (#101)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
