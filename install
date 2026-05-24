@@ -64,6 +64,13 @@ ln -sf "$SCRIPTS_DIR/run-eslint"           "$HOME/.local/bin/run-eslint"
 ln -sf "$SCRIPTS_DIR/run-stylelint"        "$HOME/.local/bin/run-stylelint"
 ln -sf "$SCRIPTS_DIR/run-psscriptanalyzer" "$HOME/.local/bin/run-psscriptanalyzer"
 
+# Go tools are installed to $GOPATH/bin which may not be on PATH — symlink them.
+if command -v go > /dev/null 2>&1; then
+    _gobin="$(go env GOPATH)/bin"
+    [ -f "$_gobin/composite-action-lint" ] && \
+        ln -sf "$_gobin/composite-action-lint" "$HOME/.local/bin/composite-action-lint"
+fi
+
 # ── Sanity-check the pre-commit config ────────────────────────────────────────
 # Every hook in this repo's .pre-commit-config.yaml uses `language: system`
 # (calling a binary already on PATH), so there are no managed environments to
