@@ -93,9 +93,8 @@ if ! has composite-action-lint; then
 else
     echo "  composite-action-lint already installed, skipping"
 fi
-if ! echo "$PATH" | grep -q "${GOPATH:-$HOME/go}/bin"; then
-    echo "warning: add \$GOPATH/bin to PATH in your shell profile (e.g. ~/.bashrc):" >&2
-    echo "  export PATH=\"\$(go env GOPATH)/bin:\$PATH\"" >&2
+if ! echo "$PATH" | grep -q "$(go env GOPATH)/bin"; then
+    echo "warning: \$(go env GOPATH)/bin not on PATH — run ./install to symlink tools into ~/.local/bin" >&2
 fi
 
 # ── pipx packages ─────────────────────────────────────────────────────────────
