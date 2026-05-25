@@ -517,6 +517,13 @@ test_broken_playbook_rejected() {
         info "SKIP  broken playbook → rejected (pre-commit not installed)"
         return
     fi
+    _ANSIBLE_PROBE_DIR=$(mktemp -d)
+    _ANSIBLE_PROBE_OUT=$(ansible-lint --nocolor "$_ANSIBLE_PROBE_DIR" 2>&1 || true)
+    rm -rf "$_ANSIBLE_PROBE_DIR"
+    if printf '%s' "$_ANSIBLE_PROBE_OUT" | grep -qi "do not match\|broken execution"; then
+        info "SKIP  broken playbook → rejected (ansible-lint environment broken: version mismatch)"
+        return
+    fi
     T=$(make_repo "feature/broken-playbook-test")
     printf '%s' "$ANSIBLELINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
     # Using 'yes' for a boolean value triggers the yaml[truthy] rule, which
@@ -535,6 +542,13 @@ test_valid_playbook_passes() {
     fi
     if ! command -v pre-commit > /dev/null 2>&1; then
         info "SKIP  valid playbook → passes (pre-commit not installed)"
+        return
+    fi
+    _ANSIBLE_PROBE_DIR=$(mktemp -d)
+    _ANSIBLE_PROBE_OUT=$(ansible-lint --nocolor "$_ANSIBLE_PROBE_DIR" 2>&1 || true)
+    rm -rf "$_ANSIBLE_PROBE_DIR"
+    if printf '%s' "$_ANSIBLE_PROBE_OUT" | grep -qi "do not match\|broken execution"; then
+        info "SKIP  valid playbook → passes (ansible-lint environment broken: version mismatch)"
         return
     fi
     T=$(make_repo "feature/valid-playbook-test")
