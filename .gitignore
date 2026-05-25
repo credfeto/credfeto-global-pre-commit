@@ -352,4 +352,3 @@ dotnet-tools.json
 node_modules
 
 .pre-commit-config.yaml
-!.pre-commit-config.yaml
