@@ -225,6 +225,19 @@ STYLELINT_PRECOMMIT_CONFIG="repos:
         files: \\.css\$
 "
 
+# Pre-commit config snippet used by the two ansible-lint tests below.
+# Scoped to ansible-lint only so no other linter can interfere with the result.
+ANSIBLELINT_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: ansible-lint
+        name: ansible-lint
+        entry: ansible-lint -v --force-color --exclude .github
+        language: system
+        pass_filenames: false
+        always_run: true
+'
+
 # Pre-commit config snippet used by the two composite-action-lint tests below.
 # Scoped to composite-action-lint only so no other linter can interfere with the result.
 COMPOSITE_ACTION_LINT_PRECOMMIT_CONFIG='repos:
@@ -495,6 +508,45 @@ test_valid_css_passes() {
     assert_exit "valid .css (no violations) → passes" 0 "$RC"
 }
 
+test_broken_playbook_rejected() {
+    if ! command -v ansible-lint > /dev/null 2>&1; then
+        info "SKIP  broken playbook → rejected (ansible-lint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken playbook → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-playbook-test")
+    printf '%s' "$ANSIBLELINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # Using 'yes' for a boolean value triggers the yaml[truthy] rule, which
+    # ansible-lint enforces by default across all profiles.
+    printf '%s\n' '---' '- name: Broken playbook' '  hosts: localhost' '  gather_facts: yes' '  tasks:' '    - name: Hello world' '      ansible.builtin.debug:' '        msg: Hello' > "$T/broken.yml"
+    git -C "$T" add .pre-commit-config.yaml broken.yml
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken playbook (yaml[truthy] violation) → rejected" 1 "$RC"
+}
+
+test_valid_playbook_passes() {
+    if ! command -v ansible-lint > /dev/null 2>&1; then
+        info "SKIP  valid playbook → passes (ansible-lint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  valid playbook → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-playbook-test")
+    printf '%s' "$ANSIBLELINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # Fully spec-clean playbook — no lint violations.
+    printf '%s\n' '---' '- name: Valid test playbook' '  hosts: all' '  gather_facts: false' '  tasks:' '    - name: Print hello' '      ansible.builtin.debug:' '        msg: Hello World' > "$T/clean.yml"
+    git -C "$T" add .pre-commit-config.yaml clean.yml
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid playbook → passes" 0 "$RC"
+}
+
 test_clean_commit_on_branch_passes() {
     T=$(make_repo "feature/clean-test")
     # Use an empty pre-commit config so the full linter suite is not invoked
@@ -684,6 +736,7 @@ test_valid_py_passes() {
     assert_exit "valid .py file → passes" 0 "$RC"
 }
 
+
 # ── Run ───────────────────────────────────────────────────────────────────────
 
 info "Running acceptance tests..."
@@ -708,6 +761,8 @@ test_dotnet_wrong_path_rejected
 test_dotnet_correct_path_passes
 test_broken_css_rejected
 test_valid_css_passes
+test_broken_playbook_rejected
+test_valid_playbook_passes
 test_invalid_sql_rejected
 test_valid_sql_passes
 test_broken_composite_action_rejected
