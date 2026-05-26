@@ -284,6 +284,18 @@ PYLINT_PRECOMMIT_CONFIG='repos:
         types: [python]
 '
 
+# Pre-commit config snippet used by the two flake8 tests below.
+# Scoped to flake8 only so no other linter can interfere with the result.
+FLAKE8_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: flake8
+        name: flake8
+        entry: flake8
+        language: system
+        types: [python]
+'
+
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
         info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
@@ -772,6 +784,44 @@ test_valid_py_passes() {
     assert_exit "valid .py file → passes" 0 "$RC"
 }
 
+test_broken_py_flake8_rejected() {
+    if ! command -v flake8 > /dev/null 2>&1; then
+        info "SKIP  broken .py file (flake8) → rejected (flake8 not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken .py file (flake8) → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-py-flake8-test")
+    printf '%s' "$FLAKE8_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # An unused import is a reliable flake8 violation (F401).
+    printf 'import os\n\n\ndef greet(name):\n    return f"Hello, {name}"\n' > "$T/bad.py"
+    git -C "$T" add .pre-commit-config.yaml bad.py
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken .py file (unused import) → rejected" 1 "$RC"
+}
+
+test_valid_py_flake8_passes() {
+    if ! command -v flake8 > /dev/null 2>&1; then
+        info "SKIP  valid .py file (flake8) → passes (flake8 not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  valid .py file (flake8) → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-py-flake8-test")
+    printf '%s' "$FLAKE8_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # A minimal, flake8-clean module.
+    printf 'def greet(name):\n    return f"Hello, {name}"\n' > "$T/good.py"
+    git -C "$T" add .pre-commit-config.yaml good.py
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid .py file (no violations) → passes" 0 "$RC"
+}
+
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 
@@ -807,6 +857,8 @@ test_broken_composite_action_rejected
 test_valid_composite_action_passes
 test_broken_py_rejected
 test_valid_py_passes
+test_broken_py_flake8_rejected
+test_valid_py_flake8_passes
 
 printf '\n'
 info "Results: $PASS passed, $FAIL failed"
