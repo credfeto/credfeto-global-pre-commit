@@ -1,0 +1,4 @@
+# Override the root .gitignore rule that ignores .pre-commit-config.yaml.
+# The automated gitignore bot manages the root .gitignore; this negation
+# keeps src/.pre-commit-config.yaml tracked despite that.
+!.pre-commit-config.yaml

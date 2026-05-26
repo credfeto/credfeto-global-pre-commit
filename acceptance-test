@@ -3,7 +3,7 @@
 # Each test creates an isolated git repository and removes it on completion.
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOKS_DIR="$REPO_DIR/hooks"
+HOOKS_DIR="$REPO_DIR/src/hooks"
 HOOK="$HOOKS_DIR/pre-commit"
 
 PASS=0
@@ -206,7 +206,7 @@ PSSCRIPTANALYZER_PRECOMMIT_CONFIG="repos:
     hooks:
       - id: run-psscriptanalyzer
         name: run-psscriptanalyzer
-        entry: $REPO_DIR/scripts/run-psscriptanalyzer
+        entry: $REPO_DIR/src/scripts/run-psscriptanalyzer
         language: system
         files: \.(ps1|psm1|psd1)\$
 "
@@ -218,7 +218,7 @@ ESLINT_PRECOMMIT_CONFIG="repos:
     hooks:
       - id: eslint
         name: eslint
-        entry: $REPO_DIR/scripts/run-eslint
+        entry: $REPO_DIR/src/scripts/run-eslint
         language: system
         files: \.(ts|tsx|js|jsx)\$
 "
@@ -242,7 +242,7 @@ STYLELINT_PRECOMMIT_CONFIG="repos:
     hooks:
       - id: stylelint
         name: stylelint
-        entry: $REPO_DIR/scripts/run-stylelint
+        entry: $REPO_DIR/src/scripts/run-stylelint
         language: system
         files: \\.css\$
 "

@@ -6,8 +6,8 @@
 set -e
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOKS_DIR="$REPO_DIR/hooks"
-SCRIPTS_DIR="$REPO_DIR/scripts"
+HOOKS_DIR="$REPO_DIR/src/hooks"
+SCRIPTS_DIR="$REPO_DIR/src/scripts"
 
 # ── Make everything executable ────────────────────────────────────────────────
 chmod +x \
@@ -77,8 +77,8 @@ fi
 # pre-install. We still run `pre-commit validate-config` to surface YAML or
 # schema errors at install time rather than at the next git commit.
 if command -v pre-commit > /dev/null 2>&1; then
-    pre-commit validate-config "$REPO_DIR/.pre-commit-config.yaml" \
-        && echo "pre-commit config OK ($(grep -c '^      - id:' "$REPO_DIR/.pre-commit-config.yaml") hooks, all language: system)" \
+    pre-commit validate-config "$REPO_DIR/src/.pre-commit-config.yaml" \
+        && echo "pre-commit config OK ($(grep -c '^      - id:' "$REPO_DIR/src/.pre-commit-config.yaml") hooks, all language: system)" \
         || echo "WARN: pre-commit config validation failed — see above" >&2
 fi
 
