@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added pass/fail acceptance tests for composite-action-lint hook
 - Acceptance tests for pylint hook (pass and fail cases)
 - Added acceptance tests for ansible-lint hook (pass and fail cases)
+- Add acceptance tests for flake8 linter hook covering pass and fail cases (#82)
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
