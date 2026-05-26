@@ -4,7 +4,7 @@
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
-HOOKS_REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+HOOKS_REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -48,10 +48,20 @@ STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 
 cd "$REPO_ROOT" || die "cannot cd to repo root"
 
+# ── dotnet-tools.json sanity ─────────────────────────────────────────────────
+# A dotnet-tools.json anywhere in the repo pins local tool versions and
+# breaks the expected global tool setup.
+DOTNET_TOOLS_FILES=$(find "$REPO_ROOT" -name "dotnet-tools.json" -not -path "*/.git/*" 2>/dev/null)
+if [ -n "$DOTNET_TOOLS_FILES" ]; then
+    printf '\n\033[31m✗\033[0m %s\n' "Corrupt environment: dotnet-tools.json found in repo — it pins local tool versions and breaks the expected tool setup." >&2
+    printf '%s\n' "$DOTNET_TOOLS_FILES" | sed 's/^/  /' >&2
+    die "delete the dotnet-tools.json file(s) listed above and retry"
+fi
+
 # Block staged changes to protected lint/config/instruction files in this repo.
 if [ "$REPO_ROOT" = "$HOOKS_REPO_DIR" ]; then
     RE_PROTECTED_BASE='(^|/)\.sqlfluff[^/]*$|(^|/)\.tsqllint[^/]*$|(^|/)\.editorconfig$|(^|/)\.globalconfig$|(^|/)\.ai-instructions$|(^|/)global\.json$|(^|/)Directory\.Build\.props$|^ai/.*\.md$|^\.github/linters/.+|(^|/)\.csharpierrc$|(^|/)\.[^/]*lint[^/]*$'
-    RE_PROTECTED_SUPERLINTER='(^|/)\.shellcheckrc$|(^|/)\.checkov\.yaml$|(^|/)\.clang-format$|(^|/)\.ansible-lint(\.yml)?$|(^|/)\.arm-ttk\.psd1$|(^|/)\.cfnlintrc\.yml$|(^|/)\.coffee-lint\.json$|(^|/)\.stylelintrc\.json$|(^|/)\.hadolint\.ya?ml$|(^|/)\.editorconfig-checker\.json$|(^|/)actionlint\.yml$|(^|/)zizmor\.yaml$|(^|/)\.gitleaks\.toml$|(^|/)\.golangci\.yml$|(^|/)\.groovylintrc\.json$|(^|/)\.htmlhintrc$|(^|/)(sun_checks|google_checks)\.xml$|(^|/)eslint\.config\.mjs$|(^|/)\.jscpd\.json$|(^|/)\.chktexrc$|(^|/)\.luacheckrc$|(^|/)\.markdown-lint\.yml$|(^|/)\.openapirc\.yml$|(^|/)php\.ini$|(^|/)phpcs\.xml$|(^|/)phpstan\.neon$|(^|/)psalm\.xml$|(^|/)\.powershell-psscriptanalyzer\.psd1$|(^|/)\.pre-commit-config\.yaml$|(^|/)\.protolintrc\.yml$|(^|/)\.python-black$|(^|/)\.flake8$|(^|/)\.isort\.cfg$|(^|/)\.mypy\.ini$|(^|/)\.python-lint$|(^|/)\.ruff\.toml$|(^|/)\.lintr$|(^|/)\.ruby-lint\.yml$|(^|/)\.scalafmt\.conf$|(^|/)\.snakefmt\.toml$|(^|/)\.codespellrc$|(^|/)\.tflint\.hcl$|(^|/)trivy\.yaml$|(^|/)\.textlintrc$|(^|/)\.yaml-lint\.yml$|(^|/)\.clj-kondo/config\.edn$'
+    RE_PROTECTED_SUPERLINTER='(^|/)\.shellcheckrc$|(^|/)\.checkov\.yaml$|(^|/)\.clang-format$|(^|/)\.ansible-lint(\.yml)?$|(^|/)\.arm-ttk\.psd1$|(^|/)\.cfnlintrc\.yml$|(^|/)\.coffee-lint\.json$|(^|/)\.stylelintrc\.json$|(^|/)\.hadolint\.ya?ml$|(^|/)\.editorconfig-checker\.json$|(^|/)actionlint\.yml$|(^|/)zizmor\.yaml$|(^|/)\.gitleaks\.toml$|(^|/)\.golangci\.yml$|(^|/)\.groovylintrc\.json$|(^|/)\.htmlhintrc$|(^|/)(sun_checks|google_checks)\.xml$|(^|/)eslint\.config\.mjs$|(^|/)\.jscpd\.json$|(^|/)\.chktexrc$|(^|/)\.luacheckrc$|(^|/)\.markdown-lint\.yml$|(^|/)\.openapirc\.yml$|(^|/)php\.ini$|(^|/)phpcs\.xml$|(^|/)phpstan\.neon$|(^|/)psalm\.xml$|(^|/)\.powershell-psscriptanalyzer\.psd1$|(^|/)\.protolintrc\.yml$|(^|/)\.python-black$|(^|/)\.flake8$|(^|/)\.isort\.cfg$|(^|/)\.mypy\.ini$|(^|/)\.python-lint$|(^|/)\.ruff\.toml$|(^|/)\.lintr$|(^|/)\.ruby-lint\.yml$|(^|/)\.scalafmt\.conf$|(^|/)\.snakefmt\.toml$|(^|/)\.codespellrc$|(^|/)\.tflint\.hcl$|(^|/)trivy\.yaml$|(^|/)\.textlintrc$|(^|/)\.yaml-lint\.yml$|(^|/)\.clj-kondo/config\.edn$'
     RE_PROTECTED_IGNORES='(^|/)\.markdownlintignore$|(^|/)\.eslintignore$|(^|/)\.stylelintignore$|(^|/)\.sqlfluffignore$|(^|/)\.ansible-lint-ignore$|(^|/)\.prettierignore$'
     RE_PROTECTED_ALL="${RE_PROTECTED_BASE}|${RE_PROTECTED_SUPERLINTER}|${RE_PROTECTED_IGNORES}"
 

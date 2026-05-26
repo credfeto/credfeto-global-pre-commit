@@ -3,7 +3,7 @@
 # Each test creates an isolated git repository and removes it on completion.
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-HOOKS_DIR="$REPO_DIR/hooks"
+HOOKS_DIR="$REPO_DIR/src/hooks"
 HOOK="$HOOKS_DIR/pre-commit"
 
 PASS=0
@@ -151,6 +151,28 @@ test_ignored_tracked_file_rejected() {
     assert_exit "ignored tracked file → rejected" 1 "$RC"
 }
 
+test_dotnet_tools_json_rejected() {
+    T=$(make_repo "feature/dotnet-tools-json-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    mkdir -p "$T/.config"
+    printf '{}\n' > "$T/.config/dotnet-tools.json"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "dotnet-tools.json in repo (unstaged) → rejected" 1 "$RC"
+}
+
+test_no_dotnet_tools_json_passes() {
+    T=$(make_repo "feature/no-dotnet-tools-json-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "no dotnet-tools.json in repo → passes" 0 "$RC"
+}
+
 # Pre-commit config snippet used by the two dotenv tests below.
 # Mirrors the global config entry but scoped to dotenv-linter only so no
 # other linter can interfere with the result.
@@ -184,7 +206,7 @@ PSSCRIPTANALYZER_PRECOMMIT_CONFIG="repos:
     hooks:
       - id: run-psscriptanalyzer
         name: run-psscriptanalyzer
-        entry: $REPO_DIR/scripts/run-psscriptanalyzer
+        entry: $REPO_DIR/src/scripts/run-psscriptanalyzer
         language: system
         files: \.(ps1|psm1|psd1)\$
 "
@@ -196,7 +218,7 @@ ESLINT_PRECOMMIT_CONFIG="repos:
     hooks:
       - id: eslint
         name: eslint
-        entry: $REPO_DIR/scripts/run-eslint
+        entry: $REPO_DIR/src/scripts/run-eslint
         language: system
         files: \.(ts|tsx|js|jsx)\$
 "
@@ -220,7 +242,7 @@ STYLELINT_PRECOMMIT_CONFIG="repos:
     hooks:
       - id: stylelint
         name: stylelint
-        entry: $REPO_DIR/scripts/run-stylelint
+        entry: $REPO_DIR/src/scripts/run-stylelint
         language: system
         files: \\.css\$
 "
@@ -759,6 +781,8 @@ test_commit_on_main_rejected
 test_commit_on_master_rejected
 test_merge_commit_rejected
 test_ignored_tracked_file_rejected
+test_dotnet_tools_json_rejected
+test_no_dotnet_tools_json_passes
 test_broken_env_file_rejected
 test_valid_env_file_passes
 test_clean_commit_on_branch_passes
