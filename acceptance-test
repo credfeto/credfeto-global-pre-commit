@@ -71,6 +71,7 @@ CURRENT_REPO=""
 cleanup() {
     [ -n "$CURRENT_REPO" ] && rm -rf "$CURRENT_REPO"
     rm -f "$HOOK_OUTPUT"
+    rm -f "$REPO_DIR/.env"
 }
 trap cleanup EXIT INT TERM
 
@@ -870,10 +871,10 @@ test_freshness_matching_sha_passes() {
 test_freshness_stale_sha_rejected() {
     # .env SHA differs from the published SHA → hook dies.
     FAKE_BIN=$(mktemp -d)
-    printf '#!/bin/sh\nprintf "newsha9999999999"\n' > "$FAKE_BIN/curl"
+    printf '#!/bin/sh\nprintf "1234567890abcdef"\n' > "$FAKE_BIN/curl"
     chmod +x "$FAKE_BIN/curl"
     FAKE_CACHE=$(mktemp -d)
-    printf 'SHA=oldsha1111111111\n' > "$REPO_DIR/.env"
+    printf 'SHA=0000111100001111\n' > "$REPO_DIR/.env"
     T=$(make_repo "feature/freshness-stale-test")
     printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
     printf '# test\n' > "$T/README.md"
