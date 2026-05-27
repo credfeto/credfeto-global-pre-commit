@@ -142,6 +142,21 @@ if is_ai_agent; then
     fi
 fi
 
+# ── Installation freshness check (always-on) ─────────────────────────────────
+# If install wrote a .env recording the HEAD SHA, compare it against the
+# published SHA at the canonical URL.  Silently skipped when curl is absent or
+# the URL is unreachable.  Dies if the installed SHA is stale so the developer
+# knows to re-run install.
+if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
+    _ENV_SHA=$(grep '^HEAD=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [ -n "$_ENV_SHA" ]; then
+        _REMOTE_SHA=$(curl -sf --max-time 5 "http://pre-commit.markridgwell.com/sha.txt" 2>/dev/null || true)
+        if [ -n "$_REMOTE_SHA" ] && [ "$_REMOTE_SHA" != "$_ENV_SHA" ]; then
+            die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — re-run install to update"
+        fi
+    fi
+fi
+
 # ── Always-on checks (run on every commit) ───────────────────────────────────
 
 info "Checking branch..."
