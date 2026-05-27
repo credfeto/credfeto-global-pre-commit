@@ -25,6 +25,23 @@ is_ai_agent() {
 
 has_cmd() { command -v "$1" > /dev/null 2>&1; }
 
+# Mark the active PR and issue as blocked.  No-ops silently when gh is absent,
+# no PR exists for the branch, or any gh command fails.
+mark_blocked() {
+    has_cmd gh || return 0
+    _MB_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+    [ -n "$_MB_BRANCH" ] || return 0
+    gh label create "blocked" --color "B60205" --description "Blocked by an external dependency" --force 2>/dev/null || true
+    _MB_PR=$(gh pr list --head "$_MB_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+    if [ -n "$_MB_PR" ] && [ "$_MB_PR" != "null" ]; then
+        gh pr edit "$_MB_PR" --add-label "blocked" 2>/dev/null || true
+    fi
+    _MB_ISSUE=$(printf '%s' "$_MB_BRANCH" | grep -oE '/[0-9]+' | head -1 | tr -d '/')
+    if [ -n "$_MB_ISSUE" ]; then
+        gh issue edit "$_MB_ISSUE" --add-label "blocked" 2>/dev/null || true
+    fi
+}
+
 # Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
 dotnet_tool_installed() {
     dotnet tool list 2>/dev/null \
@@ -132,20 +149,7 @@ if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
         fi
         if [ -n "$_REMOTE_SHA" ] && [ "$_REMOTE_SHA" != "$_ENV_SHA" ]; then
             if is_ai_agent; then
-                if has_cmd gh; then
-                    _BLOCK_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || true)
-                    if [ -n "$_BLOCK_BRANCH" ]; then
-                        gh label create "blocked" --color "B60205" --description "Blocked by an external dependency" --force 2>/dev/null || true
-                        _BLOCK_PR=$(gh pr list --head "$_BLOCK_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-                        if [ -n "$_BLOCK_PR" ] && [ "$_BLOCK_PR" != "null" ]; then
-                            gh pr edit "$_BLOCK_PR" --add-label "blocked" 2>/dev/null || true
-                        fi
-                        _BLOCK_ISSUE=$(printf '%s' "$_BLOCK_BRANCH" | grep -oE '/[0-9]+' | head -1 | tr -d '/')
-                        if [ -n "$_BLOCK_ISSUE" ]; then
-                            gh issue edit "$_BLOCK_ISSUE" --add-label "blocked" 2>/dev/null || true
-                        fi
-                    fi
-                fi
+                mark_blocked
                 die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — ask the user to update the pre-commit environment before continuing"
             else
                 die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — re-run install to update"
