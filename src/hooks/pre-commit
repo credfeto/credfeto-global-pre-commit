@@ -25,6 +25,35 @@ is_ai_agent() {
 
 has_cmd() { command -v "$1" > /dev/null 2>&1; }
 
+# Mark the active PR and issue as blocked.  No-ops silently when gh is absent,
+# no PR exists for the branch, or any gh command fails.
+mark_blocked() {
+    has_cmd gh || return 0
+    _MB_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+    [ -n "$_MB_BRANCH" ] || return 0
+    GH_PROMPT_DISABLED=1 gh label create "blocked" --color "B60205" --description "Blocked by an external dependency" --force > /dev/null 2>&1 || true
+    _MB_PR=$(GH_PROMPT_DISABLED=1 gh pr list --head "$_MB_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+    if [ -n "$_MB_PR" ] && [ "$_MB_PR" != "null" ]; then
+        GH_PROMPT_DISABLED=1 gh pr edit "$_MB_PR" --add-label "blocked" > /dev/null 2>&1 || true
+    fi
+    _MB_ISSUE=$(printf '%s' "$_MB_BRANCH" | grep -oE '/[0-9]+' | head -1 | tr -d '/')
+    if [ -n "$_MB_ISSUE" ]; then
+        GH_PROMPT_DISABLED=1 gh issue edit "$_MB_ISSUE" --add-label "blocked" > /dev/null 2>&1 || true
+    fi
+}
+
+# Die with a message, marking the active PR/issue as blocked first when run as
+# an AI agent.  Use instead of die for environment/tool problems the agent
+# cannot fix itself.
+die_blocked() {
+    if is_ai_agent; then
+        mark_blocked
+        die "$* — ask the user to resolve this before continuing"
+    else
+        die "$*"
+    fi
+}
+
 # Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
 dotnet_tool_installed() {
     dotnet tool list 2>/dev/null \
@@ -101,43 +130,33 @@ if has_cmd cfn-lint;   then HAS_CFNLINT=1;   else HAS_CFNLINT=0;   fi
 : "${SQLFLUFF_EXECUTED:=0}"
 export SQLFLUFF_EXECUTED
 
-# ── Hooks-repo freshness check (AI agents only) ───────────────────────────────
-# Two modes depending on whether the hooks repo retains its .git directory:
-#
-# .git present  — use git remote-tracking refs; fetch if writable, use cached
-#                 refs if read-only; warn (writable) or die (read-only) if behind.
-#
-# .git absent   — stripped install; read HEAD=<sha> and UPSTREAM=<url> from a
-#                 .env file in the hooks root and compare against git ls-remote.
-if is_ai_agent; then
-    if [ -d "$HOOKS_REPO_DIR/.git" ]; then
-        if git -C "$HOOKS_REPO_DIR" remote get-url origin > /dev/null 2>&1; then
-            UPDATE_CMD="git -C \"$HOOKS_REPO_DIR\" pull && \"$HOOKS_REPO_DIR/install.sh\""
-            if [ -w "$HOOKS_REPO_DIR/.git" ]; then
-                git -C "$HOOKS_REPO_DIR" fetch --quiet origin 2>/dev/null || true
-            fi
-            UPSTREAM_REF=$(git -C "$HOOKS_REPO_DIR" \
-                rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)
-            if [ -n "$UPSTREAM_REF" ]; then
-                BEHIND=$(git -C "$HOOKS_REPO_DIR" \
-                    rev-list "HEAD..${UPSTREAM_REF}" --count 2>/dev/null || echo "0")
-                if [ "${BEHIND:-0}" -gt 0 ]; then
-                    if [ -w "$HOOKS_REPO_DIR/.git" ]; then
-                        info "Hooks repo is $BEHIND commit(s) behind — run: $UPDATE_CMD"
-                    else
-                        die "Hooks repo is $BEHIND commit(s) behind and you do not have write access to update it. Ask an admin to run: $UPDATE_CMD"
-                    fi
-                fi
+# ── Installation freshness check (always-on) ─────────────────────────────────
+# If a .env in the hooks root records a SHA=<value>, compare it against the
+# published SHA at the canonical HTTPS URL.  The fetched SHA is cached for one
+# hour under $XDG_CACHE_HOME to avoid a network round-trip on every commit.
+# Silently skipped when curl is absent or the URL is unreachable.  Dies if the
+# installed SHA is stale.
+if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
+    _ENV_SHA=$(grep '^SHA=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
+    if [ -n "$_ENV_SHA" ]; then
+        _CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/pre-commit"
+        _CACHE_FILE="$_CACHE_DIR/remote-sha"
+        _REMOTE_SHA=""
+        if [ -n "$(find "$_CACHE_FILE" -mmin -60 2>/dev/null)" ]; then
+            _REMOTE_SHA=$(cat "$_CACHE_FILE" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+        fi
+        if [ -z "$_REMOTE_SHA" ]; then
+            _REMOTE_SHA=$(curl -sf --connect-timeout 3 --max-time 5 \
+                "https://pre-commit.markridgwell.com/sha.txt" 2>/dev/null \
+                | head -1 | tr -d '[:space:]' || true)
+            printf '%s' "$_REMOTE_SHA" | grep -qE '^[0-9a-fA-F]{7,40}$' || _REMOTE_SHA=""
+            if [ -n "$_REMOTE_SHA" ]; then
+                mkdir -p "$_CACHE_DIR"
+                printf '%s\n' "$_REMOTE_SHA" > "$_CACHE_FILE"
             fi
         fi
-    elif [ -f "$HOOKS_REPO_DIR/.env" ]; then
-        ENV_HEAD=$(grep '^HEAD=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
-        ENV_UPSTREAM=$(grep '^UPSTREAM=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
-        if [ -n "$ENV_UPSTREAM" ] && [ -n "$ENV_HEAD" ]; then
-            REMOTE_HEAD=$(git ls-remote "$ENV_UPSTREAM" HEAD 2>/dev/null | awk '{print $1}')
-            if [ -n "$REMOTE_HEAD" ] && [ "$REMOTE_HEAD" != "$ENV_HEAD" ]; then
-                info "Hooks installation is out of date (installed: $ENV_HEAD, remote: $REMOTE_HEAD) — re-clone from $ENV_UPSTREAM and re-run install.sh"
-            fi
+        if [ -n "$_REMOTE_SHA" ] && [ "$_REMOTE_SHA" != "$_ENV_SHA" ]; then
+            die_blocked "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA})"
         fi
     fi
 fi
@@ -215,7 +234,7 @@ fi
 SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
 if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
-        dotnet_tool_installed tsqllint TSQLLint || die "tsqllint dotnet tool is not installed — install with: dotnet tool install --local TSQLLint"
+        dotnet_tool_installed tsqllint TSQLLint || die_blocked "tsqllint dotnet tool is not installed"
         info "Detected SQL changes — running dotnet tsqllint..."
         DOTNET_ROLL_FORWARD=Major dotnet tsqllint . || die "dotnet tsqllint"
     fi

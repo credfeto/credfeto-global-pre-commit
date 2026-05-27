@@ -71,6 +71,7 @@ CURRENT_REPO=""
 cleanup() {
     [ -n "$CURRENT_REPO" ] && rm -rf "$CURRENT_REPO"
     rm -f "$HOOK_OUTPUT"
+    rm -f "$REPO_DIR/.env"
 }
 trap cleanup EXIT INT TERM
 
@@ -658,7 +659,7 @@ test_dotnet_correct_path_passes() {
     printf '# test\n' > "$T/README.md"
     git -C "$T" add .pre-commit-config.yaml README.md
     HOOK_OUTPUT=$(mktemp)
-    ( cd "$T" && PATH="$_CORRECT_PATH" && unset CLAUDECODE && sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
+    ( cd "$T" && unset CLAUDECODE && env PATH="$_CORRECT_PATH" sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
     RC=$?
     destroy_repo "$T"
     assert_exit "dotnet at correct path → passes" 0 "$RC"
@@ -823,6 +824,87 @@ test_valid_py_flake8_passes() {
 }
 
 
+# ── Helpers for freshness tests ───────────────────────────────────────────────
+# All freshness tests place $REPO_DIR/.env temporarily. The global cleanup trap
+# removes it on exit/interrupt; each test also removes it explicitly after the
+# assert so later tests start with a clean state.
+
+# Run the hook in the given repo with a custom PATH and XDG_CACHE_HOME.
+# run_hook_env <repo> <path> <xdg_cache_home>
+run_hook_env() {
+    _RH_REPO="$1"
+    _RH_PATH="$2"
+    _RH_CACHE="$3"
+    HOOK_OUTPUT=$(mktemp)
+    ( cd "$_RH_REPO" && unset CLAUDECODE && env PATH="$_RH_PATH" XDG_CACHE_HOME="$_RH_CACHE" sh "$HOOK" ) > "$HOOK_OUTPUT" 2>&1
+    return $?
+}
+
+test_freshness_no_env_skipped() {
+    # No .env → freshness check is silently skipped.
+    T=$(make_repo "feature/freshness-no-env-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit ".env absent → freshness check skipped (passes)" 0 "$RC"
+}
+
+test_freshness_matching_sha_passes() {
+    # .env SHA matches the published SHA → hook passes.
+    FAKE_BIN=$(mktemp -d)
+    printf '#!/bin/sh\nprintf "abcdef1234567890"\n' > "$FAKE_BIN/curl"
+    chmod +x "$FAKE_BIN/curl"
+    FAKE_CACHE=$(mktemp -d)
+    printf 'SHA=abcdef1234567890\n' > "$REPO_DIR/.env"
+    T=$(make_repo "feature/freshness-match-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook_env "$T" "$FAKE_BIN:$TEST_PATH" "$FAKE_CACHE"; RC=$?
+    destroy_repo "$T"
+    rm -rf "$FAKE_BIN" "$FAKE_CACHE"
+    rm -f "$REPO_DIR/.env"
+    assert_exit ".env SHA matches published SHA → passes" 0 "$RC"
+}
+
+test_freshness_stale_sha_rejected() {
+    # .env SHA differs from the published SHA → hook dies.
+    FAKE_BIN=$(mktemp -d)
+    printf '#!/bin/sh\nprintf "1234567890abcdef"\n' > "$FAKE_BIN/curl"
+    chmod +x "$FAKE_BIN/curl"
+    FAKE_CACHE=$(mktemp -d)
+    printf 'SHA=0000111100001111\n' > "$REPO_DIR/.env"
+    T=$(make_repo "feature/freshness-stale-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook_env "$T" "$FAKE_BIN:$TEST_PATH" "$FAKE_CACHE"; RC=$?
+    destroy_repo "$T"
+    rm -rf "$FAKE_BIN" "$FAKE_CACHE"
+    rm -f "$REPO_DIR/.env"
+    assert_exit ".env SHA is stale → rejected" 1 "$RC"
+}
+
+test_freshness_curl_fails_skipped() {
+    # curl fails (simulates unreachable URL) → check silently skipped.
+    FAKE_BIN=$(mktemp -d)
+    printf '#!/bin/sh\nexit 6\n' > "$FAKE_BIN/curl"
+    chmod +x "$FAKE_BIN/curl"
+    FAKE_CACHE=$(mktemp -d)
+    printf 'SHA=some-installed-sha\n' > "$REPO_DIR/.env"
+    T=$(make_repo "feature/freshness-curl-fail-test")
+    printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
+    printf '# test\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook_env "$T" "$FAKE_BIN:$TEST_PATH" "$FAKE_CACHE"; RC=$?
+    destroy_repo "$T"
+    rm -rf "$FAKE_BIN" "$FAKE_CACHE"
+    rm -f "$REPO_DIR/.env"
+    assert_exit ".env present but curl fails → freshness check skipped (passes)" 0 "$RC"
+}
+
 # ── Run ───────────────────────────────────────────────────────────────────────
 
 info "Running acceptance tests..."
@@ -859,6 +941,10 @@ test_broken_py_rejected
 test_valid_py_passes
 test_broken_py_flake8_rejected
 test_valid_py_flake8_passes
+test_freshness_no_env_skipped
+test_freshness_matching_sha_passes
+test_freshness_stale_sha_rejected
+test_freshness_curl_fails_skipped
 
 printf '\n'
 info "Results: $PASS passed, $FAIL failed"
