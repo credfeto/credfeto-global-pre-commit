@@ -297,6 +297,19 @@ FLAKE8_PRECOMMIT_CONFIG='repos:
         types: [python]
 '
 
+# Pre-commit config snippet used by the two hadolint tests below.
+# Scoped to hadolint only so no other linter can interfere with the result.
+HADOLINT_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: hadolint
+        name: hadolint
+        entry: hadolint
+        language: system
+        files: (^|/)Dockerfile[^/]*$
+        args: [--config, .github/linters/.hadolint.yaml]
+'
+
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
         info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
@@ -823,6 +836,49 @@ test_valid_py_flake8_passes() {
     assert_exit "valid .py file (no violations) → passes" 0 "$RC"
 }
 
+test_broken_dockerfile_rejected() {
+    if ! command -v hadolint > /dev/null 2>&1; then
+        info "SKIP  Dockerfile with violation → rejected (hadolint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  Dockerfile with violation → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-dockerfile-test")
+    printf '%s' "$HADOLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    mkdir -p "$T/.github/linters"
+    printf '%s\n' '--- # hadolint config' > "$T/.github/linters/.hadolint.yaml"
+    # ADD instead of COPY reliably triggers DL3020 (error level).
+    printf 'FROM ubuntu:22.04\nADD file.txt /app/\n' > "$T/Dockerfile"
+    printf 'hello\n' > "$T/file.txt"
+    git -C "$T" add .pre-commit-config.yaml .github/linters/.hadolint.yaml Dockerfile file.txt
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "Dockerfile with ADD (DL3020 violation) → rejected" 1 "$RC"
+}
+
+test_clean_dockerfile_passes() {
+    if ! command -v hadolint > /dev/null 2>&1; then
+        info "SKIP  Dockerfile with no violations → passes (hadolint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  Dockerfile with no violations → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/clean-dockerfile-test")
+    printf '%s' "$HADOLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    mkdir -p "$T/.github/linters"
+    printf '%s\n' '--- # hadolint config' > "$T/.github/linters/.hadolint.yaml"
+    # COPY instead of ADD — no hadolint violations.
+    printf 'FROM ubuntu:22.04\nCOPY file.txt /app/\n' > "$T/Dockerfile"
+    printf 'hello\n' > "$T/file.txt"
+    git -C "$T" add .pre-commit-config.yaml .github/linters/.hadolint.yaml Dockerfile file.txt
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "Dockerfile with no violations → passes" 0 "$RC"
+}
 
 # ── Helpers for freshness tests ───────────────────────────────────────────────
 # All freshness tests place $REPO_DIR/.env temporarily. The global cleanup trap
@@ -941,6 +997,8 @@ test_broken_py_rejected
 test_valid_py_passes
 test_broken_py_flake8_rejected
 test_valid_py_flake8_passes
+test_broken_dockerfile_rejected
+test_clean_dockerfile_passes
 test_freshness_no_env_skipped
 test_freshness_matching_sha_passes
 test_freshness_stale_sha_rejected
