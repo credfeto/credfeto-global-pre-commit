@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Acceptance tests for pylint hook (pass and fail cases)
 - Added acceptance tests for ansible-lint hook (pass and fail cases)
 - Add acceptance tests for flake8 linter hook covering pass and fail cases (#82)
+- Check installed SHA against published URL on every commit; die if the installation is out of date (#113)
 
 ### Fixed
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
