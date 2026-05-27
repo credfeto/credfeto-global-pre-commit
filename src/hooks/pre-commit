@@ -132,6 +132,20 @@ if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
         fi
         if [ -n "$_REMOTE_SHA" ] && [ "$_REMOTE_SHA" != "$_ENV_SHA" ]; then
             if is_ai_agent; then
+                if has_cmd gh; then
+                    _BLOCK_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+                    if [ -n "$_BLOCK_BRANCH" ]; then
+                        gh label create "blocked" --color "B60205" --description "Blocked by an external dependency" --force 2>/dev/null || true
+                        _BLOCK_PR=$(gh pr list --head "$_BLOCK_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+                        if [ -n "$_BLOCK_PR" ] && [ "$_BLOCK_PR" != "null" ]; then
+                            gh pr edit "$_BLOCK_PR" --add-label "blocked" 2>/dev/null || true
+                        fi
+                        _BLOCK_ISSUE=$(printf '%s' "$_BLOCK_BRANCH" | grep -oE '/[0-9]+' | head -1 | tr -d '/')
+                        if [ -n "$_BLOCK_ISSUE" ]; then
+                            gh issue edit "$_BLOCK_ISSUE" --add-label "blocked" 2>/dev/null || true
+                        fi
+                    fi
+                fi
                 die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — ask the user to update the pre-commit environment before continuing"
             else
                 die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — re-run install to update"
