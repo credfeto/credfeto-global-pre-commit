@@ -1,9 +1,6 @@
 --- # Checkout, install deps + hooks, run acceptance tests, always clean up global hooks
 name: "Acceptance Tests"
 on:
-  push:
-    branches-ignore:
-      - main
   pull_request:
     branches:
       - main
