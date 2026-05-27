@@ -48,7 +48,7 @@ require_dotnet_tool() {
         fi
         die "Required package ($2) is not installed so cannot run $1.  Operator needs to provide this to the environment.  Do not install it yourself"
     fi
-    die "$1 dotnet tool is not installed"
+    die "$1 ($2) dotnet tool is not installed"
 }
 
 require_dotnet_tool "$TOOL_CMD" "$TOOL_PKG"
