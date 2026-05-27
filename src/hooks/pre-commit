@@ -42,6 +42,18 @@ mark_blocked() {
     fi
 }
 
+# Die with a message, marking the active PR/issue as blocked first when run as
+# an AI agent.  Use instead of die for environment/tool problems the agent
+# cannot fix itself.
+die_blocked() {
+    if is_ai_agent; then
+        mark_blocked
+        die "$* — ask the user to resolve this before continuing"
+    else
+        die "$*"
+    fi
+}
+
 # Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
 dotnet_tool_installed() {
     dotnet tool list 2>/dev/null \
@@ -148,12 +160,7 @@ if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
             fi
         fi
         if [ -n "$_REMOTE_SHA" ] && [ "$_REMOTE_SHA" != "$_ENV_SHA" ]; then
-            if is_ai_agent; then
-                mark_blocked
-                die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — ask the user to update the pre-commit environment before continuing"
-            else
-                die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — re-run install to update"
-            fi
+            die_blocked "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA})"
         fi
     fi
 fi
@@ -231,7 +238,7 @@ fi
 SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
 if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
-        dotnet_tool_installed tsqllint TSQLLint || die "tsqllint dotnet tool is not installed"
+        dotnet_tool_installed tsqllint TSQLLint || die_blocked "tsqllint dotnet tool is not installed"
         info "Detected SQL changes — running dotnet tsqllint..."
         DOTNET_ROLL_FORWARD=Major dotnet tsqllint . || die "dotnet tsqllint"
     fi
