@@ -1,0 +1,70 @@
+--- # Publish: HEAD SHA to GitHub Pages
+name: "Publish: HEAD SHA"
+
+on:
+  push:
+    branches:
+      - "main"
+
+concurrency:
+  group: ${{github.workflow}}-${{github.ref}}-publish-sha
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  pages: write
+
+jobs:
+  publish-sha:
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{steps.deploy.outputs.page_url}}
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v6.0.2
+        with:
+          clean: true
+          fetch-depth: 1
+
+      - name: "Generate SHA files"
+        shell: bash
+        run: |
+          mkdir -p dist
+          echo -n "$GITHUB_SHA" > dist/sha.txt
+          printf '{"sha":"%s","ref":"%s","timestamp":"%s"}\n' \
+            "$GITHUB_SHA" \
+            "$GITHUB_REF" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > dist/sha.json
+
+      - name: "Configure Pages"
+        uses: actions/configure-pages@v6.0.0
+
+      - name: "Upload Pages Artifact"
+        uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: "dist"
+
+      - name: "Deploy to GitHub Pages"
+        id: deploy
+        uses: actions/deploy-pages@v5.0.0
+
+      - name: "Log Published SHA"
+        uses: actions/github-script@v9.0.0
+        env:
+          PAGE_URL: ${{steps.deploy.outputs.page_url}}
+          HEAD_SHA: ${{github.sha}}
+        with:
+          script: |
+            const pageUrl = process.env.PAGE_URL;
+            const sha = process.env.HEAD_SHA;
+            core.info(`SHA: \u001b[38;5;6m${sha}`);
+            core.info(`Pages URL: \u001b[38;5;6m${pageUrl}`);
+            core.notice(`SHA: ${sha}`);
+            core.notice(`sha.txt: ${pageUrl}sha.txt`);
+            core.notice(`sha.json: ${pageUrl}sha.json`);
