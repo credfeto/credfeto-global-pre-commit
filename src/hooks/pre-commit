@@ -143,14 +143,34 @@ if is_ai_agent; then
 fi
 
 # ── Installation freshness check (always-on) ─────────────────────────────────
-# If install wrote a .env recording the HEAD SHA, compare it against the
-# published SHA at the canonical URL.  Silently skipped when curl is absent or
-# the URL is unreachable.  Dies if the installed SHA is stale so the developer
-# knows to re-run install.
+# If a .env in the hooks root records a SHA=<value>, compare it against the
+# published SHA at the canonical HTTPS URL.  The fetched SHA is cached for one
+# hour under $XDG_CACHE_HOME to avoid a network round-trip on every commit.
+# Silently skipped when curl is absent or the URL is unreachable.  Dies if the
+# installed SHA is stale.
 if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
     _ENV_SHA=$(grep '^SHA=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
     if [ -n "$_ENV_SHA" ]; then
-        _REMOTE_SHA=$(curl -sf --max-time 5 "http://pre-commit.markridgwell.com/sha.txt" 2>/dev/null || true)
+        _CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/credfeto-pre-commit"
+        _CACHE_FILE="$_CACHE_DIR/remote-sha"
+        _CACHE_TTL=3600
+        _REMOTE_SHA=""
+        if [ -f "$_CACHE_FILE" ]; then
+            _CACHE_MTIME=$(stat -c '%Y' "$_CACHE_FILE" 2>/dev/null || echo 0)
+            _NOW=$(date +%s 2>/dev/null || echo 0)
+            _AGE=$(( _NOW - _CACHE_MTIME ))
+            if [ "$_AGE" -lt "$_CACHE_TTL" ]; then
+                _REMOTE_SHA=$(cat "$_CACHE_FILE" 2>/dev/null || true)
+            fi
+        fi
+        if [ -z "$_REMOTE_SHA" ]; then
+            _REMOTE_SHA=$(curl -sf --connect-timeout 3 --max-time 5 \
+                "https://pre-commit.markridgwell.com/sha.txt" 2>/dev/null || true)
+            if [ -n "$_REMOTE_SHA" ]; then
+                mkdir -p "$_CACHE_DIR"
+                printf '%s\n' "$_REMOTE_SHA" > "$_CACHE_FILE"
+            fi
+        fi
         if [ -n "$_REMOTE_SHA" ] && [ "$_REMOTE_SHA" != "$_ENV_SHA" ]; then
             die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — re-run install to update"
         fi
