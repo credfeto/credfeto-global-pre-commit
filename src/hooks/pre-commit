@@ -231,7 +231,7 @@ fi
 SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
 if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
-        dotnet_tool_installed tsqllint TSQLLint || die "tsqllint dotnet tool is not installed — install with: dotnet tool install --local TSQLLint"
+        dotnet_tool_installed tsqllint TSQLLint || die "tsqllint dotnet tool is not installed"
         info "Detected SQL changes — running dotnet tsqllint..."
         DOTNET_ROLL_FORWARD=Major dotnet tsqllint . || die "dotnet tsqllint"
     fi
