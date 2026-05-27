@@ -57,6 +57,11 @@ esac
 # ── Register globally with git ────────────────────────────────────────────────
 git config --global core.hooksPath "$HOOKS_DIR"
 
+# ── Record installed SHA for future freshness checks ─────────────────────────
+if git -C "$REPO_DIR" rev-parse HEAD > /dev/null 2>&1; then
+    printf 'HEAD=%s\n' "$(git -C "$REPO_DIR" rev-parse HEAD)" > "$REPO_DIR/.env"
+fi
+
 # ── Symlink system-hook wrappers onto PATH ────────────────────────────────────
 # These are called by pre-commit's local system hooks.
 mkdir -p "$HOME/.local/bin"
