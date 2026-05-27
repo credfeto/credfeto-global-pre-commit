@@ -137,7 +137,7 @@ export SQLFLUFF_EXECUTED
 # Silently skipped when curl is absent or the URL is unreachable.  Dies if the
 # installed SHA is stale.
 if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
-    _ENV_SHA=$(grep '^SHA=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+    _ENV_SHA=$(grep '^SHA=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
     if [ -n "$_ENV_SHA" ]; then
         _CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/pre-commit"
         _CACHE_FILE="$_CACHE_DIR/remote-sha"

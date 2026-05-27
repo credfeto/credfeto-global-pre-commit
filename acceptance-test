@@ -825,8 +825,9 @@ test_valid_py_flake8_passes() {
 
 
 # ── Helpers for freshness tests ───────────────────────────────────────────────
-# All freshness tests place $REPO_DIR/.env temporarily. The trap already handles
-# HOOK_OUTPUT and CURRENT_REPO; each test removes .env in its own finally step.
+# All freshness tests place $REPO_DIR/.env temporarily. The global cleanup trap
+# removes it on exit/interrupt; each test also removes it explicitly after the
+# assert so later tests start with a clean state.
 
 # Run the hook in the given repo with a custom PATH and XDG_CACHE_HOME.
 # run_hook_env <repo> <path> <xdg_cache_home>
