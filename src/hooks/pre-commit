@@ -148,7 +148,7 @@ fi
 # the URL is unreachable.  Dies if the installed SHA is stale so the developer
 # knows to re-run install.
 if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
-    _ENV_SHA=$(grep '^HEAD=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+    _ENV_SHA=$(grep '^SHA=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)
     if [ -n "$_ENV_SHA" ]; then
         _REMOTE_SHA=$(curl -sf --max-time 5 "http://pre-commit.markridgwell.com/sha.txt" 2>/dev/null || true)
         if [ -n "$_REMOTE_SHA" ] && [ "$_REMOTE_SHA" != "$_ENV_SHA" ]; then
