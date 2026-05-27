@@ -131,7 +131,11 @@ if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
             fi
         fi
         if [ -n "$_REMOTE_SHA" ] && [ "$_REMOTE_SHA" != "$_ENV_SHA" ]; then
-            die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — re-run install to update"
+            if is_ai_agent; then
+                die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — ask the user to update the pre-commit environment before continuing"
+            else
+                die "Hooks installation is out of date (installed: ${_ENV_SHA}, latest: ${_REMOTE_SHA}) — re-run install to update"
+            fi
         fi
     fi
 fi
