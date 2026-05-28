@@ -713,7 +713,7 @@ test_valid_sql_passes() {
     T=$(make_repo "feature/valid-sql-test")
     printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
     printf '[sqlfluff]\ndialect = ansi\n' > "$T/.sqlfluff"
-    printf 'SELECT id FROM users;\n' > "$T/clean.sql"
+    printf 'SELECT id FROM dbo.users;\n' > "$T/clean.sql"
     git -C "$T" add .pre-commit-config.yaml .sqlfluff clean.sql
     run_hook "$T"; RC=$?
     destroy_repo "$T"
