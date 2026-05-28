@@ -692,8 +692,9 @@ test_invalid_sql_rejected() {
     T=$(make_repo "feature/invalid-sql-test")
     printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
     printf '[sqlfluff]\ndialect = ansi\n' > "$T/.sqlfluff"
+    printf '{"rules":{"set-ansi":"none","set-nocount":"none","set-quoted-identifier":"none","set-transaction-isolation-level":"none"}}\n' > "$T/.tsqllintrc"
     printf 'SELECT FROM WHERE;\n' > "$T/broken.sql"
-    git -C "$T" add .pre-commit-config.yaml .sqlfluff broken.sql
+    git -C "$T" add .pre-commit-config.yaml .sqlfluff .tsqllintrc broken.sql
     run_hook "$T"; RC=$?
     destroy_repo "$T"
     assert_exit "invalid .sql (parse error) → rejected" 1 "$RC"
@@ -713,8 +714,9 @@ test_valid_sql_passes() {
     T=$(make_repo "feature/valid-sql-test")
     printf 'repos: []\n' > "$T/.pre-commit-config.yaml"
     printf '[sqlfluff]\ndialect = ansi\n' > "$T/.sqlfluff"
+    printf '{"rules":{"set-ansi":"none","set-nocount":"none","set-quoted-identifier":"none","set-transaction-isolation-level":"none"}}\n' > "$T/.tsqllintrc"
     printf 'SELECT id FROM dbo.users;\n' > "$T/clean.sql"
-    git -C "$T" add .pre-commit-config.yaml .sqlfluff clean.sql
+    git -C "$T" add .pre-commit-config.yaml .sqlfluff .tsqllintrc clean.sql
     run_hook "$T"; RC=$?
     destroy_repo "$T"
     assert_exit "valid .sql → passes" 0 "$RC"
