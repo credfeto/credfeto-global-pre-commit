@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added acceptance tests for hadolint Dockerfile linter hook covering pass and fail cases
 
 ### Fixed
+- Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
 - install.sh chmod list out of sync after check-secrets was inlined (#15)
 - Use CLAUDECODE=1 env var (not CLAUDE) to detect Claude Code agent sessions
