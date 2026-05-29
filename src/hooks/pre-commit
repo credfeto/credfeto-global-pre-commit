@@ -246,6 +246,8 @@ if [ -n "$SQL_CHANGES" ]; then
             info "Staging files modified by sqlfluff fix..."
             echo "$SQLFLUFF_FIXED" | xargs git add --
         fi
+        info "Detected SQL changes — running sqlfluff lint..."
+        sqlfluff lint . || die "sqlfluff lint"
         export SQLFLUFF_EXECUTED=1
     fi
 fi
