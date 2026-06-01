@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 ### Security
 ### Added
+- Add acceptance tests for markdownlint hook covering pass and fail cases (#80)
 - Fail pre-commit when hooks repo is out of date and AI agent does not have write access to update it (#26)
 - csharpier: apply formatting fix to staged .cs files and re-stage after formatting, replacing the previous read-only check (#19)
 - csharpier format check as pre-commit step (#17)

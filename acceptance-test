@@ -310,6 +310,20 @@ HADOLINT_PRECOMMIT_CONFIG='repos:
         args: [--config, .github/linters/.hadolint.yaml]
 '
 
+# Pre-commit config snippet used by the two markdownlint tests below.
+# Mirrors the global config entry but scoped to markdownlint only so no
+# other linter can interfere with the result.
+MARKDOWNLINT_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: markdownlint
+        name: markdownlint
+        entry: markdownlint
+        language: system
+        types: [markdown]
+        args: [--disable, MD013, --]
+'
+
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
         info "SKIP  broken .env.example → rejected (dotenv-linter not installed)"
@@ -882,6 +896,44 @@ test_clean_dockerfile_passes() {
     assert_exit "Dockerfile with no violations → passes" 0 "$RC"
 }
 
+test_broken_markdown_rejected() {
+    if ! command -v markdownlint > /dev/null 2>&1; then
+        info "SKIP  broken .md → rejected (markdownlint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken .md → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-markdown-test")
+    printf '%s' "$MARKDOWNLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # A bare URL triggers MD034 (bare URL used), a reliable markdownlint error.
+    printf '# Test\n\nVisit http://example.com for details.\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken .md (bare URL, MD034) → rejected" 1 "$RC"
+}
+
+test_valid_markdown_passes() {
+    if ! command -v markdownlint > /dev/null 2>&1; then
+        info "SKIP  valid .md → passes (markdownlint not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  valid .md → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/valid-markdown-test")
+    printf '%s' "$MARKDOWNLINT_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # A clean, markdownlint-compliant Markdown file — no violations.
+    printf '# Test\n\nThis is a valid markdown file with no violations.\n' > "$T/README.md"
+    git -C "$T" add .pre-commit-config.yaml README.md
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "valid .md → passes" 0 "$RC"
+}
+
 # ── Helpers for freshness tests ───────────────────────────────────────────────
 # All freshness tests place $REPO_DIR/.env temporarily. The global cleanup trap
 # removes it on exit/interrupt; each test also removes it explicitly after the
@@ -1001,6 +1053,8 @@ test_broken_py_flake8_rejected
 test_valid_py_flake8_passes
 test_broken_dockerfile_rejected
 test_clean_dockerfile_passes
+test_broken_markdown_rejected
+test_valid_markdown_passes
 test_freshness_no_env_skipped
 test_freshness_matching_sha_passes
 test_freshness_stale_sha_rejected
