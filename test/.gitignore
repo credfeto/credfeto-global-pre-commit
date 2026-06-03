@@ -1,0 +1,4 @@
+# Temporary stub-bin directories created by freshness tests; auto-cleaned on teardown.
+.stub.*
+# Bats fixture directories
+.fixture.*

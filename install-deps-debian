@@ -27,6 +27,7 @@ echo "==> apt packages"
 sudo apt-get update -qq || die "apt-get update failed"
 sudo apt-get install -y \
     git \
+    bats \
     pre-commit \
     shellcheck \
     yamllint \

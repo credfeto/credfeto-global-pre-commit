@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Compare installed SHA (from .env) against the published URL when curl is available; die if stale (result cached for one hour) (#113)
 - Added acceptance tests for hadolint Dockerfile linter hook covering pass and fail cases
 - Add acceptance tests for shellcheck hook covering pass and fail cases (#79)
+- Use bats for acceptance tests
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
