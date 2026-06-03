@@ -236,3 +236,14 @@ repos:
         entry: run-psscriptanalyzer
         language: system
         files: \.(ps1|psm1|psd1)$
+
+      # ── VALIDATE_BATS — run bats test suite ──────────────────────────────
+      # run-bats executes bats --recursive test/ from the repo root.
+      # pass_filenames: false so the entire suite runs, not just staged files.
+      # files: \.bats$ ensures the hook only fires in repos that have bats tests.
+      - id: bats
+        name: run bats tests
+        entry: run-bats
+        language: system
+        pass_filenames: false
+        files: \.bats$
