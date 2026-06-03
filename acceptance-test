@@ -174,6 +174,19 @@ test_no_dotnet_tools_json_passes() {
     assert_exit "no dotnet-tools.json in repo → passes" 0 "$RC"
 }
 
+# Pre-commit config snippet used by the two shellcheck tests below.
+# Scoped to shellcheck only so no other linter can interfere with the result.
+SHELLCHECK_PRECOMMIT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        args: [--shell=sh, --severity=warning]
+        language: system
+        types: [shell]
+'
+
 # Pre-commit config snippet used by the two dotenv tests below.
 # Mirrors the global config entry but scoped to dotenv-linter only so no
 # other linter can interfere with the result.
@@ -323,6 +336,46 @@ MARKDOWNLINT_PRECOMMIT_CONFIG='repos:
         types: [markdown]
         args: [--disable, MD013, --]
 '
+
+test_broken_sh_rejected() {
+    if ! command -v shellcheck > /dev/null 2>&1; then
+        info "SKIP  broken .sh → rejected (shellcheck not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  broken .sh → rejected (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/broken-sh-test")
+    printf '%s' "$SHELLCHECK_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # Unquoted variable and == in [ ] for POSIX sh triggers SC2086 and SC3014.
+    # shellcheck disable=SC2016
+    printf '#!/bin/sh\nvar=hello\n[ $var == x ] && echo "match"\n' > "$T/test.sh"
+    git -C "$T" add .pre-commit-config.yaml test.sh
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "broken .sh (SC2086/SC3014 violation) → rejected" 1 "$RC"
+}
+
+test_clean_sh_passes() {
+    if ! command -v shellcheck > /dev/null 2>&1; then
+        info "SKIP  clean .sh → passes (shellcheck not installed)"
+        return
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        info "SKIP  clean .sh → passes (pre-commit not installed)"
+        return
+    fi
+    T=$(make_repo "feature/clean-sh-test")
+    printf '%s' "$SHELLCHECK_PRECOMMIT_CONFIG" > "$T/.pre-commit-config.yaml"
+    # Quoted variable and = operator — no shellcheck violations.
+    # shellcheck disable=SC2016
+    printf '#!/bin/sh\nvar=hello\nif [ "$var" = "x" ]; then\n    echo "match"\nfi\n' > "$T/test.sh"
+    git -C "$T" add .pre-commit-config.yaml test.sh
+    run_hook "$T"; RC=$?
+    destroy_repo "$T"
+    assert_exit "clean .sh (no violations) → passes" 0 "$RC"
+}
 
 test_broken_env_file_rejected() {
     if ! command -v dotenv-linter > /dev/null 2>&1; then
@@ -1025,6 +1078,8 @@ test_merge_commit_rejected
 test_ignored_tracked_file_rejected
 test_dotnet_tools_json_rejected
 test_no_dotnet_tools_json_passes
+test_broken_sh_rejected
+test_clean_sh_passes
 test_broken_env_file_rejected
 test_valid_env_file_passes
 test_clean_commit_on_branch_passes
