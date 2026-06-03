@@ -53,9 +53,9 @@ fi
 echo "==> pacman packages"
 sudo pacman -S --needed --noconfirm \
     git \
-    bash-bats \
+    bats \
     go \
-    python-pre-commit \
+    pre-commit \
     shellcheck \
     yamllint \
     python-flake8 \
