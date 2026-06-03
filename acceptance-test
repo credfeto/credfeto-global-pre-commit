@@ -182,6 +182,7 @@ SHELLCHECK_PRECOMMIT_CONFIG='repos:
       - id: shellcheck
         name: shellcheck
         entry: shellcheck
+        args: [--shell=sh, --severity=warning]
         language: system
         types: [shell]
 '
