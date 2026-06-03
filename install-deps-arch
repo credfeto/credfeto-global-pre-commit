@@ -53,6 +53,7 @@ fi
 echo "==> pacman packages"
 sudo pacman -S --needed --noconfirm \
     git \
+    bash-bats \
     go \
     python-pre-commit \
     shellcheck \
