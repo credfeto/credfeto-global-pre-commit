@@ -2,8 +2,17 @@
 # Install global git pre-commit hooks from this repo.
 # Sets core.hooksPath globally so every repo on this machine uses these hooks.
 # Run once after cloning; re-run after pulling updates.
+# Pass --system to install for all users (requires sudo for git config --system).
 
 set -e
+
+SYSTEM_INSTALL=false
+for _arg in "$@"; do
+    case "$_arg" in
+        --system) SYSTEM_INSTALL=true ;;
+        *) printf 'Unknown argument: %s\n' "$_arg" >&2; exit 1 ;;
+    esac
+done
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$REPO_DIR/src/hooks"
@@ -55,8 +64,12 @@ case "$DISTRO" in
         ;;
 esac
 
-# ── Register globally with git ────────────────────────────────────────────────
-git config --global core.hooksPath "$HOOKS_DIR"
+# ── Register with git ────────────────────────────────────────────────────────
+if $SYSTEM_INSTALL; then
+    sudo git config --system core.hooksPath "$HOOKS_DIR"
+else
+    git config --global core.hooksPath "$HOOKS_DIR"
+fi
 
 # ── Symlink system-hook wrappers onto PATH ────────────────────────────────────
 # These are called by pre-commit's local system hooks.
@@ -92,7 +105,11 @@ cross() { printf "  \033[31m✗\033[0m  %-38s %s\n" "$1" "$2"; }
 skip() { printf "  \033[33m–\033[0m  %-38s %s\n" "$1" "$2"; }
 
 echo ""
-echo "Global pre-commit hooks installed."
+if $SYSTEM_INSTALL; then
+    echo "System-wide pre-commit hooks installed (all users)."
+else
+    echo "Global pre-commit hooks installed (current user)."
+fi
 echo "Hooks directory: $HOOKS_DIR"
 echo ""
 echo "Check status:"
