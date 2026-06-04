@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add acceptance tests for shellcheck hook covering pass and fail cases (#79)
 - Use bats for acceptance tests
 - Add bats pre-commit hook to run bats tests when .bats files are staged
+- Add acceptance tests for yamllint hook covering pass and fail cases (#78)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
