@@ -1,6 +1,12 @@
-#!/bin/sh
+#!/bin/bash
 # Wrapper for bats — runs the full bats test suite when .bats files are staged.
 # Ignores filename arguments; always runs the complete test directory.
+#
+# Uses #!/bin/bash (not /bin/sh): export -f is needed to re-export bats_readlinkf
+# into the child bats process. When invoked through a POSIX sh (e.g. the pre-commit
+# hook), sh strips BASH_FUNC_* environment variables. Without the re-export, the
+# inner bats cannot compute BATS_LIBEXEC and falls back to CWD, causing
+# bats-exec-test lookups to fail.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -14,4 +20,8 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 # from an outer bats process causes "Failed to create BATS_SUITE_TMPDIR" when
 # the suite/ subdirectory already exists.  Unsetting it forces a fresh tmpdir.
 unset BATS_RUN_TMPDIR
+# Re-export bats_readlinkf so the inner bats can compute BATS_LIBEXEC correctly.
+# A POSIX sh in the call chain strips BASH_FUNC_* env vars; this restores it.
+bats_readlinkf() { readlink -f "$1"; }
+export -f bats_readlinkf
 exec bats --recursive "$REPO_ROOT/test"
