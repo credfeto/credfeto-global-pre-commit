@@ -120,6 +120,16 @@ CHECK_YAML_CONFIG='repos:
         args: [--allow-multiple-documents]
 '
 
+CHECK_XML_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-xml
+        name: check xml
+        entry: check-xml
+        language: system
+        types: [xml]
+'
+
 # ── shellcheck ────────────────────────────────────────────────────────────────
 
 @test "broken shell script (SC2086/SC3014) is rejected" {
@@ -724,6 +734,40 @@ _ansible_env_ok() {
     printf '%s' "${YAMLLINT_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf '%s\n' '---' 'key: value' > "${T}/good.yaml"
     git -C "${T}" add .pre-commit-config.yaml good.yaml
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-xml ─────────────────────────────────────────────────────────────────
+
+@test "malformed XML (unclosed tag) is rejected by check-xml" {
+    if ! command -v check-xml > /dev/null 2>&1; then
+        skip "check-xml not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-xml-check-xml-test)"
+    printf '%s' "${CHECK_XML_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '<root><child></root>\n' > "${T}/data.xml"
+    git -C "${T}" add .pre-commit-config.yaml data.xml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "well-formed XML passes check-xml" {
+    if ! command -v check-xml > /dev/null 2>&1; then
+        skip "check-xml not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-xml-check-xml-test)"
+    printf '%s' "${CHECK_XML_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '<root><child/></root>\n' > "${T}/data.xml"
+    git -C "${T}" add .pre-commit-config.yaml data.xml
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
