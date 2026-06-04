@@ -44,9 +44,22 @@ make_repo() {
 
 # Runs the hook in the given repo directory using TEST_PATH (dotnet stripped
 # when not at the expected location).  Sets $status and $output via bats run.
+# bats 1.10.x (Ubuntu 24.04) does not export bats_readlinkf from its wrapper
+# when invoked from a sh parent process; without it bats-exec-file cannot locate
+# bats-exec-test.  Defining and exporting bats_readlinkf here ensures the inner
+# bats library always resolves its own path correctly (defence-in-depth alongside
+# the same fix in src/scripts/run-bats).
+# The four per-run tmpdir vars are also cleared so the inner bats starts with a
+# fresh tmpdir hierarchy rather than re-using the outer suite directories.
 run_hook() {
     local _repo="$1"
-    run bash -c 'cd "$1" && unset CLAUDECODE && env PATH="$2" sh "$3"' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env PATH="$2" sh "$3"
+    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
 }
 
 # Runs the hook with a custom PATH and XDG_CACHE_HOME (for freshness tests).
@@ -55,5 +68,11 @@ run_hook_env() {
     local _repo="$1"
     local _path="$2"
     local _cache="$3"
-    run bash -c 'cd "$1" && unset CLAUDECODE && env PATH="$2" XDG_CACHE_HOME="$3" sh "$4"' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
+    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
 }

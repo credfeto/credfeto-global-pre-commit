@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add acceptance tests for shellcheck hook covering pass and fail cases (#79)
 - Use bats for acceptance tests
 - Add bats pre-commit hook to run bats tests when .bats files are staged
+- Add acceptance tests for yamllint hook covering pass and fail cases (#78)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
@@ -68,6 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - install_github_release: use python3 JSON parsing for GitHub releases/latest to handle minified API responses reliably
 - Set DOTNET_ROLL_FORWARD=Major when running dotnet tsqllint to allow roll-forward to newer .NET runtimes (#101)
 - Corrected Arch Linux package names in install-deps-arch: bash-bats renamed to bats, python-pre-commit renamed to pre-commit
+- Fix run-bats failing with bats 1.10.x on Ubuntu 24.04 by exporting bats_readlinkf so the inner bats library can locate bats-exec-test correctly
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

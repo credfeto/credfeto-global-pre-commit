@@ -99,6 +99,16 @@ MARKDOWNLINT_CONFIG='repos:
         args: [--disable, MD013, --]
 '
 
+YAMLLINT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: yamllint
+        name: yamllint
+        entry: yamllint
+        language: system
+        types: [yaml]
+'
+
 # ── shellcheck ────────────────────────────────────────────────────────────────
 
 @test "broken shell script (SC2086/SC3014) is rejected" {
@@ -635,6 +645,40 @@ _ansible_env_ok() {
     printf '%s' "${MARKDOWNLINT_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf '# Test\n\nThis is a valid markdown file with no violations.\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── yamllint ──────────────────────────────────────────────────────────────────
+
+@test "YAML file with trailing spaces is rejected by yamllint" {
+    if ! command -v yamllint > /dev/null 2>&1; then
+        skip "yamllint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-yaml-yamllint-test)"
+    printf '%s' "${YAMLLINT_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '%s\n' '---' 'key: value   ' > "${T}/bad.yaml"
+    git -C "${T}" add .pre-commit-config.yaml bad.yaml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "style-compliant YAML passes yamllint" {
+    if ! command -v yamllint > /dev/null 2>&1; then
+        skip "yamllint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-yaml-yamllint-test)"
+    printf '%s' "${YAMLLINT_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '%s\n' '---' 'key: value' > "${T}/good.yaml"
+    git -C "${T}" add .pre-commit-config.yaml good.yaml
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }

@@ -14,4 +14,4 @@ die() {
 command -v git > /dev/null 2>&1 || die "git is not installed"
 command -v bats > /dev/null 2>&1 || die "bats is not installed — run ./install-deps-debian or ./install-deps-arch"
 
-exec bats --recursive "${REPO_DIR}/test"
+exec bats --print-output-on-failure --recursive "${REPO_DIR}/test"

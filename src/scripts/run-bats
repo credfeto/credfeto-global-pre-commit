@@ -1,6 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 # Wrapper for bats — runs the full bats test suite when .bats files are staged.
 # Ignores filename arguments; always runs the complete test directory.
+# Must be bash (not sh) so that export -f can propagate bats_readlinkf to the
+# inner bats process (needed on platforms where the bats wrapper does not export it).
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -10,8 +12,18 @@ die() {
 command -v bats > /dev/null 2>&1 || die "bats is not installed — run ./install-deps-debian or ./install-deps-arch"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 [ -d "$REPO_ROOT/test" ] || exit 0
-# bats 1.10.x does not clear BATS_RUN_TMPDIR on startup, so an inherited value
-# from an outer bats process causes "Failed to create BATS_SUITE_TMPDIR" when
-# the suite/ subdirectory already exists.  Unsetting it forces a fresh tmpdir.
-unset BATS_RUN_TMPDIR
+
+# bats 1.10.x (Ubuntu 24.04) does not export bats_readlinkf from the wrapper
+# when run from a sh parent process. Without it, the bats library falls back to
+# using the CWD as BATS_LIBEXEC, then bats-exec-file cannot find bats-exec-test.
+# Defining and exporting it here ensures the inner bats library always resolves
+# its own path correctly.
+bats_readlinkf() { readlink -f "$1"; }
+export -f bats_readlinkf
+
+# bats 1.10.x does not reset per-run tmpdir variables on startup, so inherited
+# values from an outer bats process cause directory-creation conflicts.
+# Unsetting all four forces a completely fresh tmpdir hierarchy.
+unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+
 exec bats --recursive "$REPO_ROOT/test"
