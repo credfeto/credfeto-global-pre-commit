@@ -1,0 +1,17 @@
+#!/bin/sh
+# Wrapper for bats — runs the full bats test suite when .bats files are staged.
+# Ignores filename arguments; always runs the complete test directory.
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+command -v bats > /dev/null 2>&1 || die "bats is not installed — run ./install-deps-debian or ./install-deps-arch"
+REPO_ROOT=$(git rev-parse --show-toplevel)
+[ -d "$REPO_ROOT/test" ] || exit 0
+# bats 1.10.x does not clear BATS_RUN_TMPDIR on startup, so an inherited value
+# from an outer bats process causes "Failed to create BATS_SUITE_TMPDIR" when
+# the suite/ subdirectory already exists.  Unsetting it forces a fresh tmpdir.
+unset BATS_RUN_TMPDIR
+exec bats --recursive "$REPO_ROOT/test"

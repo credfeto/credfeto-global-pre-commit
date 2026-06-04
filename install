@@ -23,6 +23,7 @@ chmod +x \
     "$SCRIPTS_DIR/run-eslint" \
     "$SCRIPTS_DIR/run-stylelint" \
     "$SCRIPTS_DIR/run-psscriptanalyzer" \
+    "$SCRIPTS_DIR/run-bats" \
     "$REPO_DIR/acceptance-test" \
     "$REPO_DIR/install-deps-arch" \
     "$REPO_DIR/install-deps-debian"
@@ -63,6 +64,7 @@ mkdir -p "$HOME/.local/bin"
 ln -sf "$SCRIPTS_DIR/run-eslint"           "$HOME/.local/bin/run-eslint"
 ln -sf "$SCRIPTS_DIR/run-stylelint"        "$HOME/.local/bin/run-stylelint"
 ln -sf "$SCRIPTS_DIR/run-psscriptanalyzer" "$HOME/.local/bin/run-psscriptanalyzer"
+ln -sf "$SCRIPTS_DIR/run-bats"             "$HOME/.local/bin/run-bats"
 
 # Go tools are installed to $GOPATH/bin which may not be on PATH — symlink them.
 if command -v go > /dev/null 2>&1; then
@@ -268,6 +270,12 @@ else
     cross "VALIDATE_POWERSHELL — PSScriptAnalyzer (system)" "pwsh not installed"
 fi
 
+if has bats; then
+    skip  "VALIDATE_BATS — bats tests       (*.bats)" "$(bats --version 2>/dev/null)"
+else
+    cross "VALIDATE_BATS — bats tests       (*.bats)" "not installed"
+fi
+
 skip  "VALIDATE_SQLFLUFF — sqlfluff (*.sql)"  "handled by dedicated SQL check above"
 skip  "VALIDATE_CLOUDFORMATION — cfn-lint"    "handled by dedicated CFN check above"
 
@@ -291,6 +299,7 @@ has dotenv-linter || MISSING_SYSTEM="$MISSING_SYSTEM dotenv-linter"
 has eslint        || MISSING_SYSTEM="$MISSING_SYSTEM eslint"
 has xmllint       || MISSING_SYSTEM="$MISSING_SYSTEM xmllint"
 has pwsh          || MISSING_SYSTEM="$MISSING_SYSTEM pwsh"
+has bats          || MISSING_SYSTEM="$MISSING_SYSTEM bats"
 
 if [ -n "$MISSING_SYSTEM" ]; then
     echo ""
@@ -313,6 +322,7 @@ if [ -n "$MISSING_SYSTEM" ]; then
     has cfn-lint      || echo "  cfn-lint:       pip install cfn-lint"
     has xmllint       || echo "  xmllint:        apt install libxml2-utils  # or brew install libxml2"
     has pwsh          || echo "  pwsh:           https://github.com/PowerShell/PowerShell/releases"
+    has bats          || echo "  bats:           apt install bats  # or pacman -S bash-bats"
 fi
 
 echo ""
