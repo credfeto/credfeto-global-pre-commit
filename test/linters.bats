@@ -109,6 +109,17 @@ YAMLLINT_CONFIG='repos:
         types: [yaml]
 '
 
+CHECK_YAML_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-yaml
+        name: check yaml
+        entry: check-yaml
+        language: system
+        types: [yaml]
+        args: [--allow-multiple-documents]
+'
+
 # ── shellcheck ────────────────────────────────────────────────────────────────
 
 @test "broken shell script (SC2086/SC3014) is rejected" {
@@ -645,6 +656,40 @@ _ansible_env_ok() {
     printf '%s' "${MARKDOWNLINT_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf '# Test\n\nThis is a valid markdown file with no violations.\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-yaml ───────────────────────────────────────────────────────────────
+
+@test "YAML file with syntax error (unclosed bracket) is rejected by check-yaml" {
+    if ! command -v check-yaml > /dev/null 2>&1; then
+        skip "check-yaml not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-yaml-check-yaml-test)"
+    printf '%s' "${CHECK_YAML_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'key: [unclosed\n' > "${T}/bad.yaml"
+    git -C "${T}" add .pre-commit-config.yaml bad.yaml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "syntactically valid YAML passes check-yaml" {
+    if ! command -v check-yaml > /dev/null 2>&1; then
+        skip "check-yaml not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-yaml-check-yaml-test)"
+    printf '%s' "${CHECK_YAML_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '%s\n' '---' 'key: value' > "${T}/good.yaml"
+    git -C "${T}" add .pre-commit-config.yaml good.yaml
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
