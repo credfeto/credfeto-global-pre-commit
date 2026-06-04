@@ -10,9 +10,9 @@ die() {
 command -v bats > /dev/null 2>&1 || die "bats is not installed — run ./install-deps-debian or ./install-deps-arch"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 [ -d "$REPO_ROOT/test" ] || exit 0
-# bats 1.10.x does not clear BATS_RUN_TMPDIR or BATS_SUITE_TMPDIR on startup,
-# so inherited values from an outer bats process cause "Failed to create
-# BATS_SUITE_TMPDIR" when those directories already exist.  Unsetting both
-# forces a fresh tmpdir for the inner run.
-unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR
+# bats 1.10.x does not reset per-run tmpdir variables on startup, so inherited
+# values from an outer bats process cause "Failed to create BATS_SUITE_TMPDIR"
+# (or BATS_FILE_TMPDIR / BATS_TEST_TMPDIR) when those directories already exist.
+# Unsetting all four forces a completely fresh tmpdir hierarchy.
+unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
 exec bats --recursive "$REPO_ROOT/test"

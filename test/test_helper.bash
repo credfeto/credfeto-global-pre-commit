@@ -44,12 +44,12 @@ make_repo() {
 
 # Runs the hook in the given repo directory using TEST_PATH (dotnet stripped
 # when not at the expected location).  Sets $status and $output via bats run.
-# BATS_RUN_TMPDIR and BATS_SUITE_TMPDIR are unset so that any nested bats
-# invocation (e.g. the run-bats hook) starts with a fresh tmpdir rather than
-# inheriting the outer suite's directories (bats 1.10.x does not clear them).
+# bats 1.10.x does not reset per-run tmpdir variables at startup; all four are
+# unset here so that any nested bats invocation (e.g. run-bats) starts with a
+# completely fresh tmpdir hierarchy rather than re-using the outer suite dirs.
 run_hook() {
     local _repo="$1"
-    run bash -c 'cd "$1" && unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR && env PATH="$2" sh "$3"' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+    run bash -c 'cd "$1" && unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR && env PATH="$2" sh "$3"' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
 }
 
 # Runs the hook with a custom PATH and XDG_CACHE_HOME (for freshness tests).
@@ -58,5 +58,5 @@ run_hook_env() {
     local _repo="$1"
     local _path="$2"
     local _cache="$3"
-    run bash -c 'cd "$1" && unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR && env PATH="$2" XDG_CACHE_HOME="$3" sh "$4"' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
+    run bash -c 'cd "$1" && unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR && env PATH="$2" XDG_CACHE_HOME="$3" sh "$4"' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
 }

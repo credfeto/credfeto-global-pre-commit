@@ -57,6 +57,11 @@ load test_helper
     printf '#!/usr/bin/env bats\n@test "always passes" {\n  true\n}\n' > "${T}/test/pass.bats"
     git -C "${T}" add .pre-commit-config.yaml test/pass.bats
     run_hook "${T}"
+    if [ "${status}" -ne 0 ]; then
+        printf '# hook exit status: %s\n' "${status}" >&3
+        printf '# hook output:\n' >&3
+        printf '%s\n' "${output}" | sed 's/^/# /' >&3
+    fi
     [ "${status}" -eq 0 ]
 }
 
