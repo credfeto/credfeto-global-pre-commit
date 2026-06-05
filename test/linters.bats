@@ -140,6 +140,16 @@ CHECK_JSON_CONFIG='repos:
         types: [json]
 '
 
+CHECK_SHEBANG_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-shebang-scripts-are-executable
+        name: check that scripts with shebangs are executable
+        entry: check-shebang-scripts-are-executable
+        language: system
+        types: [text]
+'
+
 # ── shellcheck ────────────────────────────────────────────────────────────────
 
 @test "broken shell script (SC2086/SC3014) is rejected" {
@@ -812,6 +822,41 @@ _ansible_env_ok() {
     printf '%s' "${CHECK_JSON_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf '{"key": "value"}\n' > "${T}/good.json"
     git -C "${T}" add .pre-commit-config.yaml good.json
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-shebang-scripts-are-executable ─────────────────────────────────────
+
+@test "non-executable file with shebang is rejected by check-shebang-scripts-are-executable" {
+    if ! command -v check-shebang-scripts-are-executable > /dev/null 2>&1; then
+        skip "check-shebang-scripts-are-executable not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/non-executable-shebang-test)"
+    printf '%s' "${CHECK_SHEBANG_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '#!/bin/sh\necho hello\n' > "${T}/test.sh"
+    git -C "${T}" add .pre-commit-config.yaml test.sh
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "executable file with shebang passes check-shebang-scripts-are-executable" {
+    if ! command -v check-shebang-scripts-are-executable > /dev/null 2>&1; then
+        skip "check-shebang-scripts-are-executable not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/executable-shebang-test)"
+    printf '%s' "${CHECK_SHEBANG_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '#!/bin/sh\necho hello\n' > "${T}/test.sh"
+    chmod +x "${T}/test.sh"
+    git -C "${T}" add .pre-commit-config.yaml test.sh
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
