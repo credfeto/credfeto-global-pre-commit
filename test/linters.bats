@@ -150,6 +150,17 @@ CHECK_SHEBANG_CONFIG='repos:
         types: [text]
 '
 
+TRUFFLEHOG_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: trufflehog
+        name: TruffleHog
+        description: Detect secrets in your data with TruffleHog.
+        entry: trufflehog git file://. --since-commit HEAD --fail --no-update --no-verification --trust-local-git-config
+        language: system
+        pass_filenames: false
+'
+
 # ── shellcheck ────────────────────────────────────────────────────────────────
 
 @test "broken shell script (SC2086/SC3014) is rejected" {
@@ -857,6 +868,57 @@ _ansible_env_ok() {
     printf '#!/bin/sh\necho hello\n' > "${T}/test.sh"
     chmod +x "${T}/test.sh"
     git -C "${T}" add .pre-commit-config.yaml test.sh
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── trufflehog ────────────────────────────────────────────────────────────────
+
+@test "staged RSA private key is rejected by trufflehog" {
+    if ! command -v trufflehog > /dev/null 2>&1; then
+        skip "trufflehog not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    if ! command -v openssl > /dev/null 2>&1; then
+        skip "openssl not installed"
+    fi
+    local T
+    T="$(make_repo feature/trufflehog-secret-test)"
+    # Establish HEAD with an initial commit using an empty pre-commit config.
+    # Trufflehog requires at least one prior commit for --since-commit HEAD to
+    # resolve; the empty config avoids running the global linters on fixture files.
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'placeholder\n' > "${T}/placeholder.txt"
+    git -C "${T}" add .pre-commit-config.yaml placeholder.txt
+    git -C "${T}" commit --quiet -m "chore: initial placeholder"
+    # Replace with the scoped trufflehog config and stage a generated RSA key.
+    printf '%s' "${TRUFFLEHOG_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    openssl genrsa 512 2>/dev/null > "${T}/test-key.pem"
+    git -C "${T}" add .pre-commit-config.yaml test-key.pem
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staged file with no secrets passes trufflehog" {
+    if ! command -v trufflehog > /dev/null 2>&1; then
+        skip "trufflehog not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/trufflehog-clean-test)"
+    # Establish HEAD with an initial commit using an empty pre-commit config.
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'placeholder\n' > "${T}/placeholder.txt"
+    git -C "${T}" add .pre-commit-config.yaml placeholder.txt
+    git -C "${T}" commit --quiet -m "chore: initial placeholder"
+    # Replace with the scoped trufflehog config and stage a clean text file.
+    printf '%s' "${TRUFFLEHOG_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'This file contains no secrets or credentials.\n' > "${T}/clean.txt"
+    git -C "${T}" add .pre-commit-config.yaml clean.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
