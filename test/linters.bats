@@ -130,6 +130,16 @@ CHECK_XML_CONFIG='repos:
         types: [xml]
 '
 
+CHECK_JSON_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-json
+        name: check json
+        entry: check-json
+        language: system
+        types: [json]
+'
+
 # ── shellcheck ────────────────────────────────────────────────────────────────
 
 @test "broken shell script (SC2086/SC3014) is rejected" {
@@ -768,6 +778,40 @@ _ansible_env_ok() {
     printf '%s' "${CHECK_XML_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf '<root><child/></root>\n' > "${T}/data.xml"
     git -C "${T}" add .pre-commit-config.yaml data.xml
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-json ────────────────────────────────────────────────────────────────
+
+@test "JSON file with trailing comma is rejected by check-json" {
+    if ! command -v check-json > /dev/null 2>&1; then
+        skip "check-json not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-json-check-json-test)"
+    printf '%s' "${CHECK_JSON_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '{"key": "value",}\n' > "${T}/bad.json"
+    git -C "${T}" add .pre-commit-config.yaml bad.json
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "syntactically valid JSON passes check-json" {
+    if ! command -v check-json > /dev/null 2>&1; then
+        skip "check-json not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-json-check-json-test)"
+    printf '%s' "${CHECK_JSON_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '{"key": "value"}\n' > "${T}/good.json"
+    git -C "${T}" add .pre-commit-config.yaml good.json
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }

@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 ### Security
 ### Added
+- Add acceptance tests for check-json hook covering pass and fail cases (#74)
 - Add acceptance tests for check-yaml hook covering pass and fail cases (#77)
 - Add acceptance tests for markdownlint hook covering pass and fail cases (#80)
 - Fail pre-commit when hooks repo is out of date and AI agent does not have write access to update it (#26)
