@@ -150,6 +150,16 @@ CHECK_SHEBANG_CONFIG='repos:
         types: [text]
 '
 
+CHECK_EXECUTABLES_HAVE_SHEBANGS_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-executables-have-shebangs
+        name: check that executables have shebangs
+        entry: check-executables-have-shebangs
+        language: system
+        types: [text, executable]
+'
+
 TRUFFLEHOG_CONFIG='repos:
   - repo: local
     hooks:
@@ -868,6 +878,42 @@ _ansible_env_ok() {
     printf '#!/bin/sh\necho hello\n' > "${T}/test.sh"
     chmod +x "${T}/test.sh"
     git -C "${T}" add .pre-commit-config.yaml test.sh
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-executables-have-shebangs ──────────────────────────────────────────
+
+@test "executable file without shebang is rejected by check-executables-have-shebangs" {
+    if ! command -v check-executables-have-shebangs > /dev/null 2>&1; then
+        skip "check-executables-have-shebangs not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/executable-no-shebang-test)"
+    printf '%s' "${CHECK_EXECUTABLES_HAVE_SHEBANGS_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'echo hello\n' > "${T}/run.sh"
+    chmod +x "${T}/run.sh"
+    git -C "${T}" add .pre-commit-config.yaml run.sh
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "executable file with shebang passes check-executables-have-shebangs" {
+    if ! command -v check-executables-have-shebangs > /dev/null 2>&1; then
+        skip "check-executables-have-shebangs not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/executable-with-shebang-test)"
+    printf '%s' "${CHECK_EXECUTABLES_HAVE_SHEBANGS_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '#!/bin/sh\necho hello\n' > "${T}/run.sh"
+    chmod +x "${T}/run.sh"
+    git -C "${T}" add .pre-commit-config.yaml run.sh
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
