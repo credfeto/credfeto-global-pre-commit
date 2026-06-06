@@ -171,6 +171,16 @@ TRUFFLEHOG_CONFIG='repos:
         pass_filenames: false
 '
 
+TRAILING_WHITESPACE_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: trailing-whitespace
+        name: trim trailing whitespace
+        entry: trailing-whitespace-fixer
+        language: system
+        types: [text]
+'
+
 # ── shellcheck ────────────────────────────────────────────────────────────────
 
 @test "broken shell script (SC2086/SC3014) is rejected" {
@@ -964,6 +974,40 @@ _ansible_env_ok() {
     # Replace with the scoped trufflehog config and stage a clean text file.
     printf '%s' "${TRUFFLEHOG_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'This file contains no secrets or credentials.\n' > "${T}/clean.txt"
+    git -C "${T}" add .pre-commit-config.yaml clean.txt
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── trailing-whitespace ───────────────────────────────────────────────────────
+
+@test "text file with trailing spaces is rejected by trailing-whitespace" {
+    if ! command -v trailing-whitespace-fixer > /dev/null 2>&1; then
+        skip "trailing-whitespace-fixer not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-trailing-whitespace-test)"
+    printf '%s' "${TRAILING_WHITESPACE_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'hello   \nworld\n' > "${T}/bad.txt"
+    git -C "${T}" add .pre-commit-config.yaml bad.txt
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "text file with no trailing whitespace passes trailing-whitespace" {
+    if ! command -v trailing-whitespace-fixer > /dev/null 2>&1; then
+        skip "trailing-whitespace-fixer not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-trailing-whitespace-test)"
+    printf '%s' "${TRAILING_WHITESPACE_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'hello\nworld\n' > "${T}/clean.txt"
     git -C "${T}" add .pre-commit-config.yaml clean.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
