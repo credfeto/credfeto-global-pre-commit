@@ -43,6 +43,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add acceptance tests for yamllint hook covering pass and fail cases (#78)
 - install: --system option to install hooks as system-wide git configuration (all users on the machine) using sudo git config --system
 - Add acceptance tests for check-xml hook covering pass and fail cases (#76)
+- Add acceptance tests for trufflehog hook covering pass and fail cases (#73)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
