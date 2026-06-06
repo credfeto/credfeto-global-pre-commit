@@ -46,6 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add acceptance tests for trufflehog hook covering pass and fail cases (#73)
 - Add acceptance tests for check-executables-have-shebangs hook covering pass and fail cases (#72)
 - Add acceptance tests for trailing-whitespace hook
+- Acceptance tests for check-toml hook (pass and fail cases)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
