@@ -170,6 +170,16 @@ CHECK_EXECUTABLES_HAVE_SHEBANGS_CONFIG='repos:
         types: [text, executable]
 '
 
+DETECT_PRIVATE_KEY_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: detect-private-key
+        name: detect private key
+        entry: detect-private-key
+        language: system
+        types: [text]
+'
+
 TRUFFLEHOG_CONFIG='repos:
   - repo: local
     hooks:
@@ -1052,6 +1062,43 @@ _ansible_env_ok() {
     T="$(make_repo feature/valid-trailing-whitespace-test)"
     printf '%s' "${TRAILING_WHITESPACE_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'hello\nworld\n' > "${T}/clean.txt"
+    git -C "${T}" add .pre-commit-config.yaml clean.txt
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── detect-private-key ────────────────────────────────────────────────────────
+
+@test "file containing PEM private key header is rejected by detect-private-key" {
+    if ! command -v detect-private-key > /dev/null 2>&1; then
+        skip "detect-private-key not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    if ! command -v openssl > /dev/null 2>&1; then
+        skip "openssl not installed"
+    fi
+    local T
+    T="$(make_repo feature/detect-private-key-fail-test)"
+    printf '%s' "${DETECT_PRIVATE_KEY_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    openssl genrsa 512 2>/dev/null > "${T}/secret.pem"
+    git -C "${T}" add .pre-commit-config.yaml secret.pem
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "file with no private key content passes detect-private-key" {
+    if ! command -v detect-private-key > /dev/null 2>&1; then
+        skip "detect-private-key not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/detect-private-key-pass-test)"
+    printf '%s' "${DETECT_PRIVATE_KEY_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'This file contains no private key or sensitive credentials.\n' > "${T}/clean.txt"
     git -C "${T}" add .pre-commit-config.yaml clean.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
