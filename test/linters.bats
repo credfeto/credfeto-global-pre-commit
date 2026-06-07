@@ -140,6 +140,16 @@ CHECK_JSON_CONFIG='repos:
         types: [json]
 '
 
+CHECK_TOML_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-toml
+        name: check toml
+        entry: check-toml
+        language: system
+        types: [toml]
+'
+
 CHECK_SHEBANG_CONFIG='repos:
   - repo: local
     hooks:
@@ -853,6 +863,40 @@ _ansible_env_ok() {
     printf '%s' "${CHECK_JSON_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf '{"key": "value"}\n' > "${T}/good.json"
     git -C "${T}" add .pre-commit-config.yaml good.json
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-toml ────────────────────────────────────────────────────────────────
+
+@test "TOML file with invalid syntax (unclosed string) is rejected by check-toml" {
+    if ! command -v check-toml > /dev/null 2>&1; then
+        skip "check-toml not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-toml-check-toml-test)"
+    printf '%s' "${CHECK_TOML_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'key = "unclosed\n' > "${T}/bad.toml"
+    git -C "${T}" add .pre-commit-config.yaml bad.toml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "syntactically valid TOML passes check-toml" {
+    if ! command -v check-toml > /dev/null 2>&1; then
+        skip "check-toml not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-toml-check-toml-test)"
+    printf '%s' "${CHECK_TOML_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '[package]\nname = "my-package"\nversion = "1.0.0"\n' > "${T}/good.toml"
+    git -C "${T}" add .pre-commit-config.yaml good.toml
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
