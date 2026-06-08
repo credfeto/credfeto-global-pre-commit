@@ -150,6 +150,15 @@ CHECK_MERGE_CONFLICT_CONFIG='repos:
         types: [text]
 '
 
+CHECK_CASE_CONFLICT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-case-conflict
+        name: check for case conflicts
+        entry: check-case-conflict
+        language: system
+'
+
 CHECK_TOML_CONFIG='repos:
   - repo: local
     hooks:
@@ -1198,6 +1207,42 @@ _ansible_env_ok() {
     printf '%s' "${CHECK_MERGE_CONFLICT_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'This file has no merge conflict markers.\n' > "${T}/clean.txt"
     git -C "${T}" add .pre-commit-config.yaml clean.txt
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-case-conflict ───────────────────────────────────────────────────────
+
+@test "files differing only in case are rejected by check-case-conflict" {
+    if ! command -v check-case-conflict > /dev/null 2>&1; then
+        skip "check-case-conflict not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-case-conflict-test)"
+    printf '%s' "${CHECK_CASE_CONFLICT_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'upper case name\n' > "${T}/File.txt"
+    printf 'lower case name\n' > "${T}/file.txt"
+    git -C "${T}" add .pre-commit-config.yaml File.txt file.txt
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "files with distinct names pass check-case-conflict" {
+    if ! command -v check-case-conflict > /dev/null 2>&1; then
+        skip "check-case-conflict not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-case-conflict-test)"
+    printf '%s' "${CHECK_CASE_CONFLICT_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'first file\n' > "${T}/alpha.txt"
+    printf 'second file\n' > "${T}/beta.txt"
+    git -C "${T}" add .pre-commit-config.yaml alpha.txt beta.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
