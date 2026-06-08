@@ -201,6 +201,16 @@ TRAILING_WHITESPACE_CONFIG='repos:
         types: [text]
 '
 
+MIXED_LINE_ENDING_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: mixed-line-ending
+        name: mixed line ending
+        entry: mixed-line-ending
+        language: system
+        types: [text]
+'
+
 # ── shellcheck ────────────────────────────────────────────────────────────────
 
 @test "broken shell script (SC2086/SC3014) is rejected" {
@@ -1099,6 +1109,40 @@ _ansible_env_ok() {
     T="$(make_repo feature/detect-private-key-pass-test)"
     printf '%s' "${DETECT_PRIVATE_KEY_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'This file contains no private key or sensitive credentials.\n' > "${T}/clean.txt"
+    git -C "${T}" add .pre-commit-config.yaml clean.txt
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── mixed-line-ending ─────────────────────────────────────────────────────────
+
+@test "file with mixed CRLF and LF line endings is rejected by mixed-line-ending" {
+    if ! command -v mixed-line-ending > /dev/null 2>&1; then
+        skip "mixed-line-ending not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-mixed-line-ending-test)"
+    printf '%s' "${MIXED_LINE_ENDING_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'first line\r\nsecond line\n' > "${T}/bad.txt"
+    git -C "${T}" add .pre-commit-config.yaml bad.txt
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "file with consistent LF-only line endings passes mixed-line-ending" {
+    if ! command -v mixed-line-ending > /dev/null 2>&1; then
+        skip "mixed-line-ending not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-mixed-line-ending-test)"
+    printf '%s' "${MIXED_LINE_ENDING_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'first line\nsecond line\n' > "${T}/clean.txt"
     git -C "${T}" add .pre-commit-config.yaml clean.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
