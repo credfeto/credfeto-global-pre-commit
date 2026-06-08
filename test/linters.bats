@@ -145,7 +145,7 @@ CHECK_MERGE_CONFLICT_CONFIG='repos:
     hooks:
       - id: check-merge-conflict
         name: check for merge conflicts
-        entry: check-merge-conflict
+        entry: check-merge-conflict --assume-in-merge
         language: system
         types: [text]
 '
@@ -217,6 +217,16 @@ MIXED_LINE_ENDING_CONFIG='repos:
       - id: mixed-line-ending
         name: mixed line ending
         entry: mixed-line-ending
+        language: system
+        types: [text]
+'
+
+END_OF_FILE_FIXER_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: end-of-file-fixer
+        name: fix end of files
+        entry: end-of-file-fixer
         language: system
         types: [text]
 '
@@ -1187,6 +1197,40 @@ _ansible_env_ok() {
     T="$(make_repo feature/valid-merge-conflict-test)"
     printf '%s' "${CHECK_MERGE_CONFLICT_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'This file has no merge conflict markers.\n' > "${T}/clean.txt"
+    git -C "${T}" add .pre-commit-config.yaml clean.txt
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── end-of-file-fixer ─────────────────────────────────────────────────────────
+
+@test "text file missing trailing newline is rejected by end-of-file-fixer" {
+    if ! command -v end-of-file-fixer > /dev/null 2>&1; then
+        skip "end-of-file-fixer not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-eof-test)"
+    printf '%s' "${END_OF_FILE_FIXER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'no newline at end' > "${T}/bad.txt"
+    git -C "${T}" add .pre-commit-config.yaml bad.txt
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "text file with trailing newline passes end-of-file-fixer" {
+    if ! command -v end-of-file-fixer > /dev/null 2>&1; then
+        skip "end-of-file-fixer not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-eof-test)"
+    printf '%s' "${END_OF_FILE_FIXER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'content with trailing newline\n' > "${T}/clean.txt"
     git -C "${T}" add .pre-commit-config.yaml clean.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
