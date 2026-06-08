@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 ### Security
 ### Added
+- Add acceptance tests for check-merge-conflict hook covering pass and fail cases (#67)
 - Add acceptance tests for check-shebang-scripts-are-executable hook covering pass and fail cases (#75)
 - Add acceptance tests for check-json hook covering pass and fail cases (#74)
 - Add acceptance tests for check-yaml hook covering pass and fail cases (#77)
