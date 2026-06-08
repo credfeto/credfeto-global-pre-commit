@@ -52,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add acceptance tests for mixed-line-ending hook covering pass and fail cases (#68)
 - Add acceptance tests for end-of-file-fixer hook covering pass and fail cases (#66)
 - Acceptance tests for check-case-conflict hook (pass and fail cases)
+- Added acceptance tests for check-added-large-files hook
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)

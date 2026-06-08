@@ -159,6 +159,15 @@ CHECK_CASE_CONFLICT_CONFIG='repos:
         language: system
 '
 
+CHECK_ADDED_LARGE_FILES_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-added-large-files
+        name: check for added large files
+        entry: check-added-large-files
+        language: system
+'
+
 CHECK_TOML_CONFIG='repos:
   - repo: local
     hooks:
@@ -1243,6 +1252,40 @@ _ansible_env_ok() {
     printf 'first file\n' > "${T}/alpha.txt"
     printf 'second file\n' > "${T}/beta.txt"
     git -C "${T}" add .pre-commit-config.yaml alpha.txt beta.txt
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-added-large-files ───────────────────────────────────────────────────
+
+@test "file exceeding 500 KB size threshold is rejected by check-added-large-files" {
+    if ! command -v check-added-large-files > /dev/null 2>&1; then
+        skip "check-added-large-files not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/large-file-fail-test)"
+    printf '%s' "${CHECK_ADDED_LARGE_FILES_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    dd if=/dev/zero of="${T}/big.bin" bs=1024 count=600 2>/dev/null
+    git -C "${T}" add .pre-commit-config.yaml big.bin
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "small file well under 500 KB passes check-added-large-files" {
+    if ! command -v check-added-large-files > /dev/null 2>&1; then
+        skip "check-added-large-files not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/large-file-pass-test)"
+    printf '%s' "${CHECK_ADDED_LARGE_FILES_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'small file content\n' > "${T}/small.txt"
+    git -C "${T}" add .pre-commit-config.yaml small.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
