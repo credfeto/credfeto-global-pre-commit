@@ -140,6 +140,16 @@ CHECK_JSON_CONFIG='repos:
         types: [json]
 '
 
+CHECK_MERGE_CONFLICT_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-merge-conflict
+        name: check for merge conflicts
+        entry: check-merge-conflict
+        language: system
+        types: [text]
+'
+
 CHECK_TOML_CONFIG='repos:
   - repo: local
     hooks:
@@ -1143,6 +1153,40 @@ _ansible_env_ok() {
     T="$(make_repo feature/valid-mixed-line-ending-test)"
     printf '%s' "${MIXED_LINE_ENDING_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'first line\nsecond line\n' > "${T}/clean.txt"
+    git -C "${T}" add .pre-commit-config.yaml clean.txt
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-merge-conflict ──────────────────────────────────────────────────────
+
+@test "text file with merge conflict markers is rejected by check-merge-conflict" {
+    if ! command -v check-merge-conflict > /dev/null 2>&1; then
+        skip "check-merge-conflict not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/broken-merge-conflict-test)"
+    printf '%s' "${CHECK_MERGE_CONFLICT_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '<<<<<<< HEAD\nsome change\n=======\nother change\n>>>>>>> feature-branch\n' > "${T}/conflict.txt"
+    git -C "${T}" add .pre-commit-config.yaml conflict.txt
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "clean text file passes check-merge-conflict" {
+    if ! command -v check-merge-conflict > /dev/null 2>&1; then
+        skip "check-merge-conflict not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/valid-merge-conflict-test)"
+    printf '%s' "${CHECK_MERGE_CONFLICT_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'This file has no merge conflict markers.\n' > "${T}/clean.txt"
     git -C "${T}" add .pre-commit-config.yaml clean.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
