@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Acceptance tests for check-toml hook (pass and fail cases)
 - Add acceptance tests for detect-private-key hook covering pass and fail cases (#69)
 - Add acceptance tests for mixed-line-ending hook covering pass and fail cases (#68)
+- Add acceptance tests for end-of-file-fixer hook covering pass and fail cases (#66)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
