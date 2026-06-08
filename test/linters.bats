@@ -145,7 +145,7 @@ CHECK_MERGE_CONFLICT_CONFIG='repos:
     hooks:
       - id: check-merge-conflict
         name: check for merge conflicts
-        entry: check-merge-conflict
+        entry: check-merge-conflict --assume-in-merge
         language: system
         types: [text]
 '
