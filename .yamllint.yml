@@ -4,9 +4,7 @@ rules:
   comments:
     min-spaces-from-content: 1
   comments-indentation: false
-  document-start:
-    present: true
-    level: error
+  document-start: enable
   indentation:
     spaces: 2
     indent-sequences: true
