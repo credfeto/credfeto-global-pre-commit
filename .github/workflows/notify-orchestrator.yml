@@ -1,0 +1,47 @@
+--- # Notify: trigger orchestrator image rebuild on push to main
+name: "Notify: trigger orchestrator rebuild"
+
+on:
+  push:
+    branches:
+      - "main"
+
+concurrency:
+  group: ${{github.workflow}}-${{github.ref}}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Dispatch repository_dispatch to credfeto-orchestrator"
+        uses: actions/github-script@v9.0.0
+        env:
+          DISPATCH_TOKEN: ${{secrets.SOURCE_PUSH_TOKEN}}
+          HEAD_SHA: ${{github.sha}}
+        with:
+          script: |
+            const response = await fetch(
+              'https://api.github.com/repos/credfeto/credfeto-orchestrator/dispatches',
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${process.env.DISPATCH_TOKEN}`,
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  event_type: 'pre-commit-updated',
+                  client_payload: { sha: process.env.HEAD_SHA },
+                }),
+              }
+            );
+            if (!response.ok) {
+              core.setFailed(`Dispatch failed: ${response.status} ${response.statusText}`);
+            } else {
+              core.info(`Dispatched pre-commit-updated to credfeto-orchestrator (SHA: ${process.env.HEAD_SHA})`);
+            }
