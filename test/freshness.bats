@@ -79,3 +79,37 @@ teardown() {
     run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}"
     [ "${status}" -eq 0 ]
 }
+
+@test "AI agent in Docker with stale SHA passes (freshness check skipped)" {
+    # This test relies on /.dockerenv being present, which is guaranteed when
+    # running inside a Docker container (as AI agents always are).
+    if [ ! -f /.dockerenv ]; then
+        skip "not running inside Docker — /.dockerenv absent"
+    fi
+    printf '#!/bin/sh\nprintf "1234567890abcdef"\n' > "${STUB_BIN}/curl"
+    chmod +x "${STUB_BIN}/curl"
+    local T
+    printf 'SHA=0000111100001111\n' > "${REPO_DIR}/.env"
+    T="$(make_repo feature/freshness-docker-agent-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# test\n' > "${T}/README.md"
+    git -C "${T}" add .pre-commit-config.yaml README.md
+    run_hook_env_as_agent "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "non-AI agent in Docker with stale SHA is rejected" {
+    if [ ! -f /.dockerenv ]; then
+        skip "not running inside Docker — /.dockerenv absent"
+    fi
+    printf '#!/bin/sh\nprintf "1234567890abcdef"\n' > "${STUB_BIN}/curl"
+    chmod +x "${STUB_BIN}/curl"
+    local T
+    printf 'SHA=0000111100001111\n' > "${REPO_DIR}/.env"
+    T="$(make_repo feature/freshness-docker-noagent-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# test\n' > "${T}/README.md"
+    git -C "${T}" add .pre-commit-config.yaml README.md
+    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}"
+    [ "${status}" -eq 1 ]
+}
