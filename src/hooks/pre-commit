@@ -23,6 +23,11 @@ is_ai_agent() {
     [ "${CLAUDECODE}" = "1" ]
 }
 
+# Returns true (0) when running inside a Docker container.
+is_docker() {
+    [ -f /.dockerenv ] || grep -q 'docker\|containerd\|kubepods' /proc/1/cgroup 2>/dev/null
+}
+
 has_cmd() { command -v "$1" > /dev/null 2>&1; }
 
 # Mark the active PR and issue as blocked.  No-ops silently when gh is absent,
@@ -136,7 +141,11 @@ export SQLFLUFF_EXECUTED
 # hour under $XDG_CACHE_HOME to avoid a network round-trip on every commit.
 # Silently skipped when curl is absent or the URL is unreachable.  Dies if the
 # installed SHA is stale.
-if [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
+# Also skipped when running as an AI agent inside a Docker container — the
+# container image is fixed at build time and cannot self-update.
+if is_ai_agent && is_docker; then
+    : # skip freshness check
+elif [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
     _ENV_SHA=$(grep '^SHA=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
     if [ -n "$_ENV_SHA" ]; then
         _CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/pre-commit"
