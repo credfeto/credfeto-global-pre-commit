@@ -76,3 +76,18 @@ run_hook_env() {
         env PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
     ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
 }
+
+# Runs the hook as an AI agent (CLAUDECODE=1) with a custom PATH and XDG_CACHE_HOME.
+# run_hook_env_as_agent <repo> <path> <xdg_cache_home>
+run_hook_env_as_agent() {
+    local _repo="$1"
+    local _path="$2"
+    local _cache="$3"
+    run bash -c '
+        cd "$1"
+        unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env CLAUDECODE=1 PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
+    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
+}
