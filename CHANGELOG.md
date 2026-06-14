@@ -54,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Acceptance tests for check-case-conflict hook (pass and fail cases)
 - Added acceptance tests for check-added-large-files hook
 - Skip installation freshness check when running as AI agent inside a Docker container
+- Acceptance tests for Docker AI-agent freshness check skip (#149)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
