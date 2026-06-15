@@ -82,6 +82,63 @@ load test_helper
     [ "${status}" -eq 0 ]
 }
 
+# ── template-only file protection ────────────────────────────────────────────
+
+@test "changing .ai-instructions in a non-template repo is rejected" {
+    local T
+    T="$(make_repo feature/template-only-ai-instructions-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# instructions\n' > "${T}/.ai-instructions"
+    git -C "${T}" add .pre-commit-config.yaml .ai-instructions
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "changing ai/global/ in a non-template repo is rejected" {
+    local T
+    T="$(make_repo feature/template-only-ai-global-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/ai/global"
+    printf '# global\n' > "${T}/ai/global/test.md"
+    git -C "${T}" add .pre-commit-config.yaml ai/global/test.md
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "changing .ai-instructions in cs-template is allowed" {
+    local T
+    T="$(make_repo feature/template-only-cs-template-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# instructions\n' > "${T}/.ai-instructions"
+    git -C "${T}" add .pre-commit-config.yaml .ai-instructions
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "changing .ai-instructions in funfair-treasury-reporting is allowed" {
+    local T
+    T="$(make_repo feature/template-only-treasury-test)"
+    git -C "${T}" remote add origin "git@github.com:funfair-tech/funfair-treasury-reporting.git"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# instructions\n' > "${T}/.ai-instructions"
+    git -C "${T}" add .pre-commit-config.yaml .ai-instructions
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "changing ai/global/ in funfair-treasury-reporting is allowed" {
+    local T
+    T="$(make_repo feature/template-only-treasury-global-test)"
+    git -C "${T}" remote add origin "git@github.com:funfair-tech/funfair-treasury-reporting.git"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/ai/global"
+    printf '# global\n' > "${T}/ai/global/test.md"
+    git -C "${T}" add .pre-commit-config.yaml ai/global/test.md
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
 # ── clean commit ──────────────────────────────────────────────────────────────
 
 @test "clean commit on feature branch passes" {
