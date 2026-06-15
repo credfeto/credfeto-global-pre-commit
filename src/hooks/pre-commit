@@ -107,6 +107,28 @@ if [ "$REPO_ROOT" = "$HOOKS_REPO_DIR" ]; then
     fi
 fi
 
+# ── Template-only files: block .ai-instructions and ai/global/ in non-template repos ──
+# .ai-instructions and ai/global/ may only be changed in cs-template,
+# funfair-server-template, or funfair-treasury-reporting.
+if [ "$REPO_ROOT" != "$HOOKS_REPO_DIR" ]; then
+    _REPO_NAME=$(git remote get-url origin 2>/dev/null \
+        | sed 's|.*[/:]||; s|\.git$||' \
+        | tr -d '[:space:]' || true)
+    case "$_REPO_NAME" in
+        cs-template|funfair-server-template|funfair-treasury-reporting)
+            ;;
+        *)
+            TEMPLATE_ONLY_CHANGES=$(printf '%s\n' "$ALL_STAGED" \
+                | grep -E '(^|/)\.ai-instructions$|^ai/global/' || true)
+            if [ -n "$TEMPLATE_ONLY_CHANGES" ]; then
+                printf '\n\033[31m✗\033[0m %s\n' "Template-only files cannot be changed in this repository:" >&2
+                printf '%s\n' "$TEMPLATE_ONLY_CHANGES" | sed 's/^/  /' | sort -u >&2
+                die ".ai-instructions and ai/global/ may only be changed in cs-template, funfair-server-template, or funfair-treasury-reporting"
+            fi
+            ;;
+    esac
+fi
+
 # ── .NET install-location sanity ─────────────────────────────────────────────
 # A per-user dotnet at $HOME/.dotnet shadows the system binary and causes
 # build/test inconsistencies.  The only valid install is /usr/share/dotnet/dotnet.
