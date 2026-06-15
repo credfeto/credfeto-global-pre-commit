@@ -174,7 +174,7 @@ elif [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
         _CACHE_FILE="$_CACHE_DIR/remote-sha"
         _REMOTE_SHA=""
         if [ -n "$(find "$_CACHE_FILE" -mmin -60 2>/dev/null)" ]; then
-            _REMOTE_SHA=$(cat "$_CACHE_FILE" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+            _REMOTE_SHA=$(head -1 "$_CACHE_FILE" 2>/dev/null | tr -d '[:space:]' || true)
         fi
         if [ -z "$_REMOTE_SHA" ]; then
             _REMOTE_SHA=$(curl -sf --connect-timeout 3 --max-time 5 \
