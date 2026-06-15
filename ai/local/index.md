@@ -14,5 +14,5 @@ This is an index of local instructions that apply to just this project.
 
 ## Instruction Files
 <!-- Locally Maintained -->
-- [scripts.instructions.md](scripts.instructions.md) — rules for adding and removing scripts, and keeping `install.sh` in sync
-- [linters.instructions.md](linters.instructions.md) — rules for adding, removing, and modifying linters; acceptance test coverage requirements
+* [scripts.instructions.md](scripts.instructions.md) — rules for adding and removing scripts, and keeping `install.sh` in sync
+* [linters.instructions.md](linters.instructions.md) — rules for adding, removing, and modifying linters; acceptance test coverage requirements
