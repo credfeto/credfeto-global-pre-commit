@@ -171,7 +171,7 @@ if [ -n "$PUBLISHABLE" ]; then
         --self-contained \
         --framework "$fw" \
         -nodeReuse:False \
-        "-p:NoWarn=NETSDK1179" \
+        "-p:NoWarn=NETSDK1179%3BIL2104%3BIL3053" \
         "-p:SuppressNETCoreSdkPreviewMessage=true" \
         "-p:PublishSingleFile=true" \
         "-p:PublishAot=false" \
