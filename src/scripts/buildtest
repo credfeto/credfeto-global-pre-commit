@@ -179,6 +179,7 @@ if [ -n "$PUBLISHABLE" ]; then
         "-p:PublishReadyToRunShowWarnings=True" \
         "-p:DisableSwagger=False" \
         "-p:TreatWarningsAsErrors=True" \
+        "-p:ILLinkTreatWarningsAsErrors=False" \
         "-p:IncludeNativeLibrariesForSelfExtract=false" \
         "-p:Version=0.0.0.1-test" \
         "-p:FFPublishing=True" \
