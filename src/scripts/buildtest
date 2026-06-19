@@ -171,7 +171,7 @@ if [ -n "$PUBLISHABLE" ]; then
         --self-contained \
         --framework "$fw" \
         -nodeReuse:False \
-        "-p:NoWarn=NETSDK1179" \
+        "-p:NoWarn=NETSDK1179%3BIL2104%3BIL3053" \
         "-p:SuppressNETCoreSdkPreviewMessage=true" \
         "-p:PublishSingleFile=true" \
         "-p:PublishAot=false" \
@@ -179,7 +179,6 @@ if [ -n "$PUBLISHABLE" ]; then
         "-p:PublishReadyToRunShowWarnings=True" \
         "-p:DisableSwagger=False" \
         "-p:TreatWarningsAsErrors=True" \
-        "-p:ILLinkTreatWarningsAsErrors=False" \
         "-p:IncludeNativeLibrariesForSelfExtract=false" \
         "-p:Version=0.0.0.1-test" \
         "-p:FFPublishing=True" \
