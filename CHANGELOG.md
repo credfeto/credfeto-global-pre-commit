@@ -58,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Acceptance tests for Docker AI-agent freshness check skip (#149)
 - Prohibit AI agents from modifying .shellcheckrc without explicit human approval (#154)
 - Acceptance tests for .shellcheckrc protection in the pre-commit hook
+- Extend linter and style config file protection to all repositories, not just the hooks repo itself (#154)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)

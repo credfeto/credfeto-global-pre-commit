@@ -84,6 +84,20 @@ dotnet_tool_installed() {
 ALL_STAGED=$(git diff --cached --name-only)
 [ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
 
+# Block staged additions, changes, OR deletions of linter/style config files in
+# ALL repos.  These files define conformance rules and must not be modified or
+# removed to silence linter errors — fix the underlying issue instead.
+# Checked here, before the STAGED early-exit, so that a commit consisting solely
+# of a deletion of a protected file is also caught.
+RE_PROTECTED_SUPERLINTER='(^|/)\.shellcheckrc$|(^|/)\.checkov\.yaml$|(^|/)\.clang-format$|(^|/)\.editorconfig$|(^|/)\.csharpierrc$|(^|/)\.ansible-lint(\.yml)?$|(^|/)\.arm-ttk\.psd1$|(^|/)\.cfnlintrc\.yml$|(^|/)\.coffee-lint\.json$|(^|/)\.stylelintrc\.json$|(^|/)\.hadolint\.ya?ml$|(^|/)\.editorconfig-checker\.json$|(^|/)actionlint\.yml$|(^|/)zizmor\.yaml$|(^|/)\.gitleaks\.toml$|(^|/)\.golangci\.yml$|(^|/)\.groovylintrc\.json$|(^|/)\.htmlhintrc$|(^|/)(sun_checks|google_checks)\.xml$|(^|/)eslint\.config\.mjs$|(^|/)\.jscpd\.json$|(^|/)\.chktexrc$|(^|/)\.luacheckrc$|(^|/)\.markdown-lint\.yml$|(^|/)\.openapirc\.yml$|(^|/)php\.ini$|(^|/)phpcs\.xml$|(^|/)phpstan\.neon$|(^|/)psalm\.xml$|(^|/)\.powershell-psscriptanalyzer\.psd1$|(^|/)\.protolintrc\.yml$|(^|/)\.python-black$|(^|/)\.flake8$|(^|/)\.isort\.cfg$|(^|/)\.mypy\.ini$|(^|/)\.python-lint$|(^|/)\.ruff\.toml$|(^|/)\.lintr$|(^|/)\.ruby-lint\.yml$|(^|/)\.scalafmt\.conf$|(^|/)\.snakefmt\.toml$|(^|/)\.codespellrc$|(^|/)\.tflint\.hcl$|(^|/)trivy\.yaml$|(^|/)\.textlintrc$|(^|/)\.yaml-lint\.yml$|(^|/)\.clj-kondo/config\.edn$'
+RE_PROTECTED_IGNORES='(^|/)\.markdownlintignore$|(^|/)\.eslintignore$|(^|/)\.stylelintignore$|(^|/)\.sqlfluffignore$|(^|/)\.ansible-lint-ignore$|(^|/)\.prettierignore$'
+LINTER_CONFIG_CHANGES=$(printf '%s\n' "$ALL_STAGED" | grep -E "${RE_PROTECTED_SUPERLINTER}|${RE_PROTECTED_IGNORES}" || true)
+if [ -n "$LINTER_CONFIG_CHANGES" ]; then
+    printf '\n\033[31m✗\033[0m %s\n' "Linter/style config files cannot be added, changed, or deleted:" >&2
+    printf '%s\n' "$LINTER_CONFIG_CHANGES" | sed 's/^/  /' | sort -u >&2
+    die "remove linter config file changes from this commit"
+fi
+
 # Only look at staged files that are being added/copied/modified
 STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$STAGED" ] && exit 0
@@ -100,14 +114,11 @@ if [ -n "$DOTNET_TOOLS_FILES" ]; then
     die "delete the dotnet-tools.json file(s) listed above and retry"
 fi
 
-# Block staged changes to protected lint/config/instruction files in this repo.
+# Block staged changes to additional protected files when running in the hooks repo itself.
 if [ "$REPO_ROOT" = "$HOOKS_REPO_DIR" ]; then
     RE_PROTECTED_BASE='(^|/)\.sqlfluff[^/]*$|(^|/)\.tsqllint[^/]*$|(^|/)\.editorconfig$|(^|/)\.globalconfig$|(^|/)\.ai-instructions$|(^|/)global\.json$|(^|/)Directory\.Build\.props$|^ai/.*\.md$|^\.github/linters/.+|(^|/)\.csharpierrc$|(^|/)\.[^/]*lint[^/]*$'
-    RE_PROTECTED_SUPERLINTER='(^|/)\.shellcheckrc$|(^|/)\.checkov\.yaml$|(^|/)\.clang-format$|(^|/)\.ansible-lint(\.yml)?$|(^|/)\.arm-ttk\.psd1$|(^|/)\.cfnlintrc\.yml$|(^|/)\.coffee-lint\.json$|(^|/)\.stylelintrc\.json$|(^|/)\.hadolint\.ya?ml$|(^|/)\.editorconfig-checker\.json$|(^|/)actionlint\.yml$|(^|/)zizmor\.yaml$|(^|/)\.gitleaks\.toml$|(^|/)\.golangci\.yml$|(^|/)\.groovylintrc\.json$|(^|/)\.htmlhintrc$|(^|/)(sun_checks|google_checks)\.xml$|(^|/)eslint\.config\.mjs$|(^|/)\.jscpd\.json$|(^|/)\.chktexrc$|(^|/)\.luacheckrc$|(^|/)\.markdown-lint\.yml$|(^|/)\.openapirc\.yml$|(^|/)php\.ini$|(^|/)phpcs\.xml$|(^|/)phpstan\.neon$|(^|/)psalm\.xml$|(^|/)\.powershell-psscriptanalyzer\.psd1$|(^|/)\.protolintrc\.yml$|(^|/)\.python-black$|(^|/)\.flake8$|(^|/)\.isort\.cfg$|(^|/)\.mypy\.ini$|(^|/)\.python-lint$|(^|/)\.ruff\.toml$|(^|/)\.lintr$|(^|/)\.ruby-lint\.yml$|(^|/)\.scalafmt\.conf$|(^|/)\.snakefmt\.toml$|(^|/)\.codespellrc$|(^|/)\.tflint\.hcl$|(^|/)trivy\.yaml$|(^|/)\.textlintrc$|(^|/)\.yaml-lint\.yml$|(^|/)\.clj-kondo/config\.edn$'
-    RE_PROTECTED_IGNORES='(^|/)\.markdownlintignore$|(^|/)\.eslintignore$|(^|/)\.stylelintignore$|(^|/)\.sqlfluffignore$|(^|/)\.ansible-lint-ignore$|(^|/)\.prettierignore$'
-    RE_PROTECTED_ALL="${RE_PROTECTED_BASE}|${RE_PROTECTED_SUPERLINTER}|${RE_PROTECTED_IGNORES}"
 
-    PROTECTED_CHANGES=$(printf '%s\n' "$ALL_STAGED" | grep -E "$RE_PROTECTED_ALL" || true)
+    PROTECTED_CHANGES=$(printf '%s\n' "$ALL_STAGED" | grep -E "$RE_PROTECTED_BASE" || true)
     if [ -n "$PROTECTED_CHANGES" ]; then
         printf '\n\033[31m✗\033[0m %s\n' "Protected files cannot be added or changed:" >&2
         echo "$PROTECTED_CHANGES" | sed 's/^/  /' | sort -u >&2
