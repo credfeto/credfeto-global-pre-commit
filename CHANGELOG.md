@@ -56,6 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Skip installation freshness check when running as AI agent inside a Docker container
 - Block changes to .ai-instructions and ai/global/ in non-template repositories
 - Acceptance tests for Docker AI-agent freshness check skip (#149)
+- Prohibit AI agents from modifying .shellcheckrc without explicit human approval (#154)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
