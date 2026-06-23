@@ -528,7 +528,7 @@ END_OF_FILE_FIXER_CONFIG='repos:
     printf '{"rules":{"block-no-empty":true}}\n' > "${T}/.stylelintrc.json"
     printf '{"scripts":{"test":"true"}}\n' > "${T}/package.json"
     printf 'a {}\n' > "${T}/bad.css"
-    git -C "${T}" add .pre-commit-config.yaml .stylelintrc.json package.json bad.css
+    git -C "${T}" add .pre-commit-config.yaml package.json bad.css
     run_hook "${T}"
     [ "${status}" -eq 1 ]
 }
@@ -555,7 +555,7 @@ END_OF_FILE_FIXER_CONFIG='repos:
     printf '{"rules":{"block-no-empty":true}}\n' > "${T}/.stylelintrc.json"
     printf '{"scripts":{"test":"true"}}\n' > "${T}/package.json"
     printf 'a { color: red; }\n' > "${T}/clean.css"
-    git -C "${T}" add .pre-commit-config.yaml .stylelintrc.json package.json clean.css
+    git -C "${T}" add .pre-commit-config.yaml package.json clean.css
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
@@ -731,7 +731,7 @@ _ansible_env_ok() {
     printf '%s\n' '--- # hadolint config' > "${T}/.github/linters/.hadolint.yaml"
     printf 'FROM ubuntu:22.04\nADD file.txt /app/\n' > "${T}/Dockerfile"
     printf 'hello\n' > "${T}/file.txt"
-    git -C "${T}" add .pre-commit-config.yaml .github/linters/.hadolint.yaml Dockerfile file.txt
+    git -C "${T}" add .pre-commit-config.yaml Dockerfile file.txt
     run_hook "${T}"
     [ "${status}" -eq 1 ]
 }
@@ -750,7 +750,7 @@ _ansible_env_ok() {
     printf '%s\n' '--- # hadolint config' > "${T}/.github/linters/.hadolint.yaml"
     printf 'FROM ubuntu:22.04\nCOPY file.txt /app/\n' > "${T}/Dockerfile"
     printf 'hello\n' > "${T}/file.txt"
-    git -C "${T}" add .pre-commit-config.yaml .github/linters/.hadolint.yaml Dockerfile file.txt
+    git -C "${T}" add .pre-commit-config.yaml Dockerfile file.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }

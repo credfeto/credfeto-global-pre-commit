@@ -139,6 +139,18 @@ load test_helper
     [ "${status}" -eq 0 ]
 }
 
+# ── linter/style config protection (all repos) ───────────────────────────────
+
+@test "staging .shellcheckrc in non-hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/shellcheckrc-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'check-sourced=false\n' > "${T}/.shellcheckrc"
+    git -C "${T}" add .pre-commit-config.yaml .shellcheckrc
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
 # ── hooks-repo protected file guard ──────────────────────────────────────────
 
 @test "staging .shellcheckrc in hooks repo is rejected" {
