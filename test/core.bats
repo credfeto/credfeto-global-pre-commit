@@ -139,6 +139,28 @@ load test_helper
     [ "${status}" -eq 0 ]
 }
 
+# ── hooks-repo protected file guard ──────────────────────────────────────────
+
+@test "staging .shellcheckrc in hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/shellcheckrc-protection-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'check-sourced=false\n' > "${T}/.shellcheckrc"
+    git -C "${T}" add .pre-commit-config.yaml .shellcheckrc
+    run_hook_as_hooks_repo "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging non-protected file in hooks repo passes" {
+    local T
+    T="$(make_repo feature/hooks-repo-non-protected-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# Test\n' > "${T}/README.md"
+    git -C "${T}" add .pre-commit-config.yaml README.md
+    run_hook_as_hooks_repo "${T}"
+    [ "${status}" -eq 0 ]
+}
+
 # ── clean commit ──────────────────────────────────────────────────────────────
 
 @test "clean commit on feature branch passes" {

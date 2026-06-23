@@ -77,6 +77,19 @@ run_hook_env() {
     ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
 }
 
+# Runs the hook in the given repo directory with HOOKS_REPO_DIR_TEST_OVERRIDE set to the
+# repo path so that the hook's protected-file guard fires as if this were the hooks repo.
+run_hook_as_hooks_repo() {
+    local _repo="$1"
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env PATH="$2" HOOKS_REPO_DIR_TEST_OVERRIDE="$1" sh "$3"
+    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+}
+
 # Runs the hook as an AI agent (CLAUDECODE=1) with a custom PATH and XDG_CACHE_HOME.
 # run_hook_env_as_agent <repo> <path> <xdg_cache_home>
 run_hook_env_as_agent() {
