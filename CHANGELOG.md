@@ -92,6 +92,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fix run-bats failing with bats 1.10.x on Ubuntu 24.04 by exporting bats_readlinkf so the inner bats library can locate bats-exec-test correctly
 - Freshness-check acceptance tests now use a per-test mktemp cache directory instead of a BATS_TEST_TMPDIR-derived path, preventing cached SHAs from one test bleeding into the next when bats 1.10.x shares BATS_TEST_TMPDIR across tests in the same file
 - buildtest publish step no longer fails with IL2104 or IL3053 aggregate trim warnings from third-party assemblies that are not yet fully trim-annotated
+- Freshness check now correctly skipped for AI agent in Podman and other OCI containers, not just Docker
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

@@ -80,17 +80,21 @@ teardown() {
     [ "${status}" -eq 0 ]
 }
 
-@test "AI agent in Docker with stale SHA passes (freshness check skipped)" {
-    # This test relies on /.dockerenv being present, which is guaranteed when
-    # running inside a Docker container (as AI agents always are).
-    if [ ! -f /.dockerenv ]; then
-        skip "not running inside Docker — /.dockerenv absent"
+_in_container() {
+    [ -f /.dockerenv ] || [ -f /run/.containerenv ] || [ -n "${container:-}" ] \
+        || grep -q 'docker\|containerd\|kubepods' /proc/1/cgroup 2>/dev/null
+}
+
+@test "AI agent in container with stale SHA passes (freshness check skipped)" {
+    # Requires an OCI container environment (Docker, Podman, etc.).
+    if ! _in_container; then
+        skip "not running inside a container"
     fi
     printf '#!/bin/sh\nprintf "1234567890abcdef"\n' > "${STUB_BIN}/curl"
     chmod +x "${STUB_BIN}/curl"
     local T
     printf 'SHA=0000111100001111\n' > "${REPO_DIR}/.env"
-    T="$(make_repo feature/freshness-docker-agent-test)"
+    T="$(make_repo feature/freshness-container-agent-test)"
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
@@ -98,15 +102,15 @@ teardown() {
     [ "${status}" -eq 0 ]
 }
 
-@test "non-AI agent in Docker with stale SHA is rejected" {
-    if [ ! -f /.dockerenv ]; then
-        skip "not running inside Docker — /.dockerenv absent"
+@test "non-AI agent in container with stale SHA is rejected" {
+    if ! _in_container; then
+        skip "not running inside a container"
     fi
     printf '#!/bin/sh\nprintf "1234567890abcdef"\n' > "${STUB_BIN}/curl"
     chmod +x "${STUB_BIN}/curl"
     local T
     printf 'SHA=0000111100001111\n' > "${REPO_DIR}/.env"
-    T="$(make_repo feature/freshness-docker-noagent-test)"
+    T="$(make_repo feature/freshness-container-noagent-test)"
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
