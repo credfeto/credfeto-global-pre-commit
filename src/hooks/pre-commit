@@ -4,6 +4,7 @@
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
+# HOOKS_REPO_DIR_TEST_OVERRIDE is a test-only escape hatch; never set this variable in production shells.
 HOOKS_REPO_DIR="${HOOKS_REPO_DIR_TEST_OVERRIDE:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 die() {
