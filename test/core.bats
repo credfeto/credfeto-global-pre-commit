@@ -163,6 +163,16 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
+@test "staging global.json in hooks repo is rejected by hooks-repo guard" {
+    local T
+    T="$(make_repo feature/hooks-repo-globaljson-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '{"sdk":{"version":"8.0.0"}}\n' > "${T}/global.json"
+    git -C "${T}" add .pre-commit-config.yaml global.json
+    run_hook_as_hooks_repo "${T}"
+    [ "${status}" -eq 1 ]
+}
+
 @test "staging non-protected file in hooks repo passes" {
     local T
     T="$(make_repo feature/hooks-repo-non-protected-test)"
