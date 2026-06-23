@@ -24,9 +24,16 @@ is_ai_agent() {
     [ "${CLAUDECODE}" = "1" ]
 }
 
-# Returns true (0) when running inside a Docker container.
-is_docker() {
-    [ -f /.dockerenv ] || grep -q 'docker\|containerd\|kubepods' /proc/1/cgroup 2>/dev/null
+# Returns true (0) when running inside any OCI container (Docker, Podman, etc.).
+# Docker:  creates /.dockerenv
+# Podman:  creates /run/.containerenv and sets container=podman in the environment
+# systemd-nspawn: sets container=systemd-nspawn in the environment
+# k8s/containerd: visible in /proc/1/cgroup
+is_container() {
+    [ -f /.dockerenv ] \
+        || [ -f /run/.containerenv ] \
+        || [ -n "${container:-}" ] \
+        || grep -q 'docker\|containerd\|kubepods' /proc/1/cgroup 2>/dev/null
 }
 
 has_cmd() { command -v "$1" > /dev/null 2>&1; }
@@ -164,9 +171,9 @@ export SQLFLUFF_EXECUTED
 # hour under $XDG_CACHE_HOME to avoid a network round-trip on every commit.
 # Silently skipped when curl is absent or the URL is unreachable.  Dies if the
 # installed SHA is stale.
-# Also skipped when running as an AI agent inside a Docker container — the
+# Also skipped when running as an AI agent inside any container — the
 # container image is fixed at build time and cannot self-update.
-if is_ai_agent && is_docker; then
+if is_ai_agent && is_container; then
     : # skip freshness check
 elif [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
     _ENV_SHA=$(grep '^SHA=' "$HOOKS_REPO_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')
