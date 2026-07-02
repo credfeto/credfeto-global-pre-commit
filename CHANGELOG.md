@@ -59,6 +59,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Prohibit AI agents from modifying .shellcheckrc without explicit human approval (#154)
 - Acceptance tests for .shellcheckrc protection in the pre-commit hook
 - Extend linter and style config file protection to all repositories, not just the hooks repo itself (#154)
+- check-setup script that validates the pre-commit config and reports check/tool status, exiting non-zero when the config is invalid or any required tool is missing
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
@@ -115,6 +116,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - hooks freshness check: support stripped installs with HEAD/UPSTREAM from .env when .git is absent
 - Renamed install.sh, install-deps-arch.sh, and install-deps-debian.sh to remove .sh extension, matching the no-extension convention used by scripts in scripts/
 - sqlfluff check now runs fix (auto-correcting style violations) and re-stages any modified files; exports SQLFLUFF_EXECUTED so local scripts can skip a redundant run
+- install now delegates its setup status report to the check-setup script and aborts when the environment is not fully configured
 
 ### Deprecated
 ### Removed
