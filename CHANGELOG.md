@@ -60,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Acceptance tests for .shellcheckrc protection in the pre-commit hook
 - Extend linter and style config file protection to all repositories, not just the hooks repo itself (#154)
 - check-setup script that validates the pre-commit config and reports check/tool status, exiting non-zero when the config is invalid or any required tool is missing
+- Install the cscleanup C# formatter (Credfeto.DotNet.Repo.Formatter) as a dotnet global tool in the dependency install scripts
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)

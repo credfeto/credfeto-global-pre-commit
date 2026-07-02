@@ -79,3 +79,23 @@ install_pwsh() {
         echo "  dotnet not found — skipping pwsh install" >&2
     fi
 }
+
+# Install or update the cscleanup C# formatter (Credfeto.DotNet.Repo.Formatter)
+# as a dotnet global tool. Skipped with a warning if dotnet is not on PATH.
+install_cscleanup() {
+    echo "==> cscleanup (Credfeto.DotNet.Repo.Formatter)"
+    if has dotnet; then
+        if dotnet tool list --global 2>/dev/null \
+            | awk 'tolower($3)=="cscleanup" && tolower($1)=="credfeto.dotnet.repo.formatter"{found=1} END{exit !found}'; then
+            dotnet tool update --global Credfeto.DotNet.Repo.Formatter || die "failed to update Credfeto.DotNet.Repo.Formatter dotnet tool"
+        else
+            dotnet tool install --global Credfeto.DotNet.Repo.Formatter || die "failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"
+        fi
+        if ! echo "$PATH" | grep -q "$HOME/.dotnet/tools"; then
+            echo "warning: add ~/.dotnet/tools to PATH in your shell profile (e.g. ~/.bashrc):" >&2
+            echo "  export PATH=\"\$HOME/.dotnet/tools:\$PATH\"" >&2
+        fi
+    else
+        echo "  dotnet not found — skipping cscleanup install" >&2
+    fi
+}

@@ -62,6 +62,9 @@ fi
 # ── PowerShell ────────────────────────────────────────────────────────────────
 install_pwsh
 
+# ── cscleanup (C# formatter dotnet tool) ──────────────────────────────────────
+install_cscleanup
+
 # ── pipx packages ─────────────────────────────────────────────────────────────
 # pre-commit-hooks provides the individual check-* / end-of-file-fixer / etc.
 # binaries used by the language: system hooks in .pre-commit-config.yaml.
