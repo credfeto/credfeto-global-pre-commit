@@ -40,6 +40,9 @@ jobs:
         uses: actions/setup-go@v6.5.0
         with:
           go-version: "1.25"
+          # No go.mod in this repo (tools are installed via `go install ...@latest`),
+          # so module caching has nothing to key on — disable it to avoid a warning.
+          cache: false
 
       - name: "Install"
         shell: bash
