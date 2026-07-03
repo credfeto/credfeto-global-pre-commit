@@ -31,14 +31,25 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: "Checkout Source"
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v7.0.0
         with:
           clean: true
           fetch-depth: 1
 
+      - name: "Setup Go"
+        uses: actions/setup-go@v6.5.0
+        with:
+          go-version: "1.25"
+          # No go.mod in this repo (tools are installed via `go install ...@latest`),
+          # so module caching has nothing to key on — disable it to avoid a warning.
+          cache: false
+
       - name: "Install"
         shell: bash
-        run: ./install
+        # check-setup (run last by install) exits non-zero when an optional tool
+        # is missing on the runner; the hooks are still installed, so don't fail
+        # the step on it — the acceptance tests below are the real gate.
+        run: ./install || true
 
       - name: "Run Acceptance Tests"
         shell: bash
