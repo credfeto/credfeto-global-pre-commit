@@ -90,6 +90,13 @@ run_hook_as_hooks_repo() {
     ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
 }
 
+# Returns true (0) when running inside any OCI container (Docker, Podman, etc.).
+# Mirrors is_container() in src/hooks/pre-commit — keep in sync if either changes.
+in_container() {
+    [ -f /.dockerenv ] || [ -f /run/.containerenv ] || [ -n "${container:-}" ] \
+        || grep -q 'docker\|containerd\|kubepods' /proc/1/cgroup 2>/dev/null
+}
+
 # Runs the hook as an AI agent (CLAUDECODE=1) with a custom PATH and XDG_CACHE_HOME.
 # run_hook_env_as_agent <repo> <path> <xdg_cache_home>
 run_hook_env_as_agent() {
