@@ -202,7 +202,7 @@ git config --global core.hooksPath
 | --- | --- | --- |
 | `pre-commit` on PATH, repo has `.pre-commit-config.yaml` | Run project pre-commit hooks | `pre-commit run` |
 | `pre-commit` on PATH, no project config | Run global linters (`.pre-commit-config.yaml`) | `pre-commit run --config <global>` |
-| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test | `scripts/buildtest` |
+| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test (integration tests always skipped; benchmark test projects skipped unless staged changes could affect them — see `scripts/benchmark-test-filter`) | `scripts/buildtest` |
 | `*.ts / *.tsx / *.js / *.jsx` + `package.json` + `npm` on PATH | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
 | `*.sql` + `dotnet` on PATH | T-SQL lint | `dotnet tsqllint .` |
 | `*.sql` + `sqlfluff` on PATH | SQL style lint | `sqlfluff lint .` |
@@ -266,6 +266,7 @@ Run `pre-commit autoupdate --config ~/.global-hooks/.pre-commit-config.yaml` to 
 | Script | Source |
 | --- | --- |
 | `scripts/buildtest` | Vendored from [credfeto/scripts — buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
+| `scripts/benchmark-test-filter` | Local addition — decides which `dotnet test` `--filter-not-namespace` excludes `buildtest` should pass, from staged git changes alone (no `dotnet` required) |
 | `scripts/buildcheck` | Vendored from [credfeto/scripts — buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
 | `scripts/check-merge-commits` | Port of [check-no-merge-commits](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-commits/action.yml) |
