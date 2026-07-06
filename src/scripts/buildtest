@@ -130,6 +130,17 @@ if [ -n "$COMPAT_CHANGED" ]; then
     die "ApiCompatSuppressions.xml was created or modified by the build — review, stage and commit it explicitly:$(printf '\n  %s' "$COMPAT_CHANGED")"
 fi
 
+info "Determining which benchmark/integration tests to skip..."
+FILTER_SPEC=$("$(dirname "$(readlink -f "$0")")/benchmark-test-filter" "$SOURCE_DIR") \
+  || die "######## Benchmark Filter Failed ########"
+set --
+while IFS= read -r ns; do
+    [ -n "$ns" ] || continue
+    set -- "$@" --filter-not-namespace "$ns"
+done <<FILTER_EOF
+$FILTER_SPEC
+FILTER_EOF
+
 info "Testing..."
 dotnet test \
   --configuration Release \
@@ -138,6 +149,7 @@ dotnet test \
   --long-running 10 \
   --parallel-algorithm aggressive \
   --ignore-exit-code 8 \
+  "$@" \
   "-p:ApiCompatGenerateSuppressionFile=true" \
   "-p:ContinuousIntegrationBuild=true" \
   "-p:IsProduction=false" \
