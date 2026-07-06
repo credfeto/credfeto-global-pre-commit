@@ -14,15 +14,31 @@ runs:
       uses: actions/setup-python@v6.3.0
       with:
         python-version: "3.13"
-        cache: "pip"
-        cache-dependency-path: "${{github.action_path}}/requirements.txt"
 
-    - name: "Install cfn-lint"
+    - name: "Set cfn-lint venv path"
       shell: bash
-      run: pip install --quiet -r "$GITHUB_ACTION_PATH/requirements.txt"
+      run: |
+        VENV_BASE="$GITHUB_WORKSPACE/.cfn-lint"
+        VENV_RUN="${{github.sha}}-${{github.run_id}}-${{github.run_number}}-${{github.run_attempt}}"
+        echo "CFN_LINT_VENV=$VENV_BASE/$VENV_RUN" >> "$GITHUB_ENV"
+
+    - name: "Create cfn-lint virtual environment"
+      shell: bash
+      run: |
+        mkdir -p "$(dirname "$CFN_LINT_VENV")"
+        python -m venv "$CFN_LINT_VENV"
+        echo "cfn-lint" > "$GITHUB_ACTION_PATH/requirements.txt"
+        "$CFN_LINT_VENV/bin/pip" install --quiet -r "$GITHUB_ACTION_PATH/requirements.txt"
 
     - name: "Run Cloud Formation Linter"
       shell: bash
-      run: cfn-lint --info --include-checks I --template "$TEMPLATE"
+      run: |
+        "$CFN_LINT_VENV/bin/cfn-lint" --info --include-checks I --template "$TEMPLATE"
       env:
         TEMPLATE: ${{inputs.template}}
+
+    - name: "Cleanup cfn-lint virtual environment"
+      if: always()
+      shell: bash
+      run: |
+        [[ -n "$CFN_LINT_VENV" ]] && rm -rf "$CFN_LINT_VENV" || true
