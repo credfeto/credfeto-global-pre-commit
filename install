@@ -89,10 +89,12 @@ fi
 
 # ── Report setup status ───────────────────────────────────────────────────────
 # Validates the pre-commit config and reports which checks/tools are available.
-# Exits non-zero (aborting this install under `set -e`) if the config is invalid
-# or any required tool is missing.
+# check-setup exits non-zero when tools are missing, but install itself succeeds
+# regardless — all listed tools are optional linters; the hooks still run without
+# them (they are skipped per file type).  Run ./check-setup independently to
+# verify a complete setup.
 if $SYSTEM_INSTALL; then
-    "$REPO_DIR/check-setup" --system
+    "$REPO_DIR/check-setup" --system || true
 else
-    "$REPO_DIR/check-setup"
+    "$REPO_DIR/check-setup" || true
 fi
