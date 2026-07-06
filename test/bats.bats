@@ -132,12 +132,7 @@ load test_helper
     mkdir -p "${T}/test"
     # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
     # into the generated bats file below and only expands when that file runs.
-    printf '#!/usr/bin/env bats
-@test "dump tmpdir" {
-  printf "%%s\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"
-  false
-}
-' "${T}" > "${T}/test/dump.bats"
+    printf '#!/usr/bin/env bats\n@test "dump tmpdir" {\n  printf "%%s\\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"\n  false\n}\n' "${T}" > "${T}/test/dump.bats"
     git -C "${T}" add .pre-commit-config.yaml test/dump.bats
 
     run bash -c '
@@ -178,12 +173,7 @@ load test_helper
     mkdir -p "${T}/test"
     # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
     # into the generated bats file below and only expands when that file runs.
-    printf '#!/usr/bin/env bats
-@test "dump tmpdir" {
-  printf "%%s\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"
-  false
-}
-' "${T}" > "${T}/test/dump.bats"
+    printf '#!/usr/bin/env bats\n@test "dump tmpdir" {\n  printf "%%s\\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"\n  false\n}\n' "${T}" > "${T}/test/dump.bats"
     git -C "${T}" add .pre-commit-config.yaml test/dump.bats
 
     run bash -c '
