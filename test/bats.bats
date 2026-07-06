@@ -95,7 +95,7 @@ load test_helper
     mkdir -p "${_fake_tmpdir}"
     run bash -c '
         cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR XDG_RUNTIME_DIR
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
         env PATH="$2" TMPDIR="$3" sh "$4"
@@ -104,6 +104,99 @@ load test_helper
     [ "${status}" -eq 1 ]
     run cat "${T}/tmpdir-used.txt"
     [ "${output}" = "/tmp" ]
+}
+
+@test "run-bats uses XDG_RUNTIME_DIR/<owner>/<repo>/bats for a remote-tracked repo" {
+    if ! command -v bats > /dev/null 2>&1; then
+        skip "bats not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T BATS_HOOK_CONFIG _fake_xdg
+    T="$(make_repo feature/xdg-remote)"
+    git -C "${T}" remote add origin "git@github.com:acme/widget.git"
+    _fake_xdg="${BATS_TEST_TMPDIR}/xdg-runtime"
+    mkdir -p "${_fake_xdg}"
+    BATS_HOOK_CONFIG="repos:
+  - repo: local
+    hooks:
+      - id: bats
+        name: run bats tests
+        entry: ${REPO_DIR}/src/scripts/run-bats
+        language: system
+        pass_filenames: false
+        files: \.bats\$
+"
+    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/test"
+    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
+    # into the generated bats file below and only expands when that file runs.
+    printf '#!/usr/bin/env bats
+@test "dump tmpdir" {
+  printf "%%s\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"
+  false
+}
+' "${T}" > "${T}/test/dump.bats"
+    git -C "${T}" add .pre-commit-config.yaml test/dump.bats
+
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env PATH="$2" XDG_RUNTIME_DIR="$3" sh "$4"
+    ' _ "${T}" "${TEST_PATH}" "${_fake_xdg}" "${HOOK}"
+
+    [ "${status}" -eq 1 ]
+    run cat "${T}/tmpdir-used.txt"
+    [ "${output}" = "${_fake_xdg}/acme/widget/bats" ]
+}
+
+@test "run-bats uses XDG_RUNTIME_DIR/_local/<basename>/bats for a local-only repo" {
+    if ! command -v bats > /dev/null 2>&1; then
+        skip "bats not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T BATS_HOOK_CONFIG _fake_xdg
+    T="$(make_repo feature/xdg-local)"
+    _fake_xdg="${BATS_TEST_TMPDIR}/xdg-runtime"
+    mkdir -p "${_fake_xdg}"
+    BATS_HOOK_CONFIG="repos:
+  - repo: local
+    hooks:
+      - id: bats
+        name: run bats tests
+        entry: ${REPO_DIR}/src/scripts/run-bats
+        language: system
+        pass_filenames: false
+        files: \.bats\$
+"
+    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/test"
+    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
+    # into the generated bats file below and only expands when that file runs.
+    printf '#!/usr/bin/env bats
+@test "dump tmpdir" {
+  printf "%%s\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"
+  false
+}
+' "${T}" > "${T}/test/dump.bats"
+    git -C "${T}" add .pre-commit-config.yaml test/dump.bats
+
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env PATH="$2" XDG_RUNTIME_DIR="$3" sh "$4"
+    ' _ "${T}" "${TEST_PATH}" "${_fake_xdg}" "${HOOK}"
+
+    [ "${status}" -eq 1 ]
+    run cat "${T}/tmpdir-used.txt"
+    [ "${output}" = "${_fake_xdg}/_local/repo/bats" ]
 }
 
 @test "run-bats sweeps bats-run-* dirs under /tmp older than 60 minutes, leaving fresh ones alone" {
