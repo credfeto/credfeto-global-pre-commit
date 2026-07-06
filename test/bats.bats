@@ -65,6 +65,65 @@ load test_helper
     [ "${status}" -eq 0 ]
 }
 
+@test "run-bats pins its tmpdir under /tmp regardless of ambient TMPDIR" {
+    if ! command -v bats > /dev/null 2>&1; then
+        skip "bats not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T BATS_HOOK_CONFIG
+    T="$(make_repo feature/tmpdir-location)"
+    BATS_HOOK_CONFIG="repos:
+  - repo: local
+    hooks:
+      - id: bats
+        name: run bats tests
+        entry: ${REPO_DIR}/src/scripts/run-bats
+        language: system
+        pass_filenames: false
+        files: \\.bats\$
+"
+    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/test"
+    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
+    # into the generated bats file below and only expands when that file runs.
+    printf '#!/usr/bin/env bats\n@test "dump tmpdir" {\n  printf "%%s\\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"\n  false\n}\n' "${T}" > "${T}/test/dump.bats"
+    git -C "${T}" add .pre-commit-config.yaml test/dump.bats
+
+    local _fake_tmpdir="${BATS_TEST_TMPDIR}/not-tmp"
+    mkdir -p "${_fake_tmpdir}"
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env PATH="$2" TMPDIR="$3" sh "$4"
+    ' _ "${T}" "${TEST_PATH}" "${_fake_tmpdir}" "${HOOK}"
+
+    [ "${status}" -eq 1 ]
+    run cat "${T}/tmpdir-used.txt"
+    [ "${output}" = "/tmp" ]
+}
+
+@test "run-bats sweeps bats-run-* dirs under /tmp older than 60 minutes, leaving fresh ones alone" {
+    if ! command -v bats > /dev/null 2>&1; then
+        skip "bats not installed"
+    fi
+    local _stale="/tmp/bats-run-staletest-$$"
+    local _fresh="/tmp/bats-run-freshtest-$$"
+    mkdir -p "${_stale}" "${_fresh}"
+    touch -d "2 hours ago" "${_stale}"
+
+    local T
+    T="$(make_repo feature/sweep-test)"
+    run bash -c 'cd "$1" && "$2"' _ "${T}" "${REPO_DIR}/src/scripts/run-bats"
+
+    [ ! -d "${_stale}" ]
+    [ -d "${_fresh}" ]
+    rm -rf "${_fresh}"
+}
+
 @test "bats hook passes when no test directory exists" {
     if ! command -v bats > /dev/null 2>&1; then
         skip "bats not installed"
