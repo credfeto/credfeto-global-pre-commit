@@ -24,24 +24,61 @@ export -f bats_readlinkf
 # Unsetting all four forces a completely fresh tmpdir hierarchy.
 unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
 
-# bats unconditionally derives BATS_TMPDIR from TMPDIR at its own startup
-# (export BATS_TMPDIR="${TMPDIR:-/tmp}"), so pre-setting BATS_TMPDIR here would
-# just be clobbered — TMPDIR itself is the only lever that actually works.
-# Some environments (e.g. AI-agent sandboxes) point TMPDIR at a small
-# per-login tmpfs such as /run/user/<uid>; a run killed hard enough to skip
-# bats' own EXIT-trap cleanup (e.g. SIGKILL from an external timeout) leaves
-# its fixtures behind there, and enough accumulated leftovers can break
-# unrelated tools that walk that same directory (e.g. firejail's per-user
-# socket whitelist). Pin it to /tmp, which is sized for exactly this kind of
-# scratch usage, regardless of ambient TMPDIR.
-export TMPDIR=/tmp
-
-# Sweep run dirs orphaned by a previous invocation that was killed hard enough
-# to skip bats' own cleanup trap — safe because a clean run always removes its
-# own dir, so anything still here an hour later is stale litter, not live state.
-find "${TMPDIR}" -maxdepth 1 -name 'bats-run-*' -mmin +60 -exec rm -rf {} + 2> /dev/null
-
 REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Sweep stale bats-run dirs from /tmp unconditionally — removes litter left by
+# hard-killed runs that predate the repo-scoped XDG_RUNTIME_DIR path, and
+# from the /tmp fallback path used on hosts without XDG_RUNTIME_DIR.
+find /tmp -maxdepth 1 -name 'bats-run-*' -mmin +60 -exec rm -rf {} + 2>/dev/null
+
 [ -d "$REPO_ROOT/test" ] || exit 0
+
+# bats reads TMPDIR at startup to derive BATS_TMPDIR; TMPDIR is the only lever
+# that works — pre-setting BATS_TMPDIR here would be overwritten by bats itself.
+#
+# Prefer a predictable, repo-scoped path under XDG_RUNTIME_DIR (per-user tmpfs,
+# usually /run/user/<uid>) which can be wiped and recreated before each run,
+# guaranteeing a clean slate every time without an age-based sweep.
+# Fall back to /tmp when XDG_RUNTIME_DIR is absent, not a writable directory,
+# or would yield an unsafe path component (empty, `.`, or `..`).
+_bats_resolve_tmpdir() {
+    local xdg="${XDG_RUNTIME_DIR:-}"
+    if ! { [ -d "$xdg" ] && [ -w "$xdg" ]; }; then
+        printf '/tmp'
+        return
+    fi
+
+    # Extract owner/repo from the git remote; strip any trailing .git suffix.
+    local remote owner repo
+    remote=$(git remote get-url origin 2>/dev/null || true)
+    if [[ "$remote" =~ [:/]([^/:]+)/([^/]+)$ ]]; then
+        owner="${BASH_REMATCH[1]}"
+        repo="${BASH_REMATCH[2]%.git}"
+    else
+        owner="_local"
+        repo=$(basename "$REPO_ROOT")
+    fi
+
+    # Reject empty or path-traversal components before using them in a path.
+    if [[ -z "$owner" || "$owner" == '.' || "$owner" == '..' ||
+          -z "$repo"  || "$repo"  == '.' || "$repo"  == '..' ]]; then
+        printf '/tmp'
+        return
+    fi
+
+    printf '%s/%s/%s/bats' "$xdg" "$owner" "$repo"
+}
+
+BATS_RESOLVED_TMPDIR=$(_bats_resolve_tmpdir)
+
+# When using the repo-specific XDG_RUNTIME_DIR path, wipe and recreate it so
+# every run starts from a clean slate — stale fixtures from any prior hard-killed
+# run are removed before bats even starts.
+if [ "$BATS_RESOLVED_TMPDIR" != "/tmp" ]; then
+    rm -rf "$BATS_RESOLVED_TMPDIR"
+    mkdir -p "$BATS_RESOLVED_TMPDIR"
+fi
+
+export TMPDIR="$BATS_RESOLVED_TMPDIR"
 
 exec bats --recursive "$REPO_ROOT/test"
