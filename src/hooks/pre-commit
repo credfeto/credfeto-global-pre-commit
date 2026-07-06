@@ -310,7 +310,7 @@ if [ "$HAS_CFNLINT" -eq 1 ]; then
           done)
     if [ -n "$CFN_FILES" ]; then
         info "Detected CloudFormation changes — running cfn-lint..."
-        printf '%s\n' "$CFN_FILES" | xargs cfn-lint --include-checks I  --template || die "cfn-lint"
+        printf '%s\n' "$CFN_FILES" | xargs cfn-lint --include-checks I --template || die "cfn-lint"
     fi
 fi
 

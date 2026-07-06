@@ -80,14 +80,9 @@ teardown() {
     [ "${status}" -eq 0 ]
 }
 
-_in_container() {
-    [ -f /.dockerenv ] || [ -f /run/.containerenv ] || [ -n "${container:-}" ] \
-        || grep -q 'docker\|containerd\|kubepods' /proc/1/cgroup 2>/dev/null
-}
-
 @test "AI agent in container with stale SHA passes (freshness check skipped)" {
     # Requires an OCI container environment (Docker, Podman, etc.).
-    if ! _in_container; then
+    if ! in_container; then
         skip "not running inside a container"
     fi
     printf '#!/bin/sh\nprintf "1234567890abcdef"\n' > "${STUB_BIN}/curl"
@@ -103,7 +98,7 @@ _in_container() {
 }
 
 @test "non-AI agent in container with stale SHA is rejected" {
-    if ! _in_container; then
+    if ! in_container; then
         skip "not running inside a container"
     fi
     printf '#!/bin/sh\nprintf "1234567890abcdef"\n' > "${STUB_BIN}/curl"
