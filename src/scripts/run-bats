@@ -10,8 +10,6 @@ die() {
 }
 
 command -v bats > /dev/null 2>&1 || die "bats is not installed — run ./install-deps-debian or ./install-deps-arch"
-REPO_ROOT=$(git rev-parse --show-toplevel)
-[ -d "$REPO_ROOT/test" ] || exit 0
 
 # bats 1.10.x (Ubuntu 24.04) does not export bats_readlinkf from the wrapper
 # when run from a sh parent process. Without it, the bats library falls back to
@@ -25,5 +23,25 @@ export -f bats_readlinkf
 # values from an outer bats process cause directory-creation conflicts.
 # Unsetting all four forces a completely fresh tmpdir hierarchy.
 unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+
+# bats unconditionally derives BATS_TMPDIR from TMPDIR at its own startup
+# (export BATS_TMPDIR="${TMPDIR:-/tmp}"), so pre-setting BATS_TMPDIR here would
+# just be clobbered — TMPDIR itself is the only lever that actually works.
+# Some environments (e.g. AI-agent sandboxes) point TMPDIR at a small
+# per-login tmpfs such as /run/user/<uid>; a run killed hard enough to skip
+# bats' own EXIT-trap cleanup (e.g. SIGKILL from an external timeout) leaves
+# its fixtures behind there, and enough accumulated leftovers can break
+# unrelated tools that walk that same directory (e.g. firejail's per-user
+# socket whitelist). Pin it to /tmp, which is sized for exactly this kind of
+# scratch usage, regardless of ambient TMPDIR.
+export TMPDIR=/tmp
+
+# Sweep run dirs orphaned by a previous invocation that was killed hard enough
+# to skip bats' own cleanup trap — safe because a clean run always removes its
+# own dir, so anything still here an hour later is stale litter, not live state.
+find "${TMPDIR}" -maxdepth 1 -name 'bats-run-*' -mmin +60 -exec rm -rf {} + 2> /dev/null
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+[ -d "$REPO_ROOT/test" ] || exit 0
 
 exec bats --recursive "$REPO_ROOT/test"
