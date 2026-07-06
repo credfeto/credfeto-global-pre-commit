@@ -96,6 +96,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Freshness-check acceptance tests now use a per-test mktemp cache directory instead of a BATS_TEST_TMPDIR-derived path, preventing cached SHAs from one test bleeding into the next when bats 1.10.x shares BATS_TEST_TMPDIR across tests in the same file
 - buildtest publish step no longer fails with IL2104 or IL3053 aggregate trim warnings from third-party assemblies that are not yet fully trim-annotated
 - Freshness check now correctly skipped for AI agent in Podman and other OCI containers, not just Docker
+- run-bats derived its tmpdir from whatever TMPDIR happened to be set to, and a run killed hard enough to skip bats' own cleanup trap (e.g. a SIGKILL from an external timeout) left its fixtures behind permanently. In sandboxed environments where TMPDIR points at a small per-login tmpfs, repeated killed runs accumulated thousands of leftover entries there and broke an unrelated tool that walked the same directory. run-bats now pins TMPDIR to /tmp for the bats invocation and sweeps any stale (60+ minute old) leftover run directories at the start of every invocation (#162)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
