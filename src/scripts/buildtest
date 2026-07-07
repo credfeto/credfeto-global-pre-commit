@@ -60,6 +60,10 @@ SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 SOURCE_DIR=$(dirname "$SOLUTION")
 [ -z "$SOURCE_DIR" ] && die "No Solution dir found in $SOURCE_DIR"
 
+# Resolved before the cd below so a relative $0 is not re-resolved against the
+# wrong working directory.
+BENCH_FILTER_SCRIPT="$(dirname "$(readlink -f "$0")")/benchmark-test-filter"
+
 PACK=0
 HAS_PACKED=$(grep -R "<IsPackable>true</IsPackable>" . --include "*.csproj" | head -1)
 if [ -n "$HAS_PACKED" ]; then
@@ -131,7 +135,7 @@ if [ -n "$COMPAT_CHANGED" ]; then
 fi
 
 info "Determining which benchmark/integration tests to skip..."
-FILTER_SPEC=$("$(dirname "$(readlink -f "$0")")/benchmark-test-filter" "$SOURCE_DIR") \
+FILTER_SPEC=$("$BENCH_FILTER_SCRIPT" "$SOURCE_DIR") \
   || die "######## Benchmark Filter Failed ########"
 set --
 while IFS= read -r ns; do
