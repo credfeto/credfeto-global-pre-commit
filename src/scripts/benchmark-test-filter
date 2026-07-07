@@ -5,14 +5,18 @@
 #
 # Usage: benchmark-test-filter <solution-dir>
 #
-# A benchmark test project (name contains "bench", ends ".Test[s]") is considered
-# affected — and therefore not skipped — when a staged .NET-relevant file falls
-# under its own directory or the directory of any project it references, directly
-# or transitively (via <ProjectReference>). Any staged change to a solution-wide
+# A benchmark test project (basename matches, case-insensitively, "bench" or
+# "benchmark" immediately followed by ".Test" or ".Tests") is considered affected —
+# and therefore not skipped — when a staged .NET-relevant file falls under its own
+# directory or the directory of any project it references, directly or
+# transitively (via <ProjectReference>). Any staged change to a solution-wide
 # shared build input (Directory.Build.props/targets, Directory.Packages.props,
 # global.json, or a *.props/*.targets/*.globalconfig/*.ruleset/*.sln/*.slnx file
 # directly in the solution directory) is treated as affecting every benchmark.
-# When nothing is staged (e.g. a manual run), no benchmark is skipped.
+# A ProjectReference that cannot be resolved to a real file (an MSBuild property
+# expansion, a glob, or a stale path) also makes every benchmark affected, since
+# the dependency graph can no longer be trusted. When nothing is staged (e.g. a
+# manual run), no benchmark is skipped.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -35,7 +39,7 @@ BENCH_PROJECTS=""
 while IFS= read -r proj; do
     [ -n "$proj" ] || continue
     bn=$(basename "$proj")
-    if printf '%s\n' "$bn" | grep -qi "bench" && printf '%s\n' "$bn" | grep -qiE '\.tests?\.csproj$'; then
+    if printf '%s\n' "$bn" | grep -qiE '(^|[.])bench(mark)?[.]tests?[.]csproj$'; then
         BENCH_PROJECTS="$BENCH_PROJECTS
 $proj"
     fi
@@ -75,29 +79,55 @@ GLOBAL_EOF
 fi
 [ -z "$GLOBAL_TOUCHED" ] || exit 0
 
-EDGES_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.XXXXXXXXXX") || die "mktemp failed"
-trap 'rm -f "$EDGES_FILE"' EXIT
+EDGES_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.edges.XXXXXXXXXX") || die "mktemp failed"
+BENCH_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.bench.XXXXXXXXXX") || die "mktemp failed"
+UNRESOLVABLE_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.unresolved.XXXXXXXXXX") || die "mktemp failed"
+trap 'rm -f "$EDGES_FILE" "$BENCH_FILE" "$UNRESOLVABLE_FILE"' EXIT
+
+printf '%s\n' "$BENCH_PROJECTS" | sed '/^$/d' > "$BENCH_FILE"
 
 while IFS= read -r proj; do
     [ -f "$proj" ] || continue
     proj_dir=$(dirname "$proj")
-    grep -o 'ProjectReference[[:space:]]*Include[[:space:]]*=[[:space:]]*"[^"]*"' "$proj" 2>/dev/null \
-        | sed 's/.*"\(.*\)"$/\1/' \
-        | while IFS= read -r ref; do
-            [ -n "$ref" ] || continue
-            ref_native=$(printf '%s' "$ref" | tr '\134' '/')
-            ref_abs=$(readlink -f "$proj_dir/$ref_native" 2>/dev/null)
-            [ -n "$ref_abs" ] && [ -f "$ref_abs" ] && printf '%s|%s\n' "$proj" "$ref_abs" >> "$EDGES_FILE"
-        done
+    grep -o '<ProjectReference[^>]*>' "$proj" 2>/dev/null | while IFS= read -r tag; do
+        ref=$(printf '%s\n' "$tag" \
+            | grep -oE 'Include[[:space:]]*=[[:space:]]*"[^"]*"' \
+            | sed 's/.*"\(.*\)"$/\1/')
+        [ -n "$ref" ] || continue
+        # shellcheck disable=SC2016 # case pattern glob, not a shell expansion
+        case "$ref" in
+            *'$('* | *'*'* | *'?'*)
+                # MSBuild property expansion or a glob — cannot resolve statically.
+                printf 'x\n' >> "$UNRESOLVABLE_FILE"
+                continue
+                ;;
+        esac
+        ref_native=$(printf '%s' "$ref" | tr '\134' '/')
+        ref_abs=$(readlink -f "$proj_dir/$ref_native" 2>/dev/null)
+        if [ -n "$ref_abs" ] && [ -f "$ref_abs" ]; then
+            printf '%s|%s\n' "$proj" "$ref_abs" >> "$EDGES_FILE"
+        else
+            printf 'x\n' >> "$UNRESOLVABLE_FILE"
+        fi
+    done
 done <<PROJECTS_EOF
 $ALL_CSPROJ
 PROJECTS_EOF
 
-# Prints the transitive closure of csproj paths reachable from $1 via ProjectReference.
-resolve_reachable() {
-    awk -v start="$1" -F'|' '
-        { adj[$1] = adj[$1] $2 "\n" }
-        END {
+# A ProjectReference we could not resolve means the dependency graph is
+# incomplete — cannot safely tell which benchmarks are affected, so run them all.
+[ -s "$UNRESOLVABLE_FILE" ] && exit 0
+
+# For every benchmark project, BFS its transitive ProjectReference closure in a
+# single awk pass (one process, one read of EDGES_FILE) and print "bench|reachable"
+# pairs for all of them.
+REACHABLE_PAIRS=$(awk -F'|' '
+    FNR == NR { adj[$1] = adj[$1] $2 "\n"; next }
+    { starts[FNR] = $0 }
+    END {
+        for (s in starts) {
+            start = starts[s]
+            delete visited
             queue[0] = start; n = 1; head = 0
             visited[start] = 1
             while (head < n) {
@@ -113,25 +143,27 @@ resolve_reachable() {
                     }
                 }
             }
-            for (v in visited) print v
+            for (v in visited) print start "|" v
+            delete queue
         }
-    ' "$EDGES_FILE"
-}
+    }
+' "$EDGES_FILE" "$BENCH_FILE")
 
 SKIP_LIST=""
 while IFS= read -r bench; do
     [ -n "$bench" ] || continue
-    REACHABLE_DIRS=$(resolve_reachable "$bench" | while IFS= read -r p; do
-        [ -n "$p" ] && dirname "$p"
-    done | sort -u)
-
     AFFECTED=0
-    while IFS= read -r d; do
-        [ -n "$d" ] || continue
-        printf '%s\n' "$CHANGED_ABS" | grep -qF "$d/" && AFFECTED=1
-    done <<DIRS_EOF
-$REACHABLE_DIRS
-DIRS_EOF
+    while IFS= read -r pair; do
+        [ -n "$pair" ] || continue
+        case "$pair" in
+            "$bench|"*)
+                d=$(dirname "${pair#*|}")
+                printf '%s\n' "$CHANGED_ABS" | grep -qF "$d/" && AFFECTED=1
+                ;;
+        esac
+    done <<PAIRS_EOF
+$REACHABLE_PAIRS
+PAIRS_EOF
 
     if [ "$AFFECTED" -eq 0 ]; then
         ns=$(basename "$bench" .csproj)
