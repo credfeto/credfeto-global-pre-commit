@@ -1,0 +1,182 @@
+#! /bin/sh
+# Prints, one per line, the --filter-not-namespace values buildtest should pass to
+# `dotnet test` to skip benchmark test projects that the staged change set cannot
+# affect, plus integration tests (always safe to skip in pre-commit).
+#
+# Usage: benchmark-test-filter <solution-dir>
+#
+# A benchmark test project (basename matches, case-insensitively, "bench" or
+# "benchmark" immediately followed by ".Test" or ".Tests") is considered affected —
+# and therefore not skipped — when a staged .NET-relevant file falls under its own
+# directory or the directory of any project it references, directly or
+# transitively (via <ProjectReference>). Any staged change to a solution-wide
+# shared build input (Directory.Build.props/targets, Directory.Packages.props,
+# global.json, or a *.props/*.targets/*.globalconfig/*.ruleset/*.sln/*.slnx file
+# directly in the solution directory) is treated as affecting every benchmark.
+# A ProjectReference that cannot be resolved to a real file (an MSBuild property
+# expansion, a glob, or a stale path) also makes every benchmark affected, since
+# the dependency graph can no longer be trusted. When nothing is staged (e.g. a
+# manual run), no benchmark is skipped.
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+SOLUTION_DIR="$1"
+[ -n "$SOLUTION_DIR" ] || die "usage: benchmark-test-filter <solution-dir>"
+[ -d "$SOLUTION_DIR" ] || die "not a directory: $SOLUTION_DIR"
+SOLUTION_DIR=$(readlink -f "$SOLUTION_DIR")
+
+# Integration tests are always safe to skip in pre-commit.
+printf '*.Integration.Tests\n*.Integration.Tests.*\n'
+
+REPO_ROOT=$(git -C "$SOLUTION_DIR" rev-parse --show-toplevel 2>/dev/null)
+[ -n "$REPO_ROOT" ] || exit 0
+
+ALL_CSPROJ=$(find "$SOLUTION_DIR" -type f -iname "*.csproj" -not -path "*/obj/*" -not -path "*/bin/*")
+BENCH_PROJECTS=""
+while IFS= read -r proj; do
+    [ -n "$proj" ] || continue
+    bn=$(basename "$proj")
+    if printf '%s\n' "$bn" | grep -qiE '(^|[.])bench(mark)?[.]tests?[.]csproj$'; then
+        BENCH_PROJECTS="$BENCH_PROJECTS
+$proj"
+    fi
+done <<CSPROJ_EOF
+$ALL_CSPROJ
+CSPROJ_EOF
+[ -n "$BENCH_PROJECTS" ] || exit 0
+
+# Only staged changes count — a manual run with nothing staged runs every benchmark.
+CHANGED_RELATIVE=$(git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACM 2>/dev/null \
+    | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$')
+[ -n "$CHANGED_RELATIVE" ] || exit 0
+
+CHANGED_ABS=""
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    CHANGED_ABS="$CHANGED_ABS
+$REPO_ROOT/$f"
+done <<CHANGED_EOF
+$CHANGED_RELATIVE
+CHANGED_EOF
+
+# A change to a solution-wide shared build input could affect every benchmark.
+GLOBAL_TOUCHED=$(printf '%s\n' "$CHANGED_ABS" \
+    | grep -E '(^|/)(Directory\.Build\.(props|targets)|Directory\.Packages\.props|global\.json)$')
+if [ -z "$GLOBAL_TOUCHED" ]; then
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        case "$f" in
+            "$SOLUTION_DIR"/*.props | "$SOLUTION_DIR"/*.targets | "$SOLUTION_DIR"/*.globalconfig | "$SOLUTION_DIR"/*.ruleset | "$SOLUTION_DIR"/*.sln | "$SOLUTION_DIR"/*.slnx)
+                [ "$(dirname "$f")" = "$SOLUTION_DIR" ] && GLOBAL_TOUCHED="$f"
+                ;;
+        esac
+    done <<GLOBAL_EOF
+$CHANGED_ABS
+GLOBAL_EOF
+fi
+[ -z "$GLOBAL_TOUCHED" ] || exit 0
+
+EDGES_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.edges.XXXXXXXXXX") || die "mktemp failed"
+BENCH_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.bench.XXXXXXXXXX") || die "mktemp failed"
+UNRESOLVABLE_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.unresolved.XXXXXXXXXX") || die "mktemp failed"
+trap 'rm -f "$EDGES_FILE" "$BENCH_FILE" "$UNRESOLVABLE_FILE"' EXIT
+
+printf '%s\n' "$BENCH_PROJECTS" | sed '/^$/d' > "$BENCH_FILE"
+
+while IFS= read -r proj; do
+    [ -f "$proj" ] || continue
+    proj_dir=$(dirname "$proj")
+    grep -o '<ProjectReference[^>]*>' "$proj" 2>/dev/null | while IFS= read -r tag; do
+        ref=$(printf '%s\n' "$tag" \
+            | grep -oE 'Include[[:space:]]*=[[:space:]]*"[^"]*"' \
+            | sed 's/.*"\(.*\)"$/\1/')
+        [ -n "$ref" ] || continue
+        # shellcheck disable=SC2016 # case pattern glob, not a shell expansion
+        case "$ref" in
+            *'$('* | *'*'* | *'?'*)
+                # MSBuild property expansion or a glob — cannot resolve statically.
+                printf 'x\n' >> "$UNRESOLVABLE_FILE"
+                continue
+                ;;
+        esac
+        ref_native=$(printf '%s' "$ref" | tr '\134' '/')
+        ref_abs=$(readlink -f "$proj_dir/$ref_native" 2>/dev/null)
+        if [ -n "$ref_abs" ] && [ -f "$ref_abs" ]; then
+            printf '%s|%s\n' "$proj" "$ref_abs" >> "$EDGES_FILE"
+        else
+            printf 'x\n' >> "$UNRESOLVABLE_FILE"
+        fi
+    done
+done <<PROJECTS_EOF
+$ALL_CSPROJ
+PROJECTS_EOF
+
+# A ProjectReference we could not resolve means the dependency graph is
+# incomplete — cannot safely tell which benchmarks are affected, so run them all.
+[ -s "$UNRESOLVABLE_FILE" ] && exit 0
+
+# For every benchmark project, BFS its transitive ProjectReference closure in a
+# single awk pass (one process, one read of EDGES_FILE) and print "bench|reachable"
+# pairs for all of them.
+REACHABLE_PAIRS=$(awk -F'|' '
+    FNR == NR { adj[$1] = adj[$1] $2 "\n"; next }
+    { starts[FNR] = $0 }
+    END {
+        for (s in starts) {
+            start = starts[s]
+            delete visited
+            queue[0] = start; n = 1; head = 0
+            visited[start] = 1
+            while (head < n) {
+                cur = queue[head]; head++
+                split(adj[cur], refs, "\n")
+                for (i in refs) {
+                    r = refs[i]
+                    if (r == "") continue
+                    if (!(r in visited)) {
+                        visited[r] = 1
+                        queue[n] = r
+                        n++
+                    }
+                }
+            }
+            for (v in visited) print start "|" v
+            delete queue
+        }
+    }
+' "$EDGES_FILE" "$BENCH_FILE")
+
+SKIP_LIST=""
+while IFS= read -r bench; do
+    [ -n "$bench" ] || continue
+    AFFECTED=0
+    while IFS= read -r pair; do
+        [ -n "$pair" ] || continue
+        case "$pair" in
+            "$bench|"*)
+                d=$(dirname "${pair#*|}")
+                printf '%s\n' "$CHANGED_ABS" | grep -qF "$d/" && AFFECTED=1
+                ;;
+        esac
+    done <<PAIRS_EOF
+$REACHABLE_PAIRS
+PAIRS_EOF
+
+    if [ "$AFFECTED" -eq 0 ]; then
+        ns=$(basename "$bench" .csproj)
+        SKIP_LIST="$SKIP_LIST
+$ns"
+    fi
+done <<BENCH_EOF
+$BENCH_PROJECTS
+BENCH_EOF
+
+while IFS= read -r ns; do
+    [ -n "$ns" ] || continue
+    printf '*.%s\n*.%s.*\n' "$ns" "$ns"
+done <<SKIP_EOF
+$SKIP_LIST
+SKIP_EOF
