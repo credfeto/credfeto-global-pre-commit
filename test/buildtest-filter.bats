@@ -8,15 +8,13 @@ load test_helper
 
 FILTER="${REPO_DIR}/src/scripts/benchmark-test-filter"
 
-# Creates an isolated git repository with hooks disabled (this suite exercises
-# the helper script directly, not the pre-commit hook) and prints its path.
+# Builds on the shared make_repo fixture, but overrides core.hooksPath to a
+# no-op directory — this suite exercises the helper script directly, never
+# the real pre-commit hook, so the real hooks must not fire on our commits.
 make_bench_repo() {
-    local _t="${BATS_TEST_TMPDIR}/repo"
+    local _t
+    _t="$(make_repo feature/bench-test)"
     mkdir -p "${_t}/.no-hooks"
-    git -C "${_t}" init --quiet
-    git -C "${_t}" symbolic-ref HEAD "refs/heads/feature/bench-test"
-    git -C "${_t}" config user.email "test@example.com"
-    git -C "${_t}" config user.name "Test User"
     git -C "${_t}" config core.hooksPath "${_t}/.no-hooks"
     printf '%s' "${_t}"
 }
@@ -108,8 +106,8 @@ commit_baseline() {
     T="$(make_bench_repo)"
     write_fixture "${T}"
     commit_baseline "${T}"
-    printf '<!-- touch -->\n' >> "${T}/src/Foo.Metrics/Foo.Metrics.csproj"
-    git -C "${T}" add "src/Foo.Metrics/Foo.Metrics.csproj"
+    printf '<!-- touch -->\n' >> "${T}/src/Foo.Metrics.Benchmark.Tests/Foo.Metrics.Benchmark.Tests.csproj"
+    git -C "${T}" add "src/Foo.Metrics.Benchmark.Tests/Foo.Metrics.Benchmark.Tests.csproj"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
     [[ "${output}" != *'Foo.Metrics.Benchmark.Tests'* ]]
@@ -224,4 +222,58 @@ commit_baseline() {
     [[ "${output}" == *'*.Foo.DataTypes.BenchMark.Tests'* ]]
     [[ "${output}" == *'*.Foo.Metrics.Benchmark.Tests'* ]]
     [[ "${output}" == *'*.Foo.Widgets.BenchMark.Test'* ]]
+}
+
+# ── false-positive naming ─────────────────────────────────────────────────────
+
+@test "a test project whose name merely contains bench as a substring is not treated as a benchmark" {
+    local T
+    T="$(make_bench_repo)"
+    write_fixture "${T}"
+    mkdir -p "${T}/src/Foo.Workbench.Tests"
+    printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' \
+        > "${T}/src/Foo.Workbench.Tests/Foo.Workbench.Tests.csproj"
+    commit_baseline "${T}"
+    run "${FILTER}" "${T}/src"
+    [ "${status}" -eq 0 ]
+    [[ "${output}" != *'Foo.Workbench.Tests'* ]]
+}
+
+# ── ProjectReference with a preceding attribute ───────────────────────────────
+
+@test "a ProjectReference with a Condition attribute before Include is still followed" {
+    local T
+    T="$(make_bench_repo)"
+    write_fixture "${T}"
+    cat > "${T}/src/Foo.Metrics.Benchmark.Tests/Foo.Metrics.Benchmark.Tests.csproj" <<'CSPROJ_EOF'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Condition="'$(TargetFramework)'=='net9.0'" Include="..\Foo.Metrics\Foo.Metrics.csproj" />
+  </ItemGroup>
+</Project>
+CSPROJ_EOF
+    commit_baseline "${T}"
+    printf '<!-- touch -->\n' >> "${T}/src/Foo.Metrics/Foo.Metrics.csproj"
+    git -C "${T}" add "src/Foo.Metrics/Foo.Metrics.csproj"
+    run "${FILTER}" "${T}/src"
+    [ "${status}" -eq 0 ]
+    [[ "${output}" != *'Foo.Metrics.Benchmark.Tests'* ]]
+}
+
+# ── unresolvable ProjectReference ──────────────────────────────────────────────
+
+@test "an unresolvable ProjectReference (MSBuild property) makes every benchmark run" {
+    local T
+    T="$(make_bench_repo)"
+    write_fixture "${T}"
+    # shellcheck disable=SC2016
+    printf '<Project Sdk="Microsoft.NET.Sdk">\n  <ItemGroup>\n    <ProjectReference Include="$(SolutionDir)Foo.Metrics\\Foo.Metrics.csproj" />\n  </ItemGroup>\n</Project>\n' \
+        > "${T}/src/Foo.Metrics.Benchmark.Tests/Foo.Metrics.Benchmark.Tests.csproj"
+    commit_baseline "${T}"
+    printf '<!-- touch -->\n' >> "${T}/src/Foo.Widgets/Foo.Widgets.csproj"
+    git -C "${T}" add "src/Foo.Widgets/Foo.Widgets.csproj"
+    run "${FILTER}" "${T}/src"
+    [ "${status}" -eq 0 ]
+    [[ "${output}" != *'Benchmark'* ]]
+    [[ "${output}" != *'BenchMark'* ]]
 }
