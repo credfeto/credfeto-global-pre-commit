@@ -1,5 +1,8 @@
 #!/bin/sh
 # Lints staged CHANGELOG.md files using `dotnet changelog --lint`.
+# In `*-template` repositories (e.g. cs-template) also enforces that
+# CHANGELOG.md stays blank — those repos are copied into every new project,
+# so a real entry there would leak into every consumer's history.
 
 TOOL_CMD="changelog"
 TOOL_PKG="credfeto.changelog.cmd"
@@ -62,4 +65,51 @@ $STAGED_CHANGELOGS
 EOF
 
 [ "$FAILED" -eq 0 ] || die "changelog lint failed"
+
+# ── Template repos: CHANGELOG.md must stay blank ─────────────────────────────
+# Only Unreleased/Releases content is compared; the description/link lines
+# above [Unreleased] and the version numbers inside "## [x.y.z]" headers are
+# allowed to differ between repos.
+_REPO_NAME=$(git remote get-url origin 2>/dev/null \
+    | sed 's|.*[/:]||; s|\.git$||' \
+    | tr -d '[:space:]')
+case "$_REPO_NAME" in
+    *-template*)
+        REF=$(mktemp "${TMPDIR:-/tmp}/check-changelog.ref.XXXXXXXXXX") || die "mktemp failed"
+        ACTUAL_NORM=$(mktemp "${TMPDIR:-/tmp}/check-changelog.actual.XXXXXXXXXX") || die "mktemp failed"
+        REF_NORM=$(mktemp "${TMPDIR:-/tmp}/check-changelog.refnorm.XXXXXXXXXX") || die "mktemp failed"
+        trap 'rm -f "$REF" "$ACTUAL_NORM" "$REF_NORM"' EXIT
+
+        # Ask the tool itself to produce a blank changelog: add a probe entry to a
+        # fresh file (which also lays down the full pristine skeleton), then remove
+        # it, then let --lint --fix normalise formatting (e.g. blank-line rules).
+        dotnet changelog -f "$REF" -a Added -m "__template_blank_check__" >/dev/null 2>&1
+        dotnet changelog -f "$REF" -r Added -m "__template_blank_check__" >/dev/null 2>&1
+        dotnet changelog -f "$REF" --lint --fix >/dev/null 2>&1
+        [ -s "$REF" ] || die "could not generate reference blank changelog via dotnet changelog"
+
+        BLANK_FAILED=0
+        while IFS= read -r changelog; do
+            [ -f "$changelog" ] || continue
+            info "Checking ${changelog} is blank (template repo)..."
+            sed -n '/^## \[Unreleased\]/,$p' "$changelog" \
+                | sed 's/^## \[[^]]*\]/## [VERSION]/' > "$ACTUAL_NORM"
+            sed -n '/^## \[Unreleased\]/,$p' "$REF" \
+                | sed 's/^## \[[^]]*\]/## [VERSION]/' > "$REF_NORM"
+            # Normalise trailing-newline presence (dotnet changelog omits the
+            # final newline; a hand-edited file may or may not have one).
+            printf '%s\n' "$(cat "$ACTUAL_NORM")" > "$ACTUAL_NORM"
+            printf '%s\n' "$(cat "$REF_NORM")" > "$REF_NORM"
+            if ! diff -q "$REF_NORM" "$ACTUAL_NORM" >/dev/null; then
+                printf '\n\033[31m✗\033[0m %s\n' "${changelog} has entries — *-template repos must keep CHANGELOG.md blank:" >&2
+                diff "$REF_NORM" "$ACTUAL_NORM" | sed 's/^/  /' >&2
+                BLANK_FAILED=1
+            fi
+        done <<EOF
+$STAGED_CHANGELOGS
+EOF
+        [ "$BLANK_FAILED" -eq 0 ] || die "remove the entries from CHANGELOG.md — *-template repos must not carry changelog entries"
+        ;;
+esac
+
 exit 0
