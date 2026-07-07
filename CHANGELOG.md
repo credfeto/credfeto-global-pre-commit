@@ -99,6 +99,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - buildtest publish step no longer fails with IL2104 or IL3053 aggregate trim warnings from third-party assemblies that are not yet fully trim-annotated
 - Freshness check now correctly skipped for AI agent in Podman and other OCI containers, not just Docker
 - run-bats derived its tmpdir from whatever TMPDIR happened to be set to, and a run killed hard enough to skip bats' own cleanup trap (e.g. a SIGKILL from an external timeout) left its fixtures behind permanently. In sandboxed environments where TMPDIR points at a small per-login tmpfs, repeated killed runs accumulated thousands of leftover entries there and broke an unrelated tool that walked the same directory. run-bats now uses a predictable, repo-scoped directory under XDG_RUNTIME_DIR when available (wiped and recreated before each run for a guaranteed clean slate), falling back to /tmp with an age-based sweep of stale bats-run-* directories on hosts without XDG_RUNTIME_DIR (#162)
+- run-bats now falls back to /tmp when the repo-scoped XDG_RUNTIME_DIR TMPDIR path would leave no headroom for nested bats/test tmpdirs and mock-socket filenames, preventing spurious AF_UNIX sun_path length failures unrelated to the code under test
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
