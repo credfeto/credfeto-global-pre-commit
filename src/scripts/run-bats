@@ -66,7 +66,27 @@ _bats_resolve_tmpdir() {
         return
     fi
 
-    printf '%s/%s/%s/bats' "$xdg" "$owner" "$repo"
+    local candidate="$xdg/$owner/$repo/bats"
+
+    # AF_UNIX sun_path allows 107 usable bytes (108 including the NUL
+    # terminator). Reserve headroom for what gets nested under TMPDIR at
+    # runtime: bats-core's own /bats-run-XXXXXX/test/NNNN (up to ~26 bytes),
+    # a consuming repo's own mktemp layer such as /oneshot.XXXXXX (~15 bytes),
+    # and a realistic mock-socket filename such as /S.gpg-agent.extra
+    # (~18 bytes) — ~59 bytes worst case, observed directly in #169. A long
+    # owner/repo name (or an unusually long ambient XDG_RUNTIME_DIR) can
+    # otherwise produce a TMPDIR with no room left for what a test appends —
+    # fall back to /tmp rather than hand back a base path that later socket
+    # binds fail against.
+    local -r _sun_path_usable_max=107
+    local -r _nested_overhead_reserve=65
+    local -r _max_candidate_len=$((_sun_path_usable_max - _nested_overhead_reserve))
+    if [ "${#candidate}" -gt "$_max_candidate_len" ]; then
+        printf '/tmp'
+        return
+    fi
+
+    printf '%s' "$candidate"
 }
 
 BATS_RESOLVED_TMPDIR=$(_bats_resolve_tmpdir)
