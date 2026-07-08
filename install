@@ -27,6 +27,7 @@ chmod +x \
     "$SCRIPTS_DIR/buildcheck" \
     "$SCRIPTS_DIR/run-formatter" \
     "$SCRIPTS_DIR/check-changelog" \
+    "$SCRIPTS_DIR/check-identity" \
     "$SCRIPTS_DIR/check-ignored-files" \
     "$SCRIPTS_DIR/check-merge-commits" \
     "$SCRIPTS_DIR/clean-package-lock-registry" \

@@ -1,0 +1,33 @@
+#!/bin/sh
+# Verifies that git is configured with a valid identity and GPG signing.
+# Mirrors the reference script documented in cs-template's git.examples.md —
+# keep them in sync if either changes.
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+CURRENT_EMAIL=$(git config user.email)
+
+[ -z "$CURRENT_EMAIL" ] && die "git user.email is not set — run: git config --global user.email \"you@example.com\""
+
+[ "$CURRENT_EMAIL" = "andy@nanoclaw.ai" ] && die "git is configured with the wrong identity (${CURRENT_EMAIL}) — aborting"
+
+[ "$(git config commit.gpgsign)" = "true" ] || die "GPG signing is not enabled — run: git config --global commit.gpgsign true"
+
+command -v gpg > /dev/null 2>&1 || die "gpg is not installed — cannot verify signing key"
+
+gpg --list-secret-keys "$CURRENT_EMAIL" > /dev/null 2>&1 \
+    || die "no GPG secret key found for ${CURRENT_EMAIL} — run: gpg --gen-key"
+
+SIGNING_KEY=$(git config user.signingkey)
+[ -z "$SIGNING_KEY" ] && die "git user.signingkey is not set — run: git config --global user.signingkey <keyid>"
+
+gpg --list-secret-keys "$SIGNING_KEY" > /dev/null 2>&1 \
+    || die "git user.signingkey (${SIGNING_KEY}) not found in GPG keyring"
+
+gpg --list-secret-keys "$SIGNING_KEY" 2>/dev/null | grep -qF "$CURRENT_EMAIL" \
+    || die "git user.signingkey (${SIGNING_KEY}) is not associated with ${CURRENT_EMAIL}"
+
+exit 0
