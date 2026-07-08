@@ -8,6 +8,17 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOKS_DIR="${REPO_DIR}/src/hooks"
 HOOK="${HOOKS_DIR}/pre-commit"
 
+# ── git config isolation ──────────────────────────────────────────────────────
+# Without this, `git config <key>` inside a test repo falls through to the
+# real developer's ~/.gitconfig (and any /etc/gitconfig) for any value the
+# test repo hasn't set locally — e.g. `git config --unset user.email` in a
+# test only removes the *local* value, so the check under test would still
+# see the host machine's real global email. Pointing both scopes at /dev/null
+# makes every test repo's git config fully hermetic; make_repo() and each
+# test set everything the hook/scripts need at the local scope explicitly.
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+
 # ── PATH sanitisation ─────────────────────────────────────────────────────────
 # The hook enforces that dotnet (if present) must resolve to
 # /usr/share/dotnet/dotnet.  On machines where dotnet lives elsewhere we strip
@@ -28,16 +39,49 @@ export _ACTUAL_DOTNET_BIN
 export _ACTUAL_DOTNET_REAL
 export _EXPECTED_DOTNET
 
+# ── Shared test GPG identity ──────────────────────────────────────────────────
+# check-identity requires a working GPG signing key, so every repo made by
+# make_repo() needs one. Generated once per `bats` invocation (cached in
+# BATS_RUN_TMPDIR, which is shared across all test files in the run) rather
+# than once per test, since key generation — while fast — is unnecessary
+# overhead to repeat per test.
+TEST_GIT_EMAIL="test@example.com"
+GNUPGHOME="${BATS_RUN_TMPDIR}/gnupg"
+export GNUPGHOME
+TEST_GIT_SIGNINGKEY=""
+
+# Generates the shared test GPG key on first use; reuses it on subsequent calls
+# (within this run and across files, via the GNUPGHOME/keyid cache above).
+ensure_test_gpg_key() {
+    local _keyid_file="${GNUPGHOME}/.keyid"
+    if [ -f "${_keyid_file}" ]; then
+        TEST_GIT_SIGNINGKEY="$(cat "${_keyid_file}")"
+        return 0
+    fi
+    mkdir -p "${GNUPGHOME}"
+    chmod 700 "${GNUPGHOME}"
+    gpg --batch --pinentry-mode loopback --passphrase '' \
+        --quick-generate-key "${TEST_GIT_EMAIL}" ed25519 sign never > /dev/null 2>&1
+    TEST_GIT_SIGNINGKEY="$(gpg --batch --list-secret-keys --with-colons "${TEST_GIT_EMAIL}" \
+        | awk -F: '/^sec/{print $5; exit}')"
+    printf '%s' "${TEST_GIT_SIGNINGKEY}" > "${_keyid_file}"
+}
+
 # Creates an isolated git repository in BATS_TEST_TMPDIR on the given branch
-# (default: feature/acceptance-test) and prints its path.
+# (default: feature/acceptance-test) and prints its path. Configured with a
+# valid identity and GPG signing key so check-identity passes by default —
+# tests that exercise check-identity itself override individual settings.
 make_repo() {
     local _branch="${1:-feature/acceptance-test}"
     local _t="${BATS_TEST_TMPDIR}/repo"
+    ensure_test_gpg_key
     mkdir -p "${_t}"
     git -C "${_t}" init --quiet
     git -C "${_t}" symbolic-ref HEAD "refs/heads/${_branch}"
-    git -C "${_t}" config user.email "test@example.com"
+    git -C "${_t}" config user.email "${TEST_GIT_EMAIL}"
     git -C "${_t}" config user.name "Test User"
+    git -C "${_t}" config commit.gpgsign true
+    git -C "${_t}" config user.signingkey "${TEST_GIT_SIGNINGKEY}"
     git -C "${_t}" config core.hooksPath "${HOOKS_DIR}"
     printf '%s' "${_t}"
 }

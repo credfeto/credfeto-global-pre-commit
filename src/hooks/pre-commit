@@ -225,6 +225,9 @@ case "$CURRENT_BRANCH" in
         ;;
 esac
 
+info "Checking git identity..."
+sh "$SCRIPTS_DIR/check-identity" || die_blocked "git identity check"
+
 info "Checking for merge commits..."
 sh "$SCRIPTS_DIR/check-merge-commits" || die "merge commit detected"
 
