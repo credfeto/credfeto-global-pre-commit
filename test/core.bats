@@ -151,6 +151,28 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
+@test "staging release.rule-settings.json in non-hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/release-rule-settings-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/src"
+    printf '{}\n' > "${T}/src/release.rule-settings.json"
+    git -C "${T}" add .pre-commit-config.yaml src/release.rule-settings.json
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging pre-release.rule-settings.json in non-hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/pre-release-rule-settings-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/src"
+    printf '{}\n' > "${T}/src/pre-release.rule-settings.json"
+    git -C "${T}" add .pre-commit-config.yaml src/pre-release.rule-settings.json
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
 # ── hooks-repo protected file guard ──────────────────────────────────────────
 
 @test "staging .shellcheckrc in hooks repo is rejected" {
