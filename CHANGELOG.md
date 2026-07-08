@@ -63,6 +63,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Install the cscleanup C# formatter (Credfeto.DotNet.Repo.Formatter) as a dotnet global tool in the dependency install scripts
 - Skip benchmark test projects in buildtest unless staged changes could affect them (direct or transitive project references, or a shared build input); integration tests are always skipped, as it is safe in pre-commit (#164)
 - check-changelog: reject any CHANGELOG.md entries in *-template repositories (e.g. cs-template), verified against a blank reference generated with dotnet changelog
+- Enforce git identity and GPG signing (user.email, commit.gpgsign, signing key) on every commit via the pre-commit hook
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
