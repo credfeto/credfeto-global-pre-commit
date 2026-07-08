@@ -122,8 +122,13 @@ run_check_identity() {
 @test "hook passes with a valid identity" {
     local T
     T="$(make_repo feature/identity-hook-valid-test)"
+    # A no-op project .pre-commit-config.yaml keeps this test scoped to
+    # check-identity's wiring into the hook, rather than incidentally
+    # exercising (and being exposed to flakiness in) the bundled global
+    # linter set — see freshness.bats for the same pattern.
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf 'hello\n' > "${T}/file.txt"
-    git -C "${T}" add file.txt
+    git -C "${T}" add .pre-commit-config.yaml file.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
