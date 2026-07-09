@@ -7,6 +7,13 @@ SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
 # HOOKS_REPO_DIR_TEST_OVERRIDE is a test-only escape hatch; never set this variable in production shells.
 HOOKS_REPO_DIR="${HOOKS_REPO_DIR_TEST_OVERRIDE:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
+# Ensure language: system wrappers invoked by bare name (e.g. run-bats,
+# run-eslint, run-stylelint, run-psscriptanalyzer) resolve to the versions
+# shipped alongside this hook, independent of the install script's PATH
+# symlinks or any consumer's container ENV/profile setup.
+PATH="$SCRIPTS_DIR:$PATH"
+export PATH
+
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
