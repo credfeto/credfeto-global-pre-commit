@@ -41,3 +41,17 @@ When adding a new `language: system` wrapper that is invoked by bare name (curre
 3. Consuming container images (e.g. `credfeto-orchestrator`'s `development-full` / `development-agent`) put `src/scripts/` on `PATH` and verify each wrapper resolves **at build time** — a wrapper added here is not reachable in those images until their build-time check list is updated. Those images are designed to fail the build rather than surface a missing wrapper as an `Executable <name> not found` hook failure at commit time.
 
 Wrappers invoked only through the hook by full `$SCRIPTS_DIR/<name>` path (e.g. `run-formatter`, `buildcheck`) do **not** need a PATH symlink.
+
+## Fixer scripts: staging and exit-code convention (MANDATORY)
+
+A "fixer" script can modify files to correct a problem (e.g. `run-formatter`, `clean-package-lock-registry`) — distinct from a pure validator that only reports problems and never writes (e.g. `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, none of which pass `--fix`-style flags today).
+
+Every fixer script must:
+
+1. **Re-stage any file it modifies**, with `git add <file>`, before returning — the fix must land in the commit currently being built, not be left as an unstaged working-tree change.
+2. **Exit 0 whenever the fix step itself succeeded**, regardless of whether any file was actually changed. Do not invent a distinct "success, and I changed something" exit code — there is no standard non-zero code reserved for this, and none should be added.
+3. **Exit non-zero only on genuine failure** (the fixing tool itself errored, or a required dependency is missing). On this path, do not stage anything.
+
+A caller that needs to know whether a fixer changed anything (for example, to tell a human/agent "some files were auto-fixed — re-add and re-run") must determine this itself by comparing repo state before and after the fixer ran (`git status --short` / `git diff --cached --name-only`), not by inspecting the fixer's exit code.
+
+`run-formatter` and `clean-package-lock-registry` are the reference implementations of this convention.
