@@ -283,3 +283,45 @@ load test_helper
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
+
+@test "bare-name run-bats wrapper resolves when scripts dir is not on the ambient PATH" {
+    if ! command -v bats > /dev/null 2>&1; then
+        skip "bats not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T BATS_HOOK_CONFIG _stripped_path
+    T="$(make_repo feature/bare-name-path-test)"
+    # Reproduces #173: entry is a bare command name (as in the real
+    # src/.pre-commit-config.yaml), and PATH is stripped of every directory
+    # that could resolve it (the repo's own src/scripts, and any install
+    # symlink dir such as ~/.local/bin) — only the hook's own PATH= prepend
+    # can make this resolve.
+    _stripped_path="$(printf '%s' "${TEST_PATH}" | tr ':' '\n' \
+        | grep -Fxv "${REPO_DIR}/src/scripts" \
+        | grep -Fxv "${HOME}/.local/bin" \
+        | tr '\n' ':' | sed 's/:$//')"
+    BATS_HOOK_CONFIG="repos:
+  - repo: local
+    hooks:
+      - id: bats
+        name: run bats tests
+        entry: run-bats
+        language: system
+        pass_filenames: false
+        files: \\.bats\$
+"
+    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/test"
+    printf '#!/usr/bin/env bats\n@test "always passes" {\n  true\n}\n' > "${T}/test/pass.bats"
+    git -C "${T}" add .pre-commit-config.yaml test/pass.bats
+    run_hook_env "${T}" "${_stripped_path}" "${BATS_TEST_TMPDIR}/xdg-cache"
+    if [ "${status}" -ne 0 ]; then
+        printf '# hook exit status: %s\n' "${status}" >&3
+        printf '# hook output:\n' >&3
+        printf '%s\n' "${output}" | sed 's/^/# /' >&3
+    fi
+    [ "${status}" -eq 0 ]
+    [[ "${output}" != *"not found"* ]]
+}
