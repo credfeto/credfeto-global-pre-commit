@@ -125,6 +125,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Renamed install.sh, install-deps-arch.sh, and install-deps-debian.sh to remove .sh extension, matching the no-extension convention used by scripts in scripts/
 - sqlfluff check now runs fix (auto-correcting style violations) and re-stages any modified files; exports SQLFLUFF_EXECUTED so local scripts can skip a redundant run
 - install now delegates its setup status report to the check-setup script and aborts when the environment is not fully configured
+- Documented the fixer-script staging and exit-code convention in ai/local/scripts.instructions.md: a fixer must re-stage what it modifies and return 0 on success regardless of whether anything changed, with no special exit code for 'succeeded and changed something'
 
 ### Deprecated
 ### Removed

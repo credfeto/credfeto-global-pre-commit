@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # @@required: main
   acceptance-test:
     runs-on: ubuntu-latest
     steps:
