@@ -126,7 +126,7 @@ Example output:
 
 ```text
 Global pre-commit hooks installed.
-Hooks directory: /home/user/.global-hooks/hooks
+Hooks directory: /home/user/.global-hooks/src/hooks
 
 Check status:
   ✓ active   ✗ tool not installed (skipped)   – conditional on file type
@@ -259,7 +259,7 @@ Run the full check suite against the whole tracked tree — independent of
 whatever is (or isn't) staged — with:
 
 ```sh
-sh ~/.global-hooks/pre-commit --all-files
+sh ~/.global-hooks/src/hooks/pre-commit --all-files
 ```
 
 This is the supported way to get an "everything in the repo" signal, e.g. as
@@ -304,7 +304,7 @@ They handle all system tools, install them idempotently, and are safe to re-run
 after updates.
 
 After installing any tool, re-run `./install` to see the updated status table.
-Run `pre-commit autoupdate --config ~/.global-hooks/.pre-commit-config.yaml` to update managed hook versions.
+Run `pre-commit autoupdate --config ~/.global-hooks/src/.pre-commit-config.yaml` to update managed hook versions.
 
 ---
 
