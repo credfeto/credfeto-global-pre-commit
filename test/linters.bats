@@ -812,7 +812,7 @@ EOF
     [ "${status}" -eq 1 ]
 }
 
-@test "package-lock.json with no known-vulnerable dependency passes trivy" {
+@test "package-lock.json with no third-party dependencies passes trivy" {
     if ! command -v trivy > /dev/null 2>&1; then
         skip "trivy not installed"
     fi
@@ -822,6 +822,9 @@ EOF
     local T
     T="$(make_repo feature/clean-lockfile-test)"
     printf '%s' "${TRIVY_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    # No third-party packages, so there is nothing for the vulnerability
+    # database to ever flag — unlike pinning a real package version, this
+    # can't be broken by a future CVE being published against it.
     cat > "${T}/package-lock.json" <<'EOF'
 {
   "name": "test",
@@ -831,24 +834,10 @@ EOF
   "packages": {
     "": {
       "name": "test",
-      "version": "1.0.0",
-      "dependencies": {
-        "lodash": "4.17.21"
-      }
-    },
-    "node_modules/lodash": {
-      "version": "4.17.21",
-      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
-      "integrity": "sha512-v2kDEe57lecTulaDIuNTPy3Ry4/GsdG0BvT/tanZaBjcXCQrdY1D2VrvsvKPvcC0PB0Iue9NmiJK54hDQFCLXQ=="
+      "version": "1.0.0"
     }
   },
-  "dependencies": {
-    "lodash": {
-      "version": "4.17.21",
-      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
-      "integrity": "sha512-v2kDEe57lecTulaDIuNTPy3Ry4/GsdG0BvT/tanZaBjcXCQrdY1D2VrvsvKPvcC0PB0Iue9NmiJK54hDQFCLXQ=="
-    }
-  }
+  "dependencies": {}
 }
 EOF
     git -C "${T}" add .pre-commit-config.yaml package-lock.json
