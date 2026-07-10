@@ -244,6 +244,44 @@ staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
 
 ---
 
+## Baseline mode (`--all-files`)
+
+Run the full check suite against the whole tracked tree — independent of
+whatever is (or isn't) staged — with:
+
+```sh
+sh ~/.global-hooks/pre-commit --all-files
+```
+
+This is the supported way to get an "everything in the repo" signal, e.g. as
+a pre-work baseline check before starting a task. Compared to the default
+(no-argument) invocation:
+
+| | Default (`pre-commit`) | `--all-files` |
+| --- | --- | --- |
+| File list checks run against | Staged files (`git diff --cached`) | Every tracked file (`git ls-files`) |
+| Empty stage | Aborts (`nothing is staged`) | Runs normally |
+| Branch guard (`main`/`master`) | Blocks | Skipped |
+| Git identity/GPG check | Runs | Skipped |
+| Merge-commit guard | Runs | Skipped |
+| Ignored-file / dotnet-tools.json / install-location / freshness guards | Runs | Runs (unchanged) |
+| `pre-commit run` | Staged files only | `--all-files` |
+| Changelog / .NET / NPM / SQL / CloudFormation category checks | Gated on staged files | Gated on tracked files |
+
+Auto-fixers (`sqlfluff fix`, the .NET formatter, `clean-package-lock-registry`)
+still run and re-stage what they change, exactly as they do in the default
+mode — `--all-files` runs the same checks, just against a wider file list.
+
+The protected/linter-config-file guards (blocking staged changes to
+`.shellcheckrc`, `.ai-instructions`, `ai/global/`, etc.) still key off
+whatever is staged, in both modes — they guard commit *content*, not the
+tracked tree, so they are unaffected by `--all-files`.
+
+An unrecognised argument is rejected with a non-zero exit and an error
+message; the default no-argument invocation is unaffected by this mode.
+
+---
+
 ## What is always blocked
 
 `pre-push` unconditionally blocks all pushes regardless of repo or content.

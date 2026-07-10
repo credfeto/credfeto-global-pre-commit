@@ -65,6 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - check-changelog: reject any CHANGELOG.md entries in *-template repositories (e.g. cs-template), verified against a blank reference generated with dotnet changelog
 - Enforce git identity and GPG signing (user.email, commit.gpgsign, signing key) on every commit via the pre-commit hook
 - Protect pre-release.rule-settings.json and release.rule-settings.json from being added, changed, or deleted, preventing accidental removal of dotnet code-analysis rule overrides
+- Add an explicit --all-files baseline mode to the pre-commit hook, running the full check suite (changelog, .NET, SQL, CloudFormation, and all linters) against the whole tracked tree instead of only staged files (#175)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)

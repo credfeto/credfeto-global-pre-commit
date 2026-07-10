@@ -87,9 +87,26 @@ dotnet_tool_installed() {
     return 1
 }
 
+# ── Mode selection ────────────────────────────────────────────────────────────
+# Default MODE=commit reproduces today's staged-only, abort-on-empty behaviour
+# completely unchanged. MODE=all-files is an explicit baseline/CI mode
+# (invoked as `pre-commit --all-files`): it runs every category check against
+# the full tracked tree (git ls-files) regardless of what is staged, and skips
+# the guards that only make sense mid-commit (empty-stage abort, branch check,
+# identity check, merge-commit guard).
+MODE=commit
+case "${1:-}" in
+    "") ;;
+    --all-files) MODE=all-files ;;
+    *) die "unknown argument: $1 (supported: --all-files)" ;;
+esac
+
 # Abort immediately if nothing is staged — prevents accidental empty commits.
+# Skipped in all-files mode, which is expected to run against a clean tree.
 ALL_STAGED=$(git diff --cached --name-only)
-[ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
+if [ "$MODE" = "commit" ]; then
+    [ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
+fi
 
 # Block staged additions, changes, OR deletions of linter/style config files in
 # ALL repos.  These files define conformance rules and must not be modified or
@@ -105,11 +122,22 @@ if [ -n "$LINTER_CONFIG_CHANGES" ]; then
     die "remove linter config file changes from this commit"
 fi
 
-# Only look at staged files that are being added/copied/modified
+# Only look at staged files that are being added/copied/modified.
+# Skipped in all-files mode — an empty stage does not mean "nothing to check".
 STAGED=$(git diff --cached --name-only --diff-filter=ACM)
-[ -z "$STAGED" ] && exit 0
+if [ "$MODE" = "commit" ]; then
+    [ -z "$STAGED" ] && exit 0
+fi
 
 cd "$REPO_ROOT" || die "cannot cd to repo root"
+
+# CHECK_FILES is the file-list category checks below key off: staged files in
+# commit mode (unchanged), or every tracked file in all-files mode.
+if [ "$MODE" = "all-files" ]; then
+    CHECK_FILES=$(git ls-files)
+else
+    CHECK_FILES="$STAGED"
+fi
 
 # ── dotnet-tools.json sanity ─────────────────────────────────────────────────
 # A dotnet-tools.json anywhere in the repo pins local tool versions and
@@ -218,25 +246,27 @@ elif [ -f "$HOOKS_REPO_DIR/.env" ] && has_cmd curl; then
     fi
 fi
 
-# ── Always-on checks (run on every commit) ───────────────────────────────────
+# ── Mid-commit-only guards (skipped entirely in all-files mode) ──────────────
 
-info "Checking branch..."
-CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
-case "$CURRENT_BRANCH" in
-    main|master)
-        if is_ai_agent; then
-            die "Prohibited from committing to ${CURRENT_BRANCH}.  Did you read the .ai-instructions?"
-        else
-            die "direct commits to ${CURRENT_BRANCH} are not permitted — use a branch and open a pull request"
-        fi
-        ;;
-esac
+if [ "$MODE" = "commit" ]; then
+    info "Checking branch..."
+    CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+    case "$CURRENT_BRANCH" in
+        main|master)
+            if is_ai_agent; then
+                die "Prohibited from committing to ${CURRENT_BRANCH}.  Did you read the .ai-instructions?"
+            else
+                die "direct commits to ${CURRENT_BRANCH} are not permitted — use a branch and open a pull request"
+            fi
+            ;;
+    esac
 
-info "Checking git identity..."
-sh "$SCRIPTS_DIR/check-identity" || die_blocked "git identity check"
+    info "Checking git identity..."
+    sh "$SCRIPTS_DIR/check-identity" || die_blocked "git identity check"
 
-info "Checking for merge commits..."
-sh "$SCRIPTS_DIR/check-merge-commits" || die "merge commit detected"
+    info "Checking for merge commits..."
+    sh "$SCRIPTS_DIR/check-merge-commits" || die "merge commit detected"
+fi
 
 info "Checking for ignored files..."
 sh "$SCRIPTS_DIR/check-ignored-files" || die "ignored files found in tracking"
@@ -251,25 +281,29 @@ sh "$SCRIPTS_DIR/clean-package-lock-registry" \
 # config bundled with these hooks.
 if [ "$HAS_PRECOMMIT" -eq 1 ]; then
     REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+    PRECOMMIT_MODE_ARG=""
+    [ "$MODE" = "all-files" ] && PRECOMMIT_MODE_ARG="--all-files"
     if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
         info "Running project pre-commit hooks..."
-        pre-commit run || die "pre-commit (project config)"
+        # shellcheck disable=SC2086  # PRECOMMIT_MODE_ARG is a single flag or empty; word-splitting is intentional.
+        pre-commit run $PRECOMMIT_MODE_ARG || die "pre-commit (project config)"
     else
         info "Running global linters (pre-commit)..."
-        pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" \
+        # shellcheck disable=SC2086  # PRECOMMIT_MODE_ARG is a single flag or empty; word-splitting is intentional.
+        pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" $PRECOMMIT_MODE_ARG \
             || die "pre-commit (global linters)"
     fi
 fi
 
 # ── 3. Changelog: lint CHANGELOG.md if changed ───────────────────────────────
-CHANGELOG_CHANGES=$(echo "$STAGED" | grep -E '(^|/)CHANGELOG\.md$' | head -1)
+CHANGELOG_CHANGES=$(echo "$CHECK_FILES" | grep -E '(^|/)CHANGELOG\.md$' | head -1)
 if [ -n "$CHANGELOG_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected CHANGELOG.md changes — running changelog lint..."
     sh "$SCRIPTS_DIR/check-changelog" || die "changelog lint"
 fi
 
 # ── 4. .NET: format check + build + test if source/project file changes ──────
-DOTNET_CHANGES=$(echo "$STAGED" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
+DOTNET_CHANGES=$(echo "$CHECK_FILES" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
 if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
     sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
@@ -280,7 +314,7 @@ if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
 fi
 
 # ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────
-TS_CHANGES=$(echo "$STAGED" | grep -E '\.(ts|tsx|js|jsx)$' | head -1)
+TS_CHANGES=$(echo "$CHECK_FILES" | grep -E '\.(ts|tsx|js|jsx)$' | head -1)
 if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
     info "Detected TypeScript/JS changes — running npm tests..."
     if grep -q '"test:noe2e"' "$REPO_ROOT/package.json"; then
@@ -291,7 +325,7 @@ if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 
 fi
 
 # ── 6. SQL: tsqllint + sqlfluff if .sql changes ──────────────────────────────
-SQL_CHANGES=$(echo "$STAGED" | grep -E '\.sql$' | head -1)
+SQL_CHANGES=$(echo "$CHECK_FILES" | grep -E '\.sql$' | head -1)
 if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
         dotnet_tool_installed tsqllint TSQLLint || die_blocked "tsqllint dotnet tool is not installed"
@@ -314,7 +348,7 @@ fi
 
 # ── 7. CloudFormation: cfn-lint on changed templates ─────────────────────────
 if [ "$HAS_CFNLINT" -eq 1 ]; then
-    CFN_FILES=$(echo "$STAGED" | grep -E '\.(yaml|yml|json|template)$' \
+    CFN_FILES=$(echo "$CHECK_FILES" | grep -E '\.(yaml|yml|json|template)$' \
         | while read -r f; do
             grep -q "AWSTemplateFormatVersion" "$f" 2>/dev/null && echo "$f"
           done)
