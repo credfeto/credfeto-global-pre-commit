@@ -63,6 +63,7 @@ SOURCE_DIR=$(dirname "$SOLUTION")
 # Resolved before the cd below so a relative $0 is not re-resolved against the
 # wrong working directory.
 BENCH_FILTER_SCRIPT="$(dirname "$(readlink -f "$0")")/benchmark-test-filter"
+DACPAC_ONLY_SCRIPT="$(dirname "$(readlink -f "$0")")/dacpac-only-solution"
 
 PACK=0
 HAS_PACKED=$(grep -R "<IsPackable>true</IsPackable>" . --include "*.csproj" | head -1)
@@ -134,33 +135,37 @@ if [ -n "$COMPAT_CHANGED" ]; then
     die "ApiCompatSuppressions.xml was created or modified by the build — review, stage and commit it explicitly:$(printf '\n  %s' "$COMPAT_CHANGED")"
 fi
 
-info "Determining which benchmark/integration tests to skip..."
-FILTER_SPEC=$("$BENCH_FILTER_SCRIPT" "$SOURCE_DIR") \
-  || die "######## Benchmark Filter Failed ########"
-set --
-while IFS= read -r ns; do
-    [ -n "$ns" ] || continue
-    set -- "$@" --filter-not-namespace "$ns"
-done <<FILTER_EOF
+if "$DACPAC_ONLY_SCRIPT" "$SOURCE_DIR"; then
+  info "Only project in solution is a SQL Server database project (dacpac) — skipping tests, nothing testable"
+else
+  info "Determining which benchmark/integration tests to skip..."
+  FILTER_SPEC=$("$BENCH_FILTER_SCRIPT" "$SOURCE_DIR") \
+    || die "######## Benchmark Filter Failed ########"
+  set --
+  while IFS= read -r ns; do
+      [ -n "$ns" ] || continue
+      set -- "$@" --filter-not-namespace "$ns"
+  done <<FILTER_EOF
 $FILTER_SPEC
 FILTER_EOF
 
-info "Testing..."
-dotnet test \
-  --configuration Release \
-  --no-restore \
-  --no-build \
-  --long-running 10 \
-  --parallel-algorithm aggressive \
-  --ignore-exit-code 8 \
-  "$@" \
-  "-p:ApiCompatGenerateSuppressionFile=true" \
-  "-p:ContinuousIntegrationBuild=true" \
-  "-p:IsProduction=false" \
-  "-p:Optimize=true" \
-  "-p:SuppressNETCoreSdkPreviewMessage=true" \
-  "-p:Version=0.0.0.1-test" \
-  || die "######## Tests Failed ########"
+  info "Testing..."
+  dotnet test \
+    --configuration Release \
+    --no-restore \
+    --no-build \
+    --long-running 10 \
+    --parallel-algorithm aggressive \
+    --ignore-exit-code 8 \
+    "$@" \
+    "-p:ApiCompatGenerateSuppressionFile=true" \
+    "-p:ContinuousIntegrationBuild=true" \
+    "-p:IsProduction=false" \
+    "-p:Optimize=true" \
+    "-p:SuppressNETCoreSdkPreviewMessage=true" \
+    "-p:Version=0.0.0.1-test" \
+    || die "######## Tests Failed ########"
+fi
 
 PUBLISHABLE=$(grep -Rl "<IsPublishable>true</IsPublishable>" . --include "*.csproj")
 if [ -n "$PUBLISHABLE" ]; then

@@ -1,0 +1,38 @@
+#! /bin/sh
+# Exits 0 when the given solution directory contains exactly one project
+# (.csproj/.fsproj/.vbproj) and that project uses the MSBuild.Sdk.SqlProj SDK
+# (a DACPAC project has no testable code) — buildtest uses this to decide
+# whether to skip `dotnet test`. Exits 1 otherwise (no project, more than one
+# project, or a single project that is not a dacpac).
+#
+# Usage: dacpac-only-solution <solution-dir>
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+SOLUTION_DIR="$1"
+[ -n "$SOLUTION_DIR" ] || die "usage: dacpac-only-solution <solution-dir>"
+[ -d "$SOLUTION_DIR" ] || die "not a directory: $SOLUTION_DIR"
+
+ALL_PROJECTS=$(find "$SOLUTION_DIR" -type f \( -iname "*.csproj" -o -iname "*.fsproj" -o -iname "*.vbproj" \) -not -path "*/obj/*" -not -path "*/bin/*")
+COUNT=$(printf '%s\n' "$ALL_PROJECTS" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+[ "$COUNT" -eq 1 ] || exit 1
+
+SOLE_PROJECT=$(printf '%s\n' "$ALL_PROJECTS" | sed '/^$/d')
+case "$SOLE_PROJECT" in
+    *.csproj | *.CSPROJ) ;;
+    *) exit 1 ;;
+esac
+
+# Only the root <Project ...> opening tag and any <Sdk .../> child elements
+# are inspected — never the whole file — so a comment merely mentioning the
+# SDK name elsewhere in the project cannot cause a false match.
+PROJECT_OPEN=$(tr '\n' ' ' < "$SOLE_PROJECT" | grep -oE '<Project[^>]*>' | head -1)
+printf '%s' "$PROJECT_OPEN" | grep -qiF 'Sdk="MSBuild.Sdk.SqlProj' && exit 0
+
+SDK_ELEMENTS=$(tr '\n' ' ' < "$SOLE_PROJECT" | grep -oE '<Sdk[^>]*/?>')
+printf '%s\n' "$SDK_ELEMENTS" | grep -qiE 'Name[[:space:]]*=[[:space:]]*"MSBuild\.Sdk\.SqlProj' && exit 0
+
+exit 1
