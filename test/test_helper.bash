@@ -106,6 +106,19 @@ run_hook() {
     ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
 }
 
+# Runs the hook in --all-files (baseline) mode using TEST_PATH.
+# Sets $status and $output via bats run.
+run_hook_all_files() {
+    local _repo="$1"
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env PATH="$2" sh "$3" --all-files
+    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+}
+
 # Runs the hook with a custom PATH and XDG_CACHE_HOME (for freshness tests).
 # run_hook_env <repo> <path> <xdg_cache_home>
 run_hook_env() {
