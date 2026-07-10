@@ -131,6 +131,14 @@ fi
 install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-UARCH.tar.gz"
 install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
 
+# trivy's release assets use "64bit"/"ARM64" naming, incompatible with the
+# UARCH/ARCH placeholders (uname -m / go arch) install_github_release fills in
+# for every other tool above, so the asset template is picked per-arch here.
+case "$ARCH_UNAME" in
+    x86_64)  install_github_release trivy aquasecurity/trivy "trivy_VERSION_Linux-64bit.tar.gz" ;;
+    aarch64) install_github_release trivy aquasecurity/trivy "trivy_VERSION_Linux-ARM64.tar.gz" ;;
+esac
+
 echo ""
 echo "All dependencies installed."
 echo "You may need to start a new shell for PATH changes (pipx) to take effect."

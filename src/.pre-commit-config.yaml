@@ -247,3 +247,18 @@ repos:
         language: system
         pass_filenames: false
         files: \.bats$
+
+      # ── Dependency vulnerability scanning — Trivy ─────────────────────────
+      # Scans dependency lockfiles for known CVEs. Not part of Super-Linter's
+      # VALIDATE_* set; added independently. Deliberately scoped to
+      # `--scanners vuln` only: Trivy's secret scanner overlaps with the
+      # verified-only TruffleHog hook above and would just add noisy,
+      # unverified duplicate findings. pass_filenames: false + always scanning
+      # `.` because `trivy fs` needs a directory, not a file list; the files:
+      # filter below still gates the hook to only fire when a manifest changed.
+      - id: trivy
+        name: trivy (dependency vulnerabilities)
+        entry: trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --quiet .
+        language: system
+        pass_filenames: false
+        files: (^|/)(package-lock\.json|packages\.lock\.json|go\.sum|requirements[^/]*\.txt|Gemfile\.lock|poetry\.lock|Pipfile\.lock)$

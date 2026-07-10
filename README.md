@@ -37,7 +37,7 @@ compilation required.
 
 | Source | Packages |
 | -------- | ---------- |
-| `pacman` | `git`, `python-pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2` |
+| `pacman` | `git`, `python-pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `trivy` |
 | AUR | `hadolint-bin`, `dotenv-linter-bin`, `sqlfluff`, `python-cfn-lint` |
 | GitHub releases | `actionlint`, `trufflehog` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks` (no AUR package exists) |
@@ -60,7 +60,7 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 | -------- | ---------- |
 | `apt` | `git`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-pylint`, `libxml2-utils`, `curl`, `gpg`, `pipx` |
 | `apt` (fallback: `pipx`) | `ansible-lint` — installed via `pipx` on older releases where the `apt` package is unavailable |
-| GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
+| GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
@@ -119,8 +119,8 @@ prints what's missing and exact install commands.
 System tools required for full coverage: `pre-commit-hooks` (pip), `shellcheck`,
 `yamllint`, `flake8`, `markdownlint`, `ansible-lint`, `hadolint`, `actionlint`,
 `pylint`, `stylelint`, `dotenv-linter`, `eslint`, `xmllint`, `pwsh`,
-`trufflehog`, `sqlfluff`, `cfn-lint`. Anything missing → that hook is silently
-skipped (with a warning at install time).
+`trufflehog`, `trivy`, `sqlfluff`, `cfn-lint`. Anything missing → that hook is
+silently skipped (with a warning at install time).
 
 Example output:
 
@@ -241,6 +241,15 @@ staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
 | `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` (via `run-psscriptanalyzer`) | `*.ps1/psm1/psd1` |
 | `VALIDATE_SQLFLUFF` | — | Handled by dedicated SQL check |
 | `VALIDATE_CLOUDFORMATION` | — | Handled by dedicated CFN check |
+
+**Additional security checks** — not part of the Super-linter `VALIDATE_*` set, added independently; tool must be on PATH:
+
+| Check | Tool | File trigger |
+| --- | --- | --- |
+| Dependency vulnerabilities | `trivy fs --scanners vuln` | `package-lock.json`, `packages.lock.json`, `go.sum`, `requirements*.txt`, `Gemfile.lock`, `poetry.lock`, `Pipfile.lock` |
+
+`trivy`'s secret scanner is deliberately not enabled — it would duplicate the
+verified-only `trufflehog` check above with noisier, unverified findings.
 
 ---
 
