@@ -247,6 +247,12 @@ fi
 skip  "VALIDATE_SQLFLUFF — sqlfluff (*.sql)"  "handled by dedicated SQL check above"
 skip  "VALIDATE_CLOUDFORMATION — cfn-lint"    "handled by dedicated CFN check above"
 
+if has trivy; then
+    skip  "Dependency vulnerabilities — trivy (lockfiles)" "$(trivy --version 2>/dev/null | head -1)"
+else
+    cross "Dependency vulnerabilities — trivy (lockfiles)" "not installed"
+fi
+
 # ── Optional tool install hints ───────────────────────────────────────────────
 MISSING_SYSTEM=""
 has check-merge-conflict || MISSING_SYSTEM="$MISSING_SYSTEM pre-commit-hooks"
@@ -268,6 +274,7 @@ has eslint        || MISSING_SYSTEM="$MISSING_SYSTEM eslint"
 has xmllint       || MISSING_SYSTEM="$MISSING_SYSTEM xmllint"
 has pwsh          || MISSING_SYSTEM="$MISSING_SYSTEM pwsh"
 has bats          || MISSING_SYSTEM="$MISSING_SYSTEM bats"
+has trivy         || MISSING_SYSTEM="$MISSING_SYSTEM trivy"
 
 if [ -n "$MISSING_SYSTEM" ]; then
     echo ""
@@ -291,6 +298,7 @@ if [ -n "$MISSING_SYSTEM" ]; then
     has xmllint       || echo "  xmllint:        apt install libxml2-utils  # or brew install libxml2"
     has pwsh          || echo "  pwsh:           https://github.com/PowerShell/PowerShell/releases"
     has bats          || echo "  bats:           apt install bats  # or pacman -S bash-bats"
+    has trivy         || echo "  trivy:          pacman -S trivy  # or https://github.com/aquasecurity/trivy/releases"
 fi
 
 echo ""

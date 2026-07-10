@@ -63,6 +63,7 @@ sudo pacman -S --needed --noconfirm \
     ansible-lint \
     libxml2 \
     python-pipx \
+    trivy \
     || die "pacman install failed"
 
 # ── AUR packages ──────────────────────────────────────────────────────────────
