@@ -67,6 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Protect pre-release.rule-settings.json and release.rule-settings.json from being added, changed, or deleted, preventing accidental removal of dotnet code-analysis rule overrides
 - Add an explicit --all-files baseline mode to the pre-commit hook, running the full check suite (changelog, .NET, SQL, CloudFormation, and all linters) against the whole tracked tree instead of only staged files (#175)
 - Scan dependency lockfiles for known CVEs with trivy (trivy fs --scanners vuln) as part of pre-commit, triggered when package-lock.json, packages.lock.json, go.sum, requirements*.txt, Gemfile.lock, poetry.lock, or Pipfile.lock changes
+- buildtest now skips `dotnet test` when the solution's only project is a DACPAC (`MSBuild.Sdk.SqlProj`), since there is nothing testable
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
