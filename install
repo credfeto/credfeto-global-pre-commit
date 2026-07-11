@@ -6,11 +6,20 @@
 
 set -e
 
+die() {
+    if [ -t 2 ]; then
+        printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    else
+        printf '\n✗ %s\n' "$*" >&2
+    fi
+    exit 1
+}
+
 SYSTEM_INSTALL=false
 for _arg in "$@"; do
     case "$_arg" in
         --system) SYSTEM_INSTALL=true ;;
-        *) printf 'Unknown argument: %s\n' "$_arg" >&2; exit 1 ;;
+        *) die "Unknown argument: $_arg" ;;
     esac
 done
 
@@ -30,9 +39,8 @@ else
     _other_hooks_path=$(git config --system --get core.hooksPath 2>/dev/null || true)
 fi
 if [ -n "$_other_hooks_path" ]; then
-    printf 'Refusing to install: a %s core.hooksPath is already configured (%s).\n' "$_other_scope" "$_other_hooks_path" >&2
-    printf 'Remove it first with: git config --%s --unset core.hooksPath\n' "$_other_scope" >&2
-    exit 1
+    die "Refusing to install: a ${_other_scope} core.hooksPath is already configured (${_other_hooks_path}).
+Remove it first with: git config --${_other_scope} --unset core.hooksPath"
 fi
 
 # ── Make everything executable ────────────────────────────────────────────────
