@@ -18,6 +18,23 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$REPO_DIR/src/hooks"
 SCRIPTS_DIR="$REPO_DIR/src/scripts"
 
+# ── Refuse cross-scope install ────────────────────────────────────────────────
+# Installing at one scope while the other already has a hooksPath configured
+# would leave two conflicting installs in place, so require the existing one
+# removed first rather than silently layering another on top.
+if $SYSTEM_INSTALL; then
+    _other_scope=global
+    _other_hooks_path=$(git config --global --get core.hooksPath 2>/dev/null || true)
+else
+    _other_scope=system
+    _other_hooks_path=$(git config --system --get core.hooksPath 2>/dev/null || true)
+fi
+if [ -n "$_other_hooks_path" ]; then
+    printf 'Refusing to install: a %s core.hooksPath is already configured (%s).\n' "$_other_scope" "$_other_hooks_path" >&2
+    printf 'Remove it first with: git config --%s --unset core.hooksPath\n' "$_other_scope" >&2
+    exit 1
+fi
+
 # ── Make everything executable ────────────────────────────────────────────────
 chmod +x \
     "$HOOKS_DIR/pre-commit" \
