@@ -6,17 +6,42 @@
 
 set -e
 
+die() {
+    if [ -t 2 ]; then
+        printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    else
+        printf '\n✗ %s\n' "$*" >&2
+    fi
+    exit 1
+}
+
 SYSTEM_INSTALL=false
 for _arg in "$@"; do
     case "$_arg" in
         --system) SYSTEM_INSTALL=true ;;
-        *) printf 'Unknown argument: %s\n' "$_arg" >&2; exit 1 ;;
+        *) die "Unknown argument: $_arg" ;;
     esac
 done
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$REPO_DIR/src/hooks"
 SCRIPTS_DIR="$REPO_DIR/src/scripts"
+
+# ── Refuse cross-scope install ────────────────────────────────────────────────
+# Installing at one scope while the other already has a hooksPath configured
+# would leave two conflicting installs in place, so require the existing one
+# removed first rather than silently layering another on top.
+if $SYSTEM_INSTALL; then
+    _other_scope=global
+    _other_hooks_path=$(git config --global --get core.hooksPath 2>/dev/null || true)
+else
+    _other_scope=system
+    _other_hooks_path=$(git config --system --get core.hooksPath 2>/dev/null || true)
+fi
+if [ -n "$_other_hooks_path" ]; then
+    die "Refusing to install: a ${_other_scope} core.hooksPath is already configured (${_other_hooks_path}).
+Remove it first with: git config --${_other_scope} --unset core.hooksPath"
+fi
 
 # ── Make everything executable ────────────────────────────────────────────────
 chmod +x \
