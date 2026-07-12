@@ -367,11 +367,11 @@ END_OF_FILE_FIXER_CONFIG='repos:
 # ── PSScriptAnalyzer ──────────────────────────────────────────────────────────
 
 @test "broken PowerShell script (PSAvoidUsingWriteHost) is rejected" {
-    if ! command -v pwsh > /dev/null 2>&1; then
-        skip "pwsh not installed"
+    if ! command -v dotnet > /dev/null 2>&1; then
+        skip "dotnet not installed"
     fi
-    if ! pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop; exit 0" > /dev/null 2>&1; then
-        skip "PSScriptAnalyzer module not installed"
+    if ! (cd "${HOME}" && dotnet pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop; exit 0") > /dev/null 2>&1; then
+        skip "pwsh (dotnet local tool) or PSScriptAnalyzer module not installed"
     fi
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
@@ -395,11 +395,11 @@ END_OF_FILE_FIXER_CONFIG='repos:
 }
 
 @test "clean PowerShell script passes" {
-    if ! command -v pwsh > /dev/null 2>&1; then
-        skip "pwsh not installed"
+    if ! command -v dotnet > /dev/null 2>&1; then
+        skip "dotnet not installed"
     fi
-    if ! pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop; exit 0" > /dev/null 2>&1; then
-        skip "PSScriptAnalyzer module not installed"
+    if ! (cd "${HOME}" && dotnet pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop; exit 0") > /dev/null 2>&1; then
+        skip "pwsh (dotnet local tool) or PSScriptAnalyzer module not installed"
     fi
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
