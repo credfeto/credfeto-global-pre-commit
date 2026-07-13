@@ -1,22 +1,36 @@
 #!/bin/sh
 # Wrapper for PSScriptAnalyzer — accepts one or more PowerShell file paths.
 # Called by pre-commit with all staged .ps1/.psm1/.psd1 files as arguments.
-# PowerShell is installed as a local dotnet tool in the user's $HOME-scoped
-# manifest (see lib/common.sh install_pwsh) and invoked via `dotnet pwsh`,
-# per ai/global/dotnet.instructions.md (always `dotnet <toolname>`, never add
-# the tool to PATH). dotnet only resolves a local tool manifest by walking up
-# from its own cwd, so we cd to $HOME before invoking it and must resolve
-# staged file paths to absolute first.
+# PowerShell is normally installed as a local dotnet tool in the user's
+# $HOME-scoped manifest (see lib/common.sh install_pwsh), but a global install
+# is also recognised — see dotnet_tool_installed below. Invoked via
+# `dotnet pwsh`, per ai/global/dotnet.instructions.md (always `dotnet
+# <toolname>`, never add the tool to PATH). dotnet only resolves a local tool
+# manifest by walking up from its own cwd, so we cd to $HOME before invoking
+# it and must resolve staged file paths to absolute first.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
 }
 
+# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
+dotnet_tool_installed() {
+    (cd "$HOME" && dotnet tool list 2>/dev/null) \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    dotnet tool list --global 2>/dev/null \
+        | awk -v cmd="$1" -v pkg="$2" \
+            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
+        && return 0
+    return 1
+}
+
 command -v dotnet > /dev/null 2>&1 || die "dotnet is not installed — required to run PowerShell (dotnet pwsh)"
 
-(cd "$HOME" && dotnet tool list 2>/dev/null | awk 'tolower($3)=="pwsh"{found=1} END{exit !found}') \
-    || die "PowerShell is not installed as a local dotnet tool — run ./install-deps-arch or ./install-deps-debian"
+dotnet_tool_installed pwsh PowerShell \
+    || die "PowerShell is not installed as a dotnet tool (local or global) — run ./install-deps-arch or ./install-deps-debian"
 
 FAILED=0
 for f in "$@"; do
