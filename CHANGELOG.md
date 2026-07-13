@@ -107,6 +107,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - run-bats now falls back to /tmp when the repo-scoped XDG_RUNTIME_DIR TMPDIR path would leave no headroom for nested bats/test tmpdirs and mock-socket filenames, preventing spurious AF_UNIX sun_path length failures unrelated to the code under test
 - src/hooks/pre-commit now prepends its own scripts directory to PATH, so language: system wrappers invoked by bare name (run-bats, run-eslint, run-stylelint, run-psscriptanalyzer) resolve reliably regardless of external PATH wiring
 - Install PowerShell as a local dotnet tool in the user's dotnet-tools.json manifest (invoked via 'dotnet pwsh') instead of a global tool, so PSScriptAnalyzer works without requiring ~/.dotnet/tools on PATH; also install the PSScriptAnalyzer module automatically
+- run-psscriptanalyzer now recognises PowerShell installed as either a local or global dotnet tool, matching the other pre-commit hooks, instead of failing when it was only installed globally
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
