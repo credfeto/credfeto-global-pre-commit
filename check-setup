@@ -235,7 +235,7 @@ fi
 PWSH_OK=false
 if has dotnet && (cd "$HOME" && dotnet pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop") > /dev/null 2>&1; then
     PWSH_OK=true
-    PWSH_VERSION=$(cd "$HOME" && dotnet tool list 2>/dev/null | awk 'tolower($3)=="pwsh"{print $2}')
+    PWSH_VERSION=$(cd "$HOME" && { dotnet tool list; dotnet tool list -g; } 2>/dev/null | awk 'tolower($3)=="pwsh"{print $2; exit}')
     skip  "VALIDATE_POWERSHELL — PSScriptAnalyzer (system)" "pwsh v${PWSH_VERSION} (dotnet local tool)"
 else
     cross "VALIDATE_POWERSHELL — PSScriptAnalyzer (system)" "not installed — run: ./install-deps-arch or ./install-deps-debian"
