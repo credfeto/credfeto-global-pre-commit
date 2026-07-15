@@ -202,7 +202,7 @@ git config --global core.hooksPath
 | --- | --- | --- |
 | `pre-commit` on PATH, repo has `.pre-commit-config.yaml` | Run project pre-commit hooks | `pre-commit run` |
 | `pre-commit` on PATH, no project config | Run global linters (`.pre-commit-config.yaml`) | `pre-commit run --config <global>` |
-| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test (integration tests and all benchmark test projects always excluded from the main run, see `scripts/benchmark-test-exclude`; only the benchmark projects staged changes could affect are then run individually and sequentially, see `scripts/benchmark-test-affected`) | `scripts/buildtest` |
+| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test (integration tests and all benchmark test projects always excluded from the main run via a static filter; only the benchmark projects staged changes could affect are then run individually and sequentially, see `scripts/benchmark-test-affected`) | `scripts/buildtest` |
 | `*.ts / *.tsx / *.js / *.jsx` + `package.json` + `npm` on PATH | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
 | `*.sql` + `dotnet` on PATH | T-SQL lint | `dotnet tsqllint .` |
 | `*.sql` + `sqlfluff` on PATH | SQL style lint | `sqlfluff lint .` |
@@ -313,7 +313,6 @@ Run `pre-commit autoupdate --config ~/.global-hooks/src/.pre-commit-config.yaml`
 | Script | Source |
 | --- | --- |
 | `scripts/buildtest` | Vendored from [credfeto/scripts — buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
-| `scripts/benchmark-test-exclude` | Local addition, enumerates every benchmark test project plus the always-safe integration test excludes, for the `--filter-not-namespace` excludes `buildtest`'s main test run should pass (no `dotnet` or git changes required) |
 | `scripts/benchmark-test-affected` | Local addition, decides which benchmark test projects `buildtest`'s separate benchmark-only test step should run, from staged git changes alone (no `dotnet` required) |
 | `scripts/latest-target-framework` | Local addition, prints a multi-targeted `.csproj`'s latest target framework moniker so `buildtest`'s benchmark test step can restrict itself to it (older frameworks are assumed to work); prints nothing for a single-targeted project (no `dotnet` required) |
 | `scripts/buildcheck` | Vendored from [credfeto/scripts — buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
