@@ -62,7 +62,6 @@ SOURCE_DIR=$(dirname "$SOLUTION")
 
 # Resolved before the cd below so a relative $0 is not re-resolved against the
 # wrong working directory.
-BENCH_EXCLUDE_SCRIPT="$(dirname "$(readlink -f "$0")")/benchmark-test-exclude"
 BENCH_AFFECTED_SCRIPT="$(dirname "$(readlink -f "$0")")/benchmark-test-affected"
 LATEST_FRAMEWORK_SCRIPT="$(dirname "$(readlink -f "$0")")/latest-target-framework"
 DACPAC_ONLY_SCRIPT="$(dirname "$(readlink -f "$0")")/dacpac-only-solution"
@@ -140,18 +139,12 @@ fi
 if "$DACPAC_ONLY_SCRIPT" "$SOURCE_DIR"; then
   info "Only project in solution is a SQL Server database project (dacpac) — skipping tests, nothing testable"
 else
-  info "Determining benchmark/integration tests to exclude from the main test run..."
-  EXCLUDE_SPEC=$("$BENCH_EXCLUDE_SCRIPT" "$SOURCE_DIR") \
-    || die "######## Benchmark Exclude Failed ########"
-  set --
-  while IFS= read -r ns; do
-      [ -n "$ns" ] || continue
-      set -- "$@" --filter-not-namespace "$ns"
-  done <<EXCLUDE_EOF
-$EXCLUDE_SPEC
-EXCLUDE_EOF
-
   info "Testing..."
+  # Integration tests are always safe to skip in pre-commit. Every benchmark
+  # test project is always excluded here too, regardless of whether it is
+  # affected by staged changes; benchmark-test-affected below runs only the
+  # affected ones separately. "Benchmark" and "BenchMark" both appear in the
+  # wild; tracked to converge on one spelling.
   dotnet test \
     --configuration Release \
     --no-restore \
@@ -159,7 +152,12 @@ EXCLUDE_EOF
     --long-running 10 \
     --parallel-algorithm aggressive \
     --ignore-exit-code 8 \
-    "$@" \
+    --filter-not-namespace "*.Integration.Tests" \
+    --filter-not-namespace "*.Integration.Tests.*" \
+    --filter-not-namespace "*.Benchmark.Tests" \
+    --filter-not-namespace "*.Benchmark.Tests.*" \
+    --filter-not-namespace "*.BenchMark.Tests" \
+    --filter-not-namespace "*.BenchMark.Tests.*" \
     "-p:ApiCompatGenerateSuppressionFile=true" \
     "-p:ContinuousIntegrationBuild=true" \
     "-p:IsProduction=false" \
@@ -197,9 +195,9 @@ EXCLUDE_EOF
           --parallel-algorithm sequential \
           --ignore-exit-code 8 \
           "$@" \
-          "-p:ApiCompatGenerateSuppressionFile=true" \
+          "-p:ApiCompatGenerateSuppressionFile=false" \
           "-p:ContinuousIntegrationBuild=true" \
-          "-p:IsProduction=false" \
+          "-p:IsProduction=true" \
           "-p:Optimize=true" \
           "-p:SuppressNETCoreSdkPreviewMessage=true" \
           "-p:Version=0.0.0.1-test" \
