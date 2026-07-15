@@ -108,6 +108,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - src/hooks/pre-commit now prepends its own scripts directory to PATH, so language: system wrappers invoked by bare name (run-bats, run-eslint, run-stylelint, run-psscriptanalyzer) resolve reliably regardless of external PATH wiring
 - Install PowerShell as a local dotnet tool in the user's dotnet-tools.json manifest (invoked via 'dotnet pwsh') instead of a global tool, so PSScriptAnalyzer works without requiring ~/.dotnet/tools on PATH; also install the PSScriptAnalyzer module automatically
 - run-psscriptanalyzer now recognises PowerShell installed as either a local or global dotnet tool, matching the other pre-commit hooks, instead of failing when it was only installed globally
+- buildtest now always excludes benchmark test projects from the main dotnet test run and instead runs only the affected benchmark projects individually, sequentially, in a separate step, fixing OutOfMemoryException failures caused by aggressive parallelism racing benchmark assemblies against regular tests; multi-targeted benchmark projects are restricted to their latest target framework
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

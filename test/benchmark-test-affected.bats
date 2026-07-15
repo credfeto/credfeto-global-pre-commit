@@ -1,15 +1,15 @@
 #!/usr/bin/env bats
-# Acceptance tests for src/scripts/benchmark-test-filter, the pure git+file
-# analysis helper buildtest uses to decide which benchmark test projects the
-# staged change set cannot affect (and therefore skips), plus the always-safe
-# integration test exclude.  Invoked directly — no dotnet required.
+# Acceptance tests for src/scripts/benchmark-test-affected, the pure git+file
+# analysis helper buildtest uses to decide which benchmark test projects its
+# separate, sequential-only benchmark test step should run. Invoked directly
+# -- no dotnet required.
 
 load test_helper
 
-FILTER="${REPO_DIR}/src/scripts/benchmark-test-filter"
+FILTER="${REPO_DIR}/src/scripts/benchmark-test-affected"
 
 # Builds on the shared make_repo fixture, but overrides core.hooksPath to a
-# no-op directory — this suite exercises the helper script directly, never
+# no-op directory -- this suite exercises the helper script directly, never
 # the real pre-commit hook, so the real hooks must not fire on our commits.
 make_bench_repo() {
     local _t
@@ -20,14 +20,14 @@ make_bench_repo() {
 }
 
 # Lays out a fixture solution under "$1/src":
-#   Foo.Extensions                          — leaf production project
-#   Foo.DataTypes            -> Extensions   — production project
+#   Foo.Extensions                          -- leaf production project
+#   Foo.DataTypes            -> Extensions   -- production project
 #   Foo.DataTypes.BenchMark.Tests -> DataTypes  (mixed-case "BenchMark.Tests" variant)
-#   Foo.Metrics                             — leaf production project
+#   Foo.Metrics                             -- leaf production project
 #   Foo.Metrics.Benchmark.Tests -> Metrics      (standard "Benchmark.Tests" variant)
-#   Foo.Widgets                             — leaf production project
+#   Foo.Widgets                             -- leaf production project
 #   Foo.Widgets.BenchMark.Test -> Widgets       (singular "BenchMark.Test" variant)
-#   Foo.Metrics.Integration.Tests            — no ProjectReference, proves integration exclude
+#   Foo.Metrics.Integration.Tests            -- no ProjectReference, unrelated fixture
 write_fixture() {
     local _t="$1"
     mkdir -p \
@@ -73,35 +73,40 @@ commit_baseline() {
     git -C "${_t}" commit --quiet -m baseline
 }
 
-# ── integration tests always excluded ─────────────────────────────────────────
-
-@test "integration excludes are always present, even with nothing staged" {
-    local T
-    T="$(make_bench_repo)"
-    write_fixture "${T}"
-    commit_baseline "${T}"
-    run "${FILTER}" "${T}/src"
-    [ "${status}" -eq 0 ]
-    [[ "${output}" == *'*.Integration.Tests'* ]]
-    [[ "${output}" == *'*.Integration.Tests.*'* ]]
-}
+DATATYPES_BENCH_REL="Foo.DataTypes.BenchMark.Tests/Foo.DataTypes.BenchMark.Tests.csproj"
+METRICS_BENCH_REL="Foo.Metrics.Benchmark.Tests/Foo.Metrics.Benchmark.Tests.csproj"
+WIDGETS_BENCH_REL="Foo.Widgets.BenchMark.Test/Foo.Widgets.BenchMark.Test.csproj"
 
 # ── nothing staged ────────────────────────────────────────────────────────────
 
-@test "nothing staged runs every benchmark" {
+@test "nothing staged runs every benchmark, proving every naming variant is detected" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
     commit_baseline "${T}"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *'Benchmark'* ]]
-    [[ "${output}" != *'BenchMark'* ]]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${DATATYPES_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${WIDGETS_BENCH_REL}"
+}
+
+# ── not a git repository ──────────────────────────────────────────────────────
+
+@test "solution outside any git repository runs every benchmark" {
+    local T="${BATS_TEST_TMPDIR}/standalone"
+    mkdir -p "${T}/src"
+    write_fixture "${T}"
+    run "${FILTER}" "${T}/src"
+    [ "${status}" -eq 0 ]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${DATATYPES_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${WIDGETS_BENCH_REL}"
 }
 
 # ── own project changed ───────────────────────────────────────────────────────
 
-@test "benchmark whose own project changed is not excluded" {
+@test "benchmark whose own project changed is affected; untouched siblings are not" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
@@ -110,13 +115,14 @@ commit_baseline() {
     git -C "${T}" add "src/Foo.Metrics.Benchmark.Tests/Foo.Metrics.Benchmark.Tests.csproj"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *'Foo.Metrics.Benchmark.Tests'* ]]
-    [[ "${output}" == *'*.Foo.DataTypes.BenchMark.Tests'* ]]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
+    [[ "${output}" != *"${DATATYPES_BENCH_REL}"* ]]
+    [[ "${output}" != *"${WIDGETS_BENCH_REL}"* ]]
 }
 
 # ── direct reference changed ──────────────────────────────────────────────────
 
-@test "benchmark whose directly-referenced project changed is not excluded" {
+@test "benchmark whose directly-referenced project changed is affected" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
@@ -125,12 +131,12 @@ commit_baseline() {
     git -C "${T}" add "src/Foo.DataTypes/Foo.DataTypes.csproj"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *'Foo.DataTypes.BenchMark.Tests'* ]]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${DATATYPES_BENCH_REL}"
 }
 
 # ── transitive reference changed ──────────────────────────────────────────────
 
-@test "benchmark whose transitively-referenced project changed is not excluded" {
+@test "benchmark whose transitively-referenced project changed is affected; unrelated benchmarks are not" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
@@ -140,30 +146,14 @@ commit_baseline() {
     git -C "${T}" add "src/Foo.Extensions/Foo.Extensions.csproj"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *'Foo.DataTypes.BenchMark.Tests'* ]]
-    # Unrelated benchmarks are still unaffected and excluded.
-    [[ "${output}" == *'*.Foo.Metrics.Benchmark.Tests'* ]]
-    [[ "${output}" == *'*.Foo.Widgets.BenchMark.Test'* ]]
-}
-
-# ── untouched benchmark closure ───────────────────────────────────────────────
-
-@test "benchmark with an untouched closure is excluded as namespace and wildcard" {
-    local T
-    T="$(make_bench_repo)"
-    write_fixture "${T}"
-    commit_baseline "${T}"
-    printf '<!-- touch -->\n' >> "${T}/src/Foo.Metrics/Foo.Metrics.csproj"
-    git -C "${T}" add "src/Foo.Metrics/Foo.Metrics.csproj"
-    run "${FILTER}" "${T}/src"
-    [ "${status}" -eq 0 ]
-    printf '%s\n' "${lines[@]}" | grep -qxF '*.Foo.DataTypes.BenchMark.Tests'
-    printf '%s\n' "${lines[@]}" | grep -qxF '*.Foo.DataTypes.BenchMark.Tests.*'
+    printf '%s\n' "${lines[@]}" | grep -qxF "${DATATYPES_BENCH_REL}"
+    [[ "${output}" != *"${METRICS_BENCH_REL}"* ]]
+    [[ "${output}" != *"${WIDGETS_BENCH_REL}"* ]]
 }
 
 # ── shared build file changed ─────────────────────────────────────────────────
 
-@test "solution-level shared build file change excludes no benchmark" {
+@test "solution-level shared build file change affects every benchmark" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
@@ -172,11 +162,12 @@ commit_baseline() {
     git -C "${T}" add "src/Foo.slnx"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *'Benchmark'* ]]
-    [[ "${output}" != *'BenchMark'* ]]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${DATATYPES_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${WIDGETS_BENCH_REL}"
 }
 
-@test "Directory.Build.props change excludes no benchmark" {
+@test "Directory.Build.props change affects every benchmark" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
@@ -186,13 +177,14 @@ commit_baseline() {
     git -C "${T}" add "src/Directory.Build.props"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *'Benchmark'* ]]
-    [[ "${output}" != *'BenchMark'* ]]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${DATATYPES_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${WIDGETS_BENCH_REL}"
 }
 
 # ── non-code file ──────────────────────────────────────────────────────────────
 
-@test "non-code file change inside a project directory does not count as affecting it" {
+@test "non-code file change inside a project directory does not count as affecting it, so all run" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
@@ -201,32 +193,13 @@ commit_baseline() {
     git -C "${T}" add "src/Foo.Metrics/README.md"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    # Not .NET-relevant, so nothing is considered changed — same as nothing staged: run everything.
-    [[ "${output}" != *'Benchmark'* ]]
-    [[ "${output}" != *'BenchMark'* ]]
-}
-
-# ── naming variants ────────────────────────────────────────────────────────────
-
-@test "all benchmark naming variants are detected" {
-    local T
-    T="$(make_bench_repo)"
-    write_fixture "${T}"
-    commit_baseline "${T}"
-    # A staged change unrelated to any benchmark's closure forces all three to be
-    # judged unaffected, proving each naming variant is actually found and excluded.
-    printf '<!-- touch -->\n' >> "${T}/src/Foo.Metrics.Integration.Tests/Foo.Metrics.Integration.Tests.csproj"
-    git -C "${T}" add "src/Foo.Metrics.Integration.Tests/Foo.Metrics.Integration.Tests.csproj"
-    run "${FILTER}" "${T}/src"
-    [ "${status}" -eq 0 ]
-    [[ "${output}" == *'*.Foo.DataTypes.BenchMark.Tests'* ]]
-    [[ "${output}" == *'*.Foo.Metrics.Benchmark.Tests'* ]]
-    [[ "${output}" == *'*.Foo.Widgets.BenchMark.Test'* ]]
+    # Not .NET-relevant, so nothing is considered changed -- same as nothing staged: run everything.
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
 }
 
 # ── false-positive naming ─────────────────────────────────────────────────────
 
-@test "a test project whose name merely contains bench as a substring is not treated as a benchmark" {
+@test "a test project whose name merely contains bench as a substring is never printed" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
@@ -257,7 +230,7 @@ CSPROJ_EOF
     git -C "${T}" add "src/Foo.Metrics/Foo.Metrics.csproj"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *'Foo.Metrics.Benchmark.Tests'* ]]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
 }
 
 # ── unresolvable ProjectReference ──────────────────────────────────────────────
@@ -274,6 +247,7 @@ CSPROJ_EOF
     git -C "${T}" add "src/Foo.Widgets/Foo.Widgets.csproj"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
-    [[ "${output}" != *'Benchmark'* ]]
-    [[ "${output}" != *'BenchMark'* ]]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${DATATYPES_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${WIDGETS_BENCH_REL}"
 }
