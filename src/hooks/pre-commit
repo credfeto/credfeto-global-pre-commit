@@ -6,6 +6,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
 # HOOKS_REPO_DIR_TEST_OVERRIDE is a test-only escape hatch; never set this variable in production shells.
 HOOKS_REPO_DIR="${HOOKS_REPO_DIR_TEST_OVERRIDE:-$(cd "$(dirname "$0")/../.." && pwd)}"
+# Bare repo name (e.g. "cs-template") derived from the origin remote URL.
+# Empty when there is no origin remote configured.
+CURRENT_REPO_NAME=$(git remote get-url origin 2>/dev/null \
+    | sed 's|.*[/:]||; s|\.git$||' \
+    | tr -d '[:space:]' || true)
 
 # Ensure language: system wrappers invoked by bare name (e.g. run-bats,
 # run-eslint, run-stylelint, run-psscriptanalyzer) resolve to the versions
@@ -87,6 +92,175 @@ dotnet_tool_installed() {
     return 1
 }
 
+# Protected in ALL repos: linter/style/shared config that defines conformance
+# rules and must not be modified or removed to silence a check — fix the
+# underlying issue instead. One filename (or glob) per case arm so it is
+# possible to tell by eye whether $1 matches (see issue #186; no regex).
+# Path-scoped entries (a specific directory, not just a filename) are matched
+# against the full staged path; everything else is matched against the
+# basename only.
+is_protected_everywhere_file() {
+    case "$1" in
+        .clj-kondo/config.edn | */.clj-kondo/config.edn) return 0 ;;
+        ai/global/*.md) return 0 ;;
+        .github/linters/?*) return 0 ;;
+        # Root .gitignore only (issue #186 follow-up) -- owned by cs-template
+        # (see credfeto-gitignore-management); a nested .gitignore (e.g.
+        # src/.gitignore) is genuinely repo-specific and stays editable.
+        .gitignore) return 0 ;;
+    esac
+    case "${1##*/}" in
+        .shellcheckrc) return 0 ;;
+        .checkov.yaml) return 0 ;;
+        .clang-format) return 0 ;;
+        .editorconfig) return 0 ;;
+        .csharpierrc) return 0 ;;
+        .ansible-lint | .ansible-lint.yml) return 0 ;;
+        .arm-ttk.psd1) return 0 ;;
+        .cfnlintrc.yml) return 0 ;;
+        .coffee-lint.json) return 0 ;;
+        .stylelintrc.json) return 0 ;;
+        .hadolint.yml | .hadolint.yaml) return 0 ;;
+        .editorconfig-checker.json) return 0 ;;
+        actionlint.yml) return 0 ;;
+        zizmor.yaml) return 0 ;;
+        # .gitleaks (no extension) is the real filename in use (confirmed
+        # against funfair-server-template); .gitleaks.toml kept in case it's
+        # used elsewhere -- neither was actually being matched before (issue
+        # #186 follow-up: this bug predates the regex-to-case-arm refactor).
+        .gitleaks | .gitleaks.toml) return 0 ;;
+        .gitattributes) return 0 ;;
+        .golangci.yml) return 0 ;;
+        .groovylintrc.json) return 0 ;;
+        .htmlhintrc) return 0 ;;
+        sun_checks.xml | google_checks.xml) return 0 ;;
+        eslint.config.mjs) return 0 ;;
+        .jscpd.json) return 0 ;;
+        .chktexrc) return 0 ;;
+        .luacheckrc) return 0 ;;
+        .markdown-lint.yml) return 0 ;;
+        .openapirc.yml) return 0 ;;
+        php.ini) return 0 ;;
+        phpcs.xml) return 0 ;;
+        phpstan.neon) return 0 ;;
+        psalm.xml) return 0 ;;
+        .powershell-psscriptanalyzer.psd1) return 0 ;;
+        .protolintrc.yml) return 0 ;;
+        .python-black) return 0 ;;
+        .flake8) return 0 ;;
+        .isort.cfg) return 0 ;;
+        .mypy.ini) return 0 ;;
+        .python-lint) return 0 ;;
+        .ruff.toml) return 0 ;;
+        .lintr) return 0 ;;
+        .ruby-lint.yml) return 0 ;;
+        .scalafmt.conf) return 0 ;;
+        .snakefmt.toml) return 0 ;;
+        .codespellrc) return 0 ;;
+        .tflint.hcl) return 0 ;;
+        trivy.yaml) return 0 ;;
+        .textlintrc) return 0 ;;
+        # .yamllint.yml is the real filename in use (confirmed against
+        # funfair-server-template); .yaml-lint.yml kept in case it's used
+        # elsewhere -- same pre-existing naming bug as .gitleaks above.
+        .yamllint.yml | .yaml-lint.yml) return 0 ;;
+        pre-release.rule-settings.json) return 0 ;;
+        release.rule-settings.json) return 0 ;;
+        .markdownlintignore) return 0 ;;
+        .eslintignore) return 0 ;;
+        .stylelintignore) return 0 ;;
+        .sqlfluffignore) return 0 ;;
+        .ansible-lint-ignore) return 0 ;;
+        .prettierignore) return 0 ;;
+        # -- moved here from the hooks-repo-only guard below: same gap as
+        # .globalconfig (issue #186) -- protected in every repo, not just this one.
+        .globalconfig) return 0 ;;
+        global.json) return 0 ;;
+        .sqlfluff*) return 0 ;;
+        .tsqllint*) return 0 ;;
+        .ai-instructions) return 0 ;;
+        Directory.Build.props) return 0 ;;
+    esac
+    return 1
+}
+
+# Protected only inside this hooks repo's own checkout — this repo's own
+# ai/local/*.md instruction files must not be casually edited. ai/local/*.md
+# in OTHER repos is intentionally NOT protected: committing to it is how the
+# cross-repo AI-memory workflow (.ai-instructions) records what was learned.
+is_protected_hooks_repo_file() {
+    case "$1" in
+        ai/local/*.md) return 0 ;;
+    esac
+    return 1
+}
+
+# Prints $1's declared "# Maintain in repo: X" owner, read from its
+# already-committed HEAD content — never the staged content, so a commit
+# cannot rewrite the ownership comment and the file body in the same diff to
+# self-authorise. Prints nothing if $1 has no HEAD version, or its HEAD
+# version has no such comment.
+head_maintain_owner() {
+    git cat-file -e "HEAD:$1" 2>/dev/null || return 0
+    git show "HEAD:$1" 2>/dev/null \
+        | grep -m1 '^# Maintain in repo: ' \
+        | sed 's/^# Maintain in repo: //' \
+        | tr -d '[:space:]'
+}
+
+# Returns 0 if $1's already-committed HEAD content declares the CURRENT repo
+# as its owner. Used to exempt a file from is_protected_everywhere_file's
+# blanket block when this repo is the one actually responsible for
+# maintaining it (issue #186 follow-up) — has no effect on a file that never
+# carries the comment, which stays unconditionally blocked as before.
+is_maintained_by_current_repo() {
+    [ -n "$CURRENT_REPO_NAME" ] || return 1
+    [ "$(head_maintain_owner "$1")" = "$CURRENT_REPO_NAME" ]
+}
+
+# Returns 0 (violation) if $1 is a .github/workflows/*.yml or
+# .github/actions/**/*.yml file maintained in a different repo than this one.
+#
+# Many such files declare "# Maintain in repo: <repo>" naming the template
+# repo that owns and distributes them (see e.g.
+# .github/actions/check-composite-action-versions/action.yml, which already
+# reads the same comment for a different purpose). A repo other than the one
+# named must not add, change, or delete such a file.
+#
+# A file with no HEAD version yet (a brand-new addition) has no prior
+# declaration to check, so it is only restricted when the current repo is
+# itself a template (name ending "-template"): in that case the new file's
+# staged content must self-declare the current repo as owner. A non-template
+# repo may add its own local workflow/action files freely, no marker
+# required — most workflow/action files are never meant to be shared at all.
+is_maintained_elsewhere() {
+    case "$1" in
+        .github/workflows/*.yml | .github/workflows/*.yaml) ;;
+        .github/actions/*.yml | .github/actions/*.yaml) ;;
+        *) return 1 ;;
+    esac
+
+    if git cat-file -e "HEAD:$1" 2>/dev/null; then
+        _owner=$(head_maintain_owner "$1")
+        if [ -z "$_owner" ] || [ "$_owner" = "$CURRENT_REPO_NAME" ]; then
+            return 1
+        fi
+        return 0
+    fi
+
+    case "$CURRENT_REPO_NAME" in
+        *-template)
+            _staged_owner=$(git show ":$1" 2>/dev/null \
+                | grep -m1 '^# Maintain in repo: ' \
+                | sed 's/^# Maintain in repo: //' \
+                | tr -d '[:space:]')
+            [ "$_staged_owner" = "$CURRENT_REPO_NAME" ] && return 1
+            return 0
+            ;;
+        *) return 1 ;;
+    esac
+}
+
 # ── Mode selection ────────────────────────────────────────────────────────────
 # Default MODE=commit reproduces today's staged-only, abort-on-empty behaviour
 # completely unchanged. MODE=all-files is an explicit baseline/CI mode
@@ -112,14 +286,43 @@ fi
 # ALL repos.  These files define conformance rules and must not be modified or
 # removed to silence linter errors — fix the underlying issue instead.
 # Checked here, before the STAGED early-exit, so that a commit consisting solely
-# of a deletion of a protected file is also caught.
-RE_PROTECTED_SUPERLINTER='(^|/)\.shellcheckrc$|(^|/)\.checkov\.yaml$|(^|/)\.clang-format$|(^|/)\.editorconfig$|(^|/)\.csharpierrc$|(^|/)\.ansible-lint(\.yml)?$|(^|/)\.arm-ttk\.psd1$|(^|/)\.cfnlintrc\.yml$|(^|/)\.coffee-lint\.json$|(^|/)\.stylelintrc\.json$|(^|/)\.hadolint\.ya?ml$|(^|/)\.editorconfig-checker\.json$|(^|/)actionlint\.yml$|(^|/)zizmor\.yaml$|(^|/)\.gitleaks\.toml$|(^|/)\.golangci\.yml$|(^|/)\.groovylintrc\.json$|(^|/)\.htmlhintrc$|(^|/)(sun_checks|google_checks)\.xml$|(^|/)eslint\.config\.mjs$|(^|/)\.jscpd\.json$|(^|/)\.chktexrc$|(^|/)\.luacheckrc$|(^|/)\.markdown-lint\.yml$|(^|/)\.openapirc\.yml$|(^|/)php\.ini$|(^|/)phpcs\.xml$|(^|/)phpstan\.neon$|(^|/)psalm\.xml$|(^|/)\.powershell-psscriptanalyzer\.psd1$|(^|/)\.protolintrc\.yml$|(^|/)\.python-black$|(^|/)\.flake8$|(^|/)\.isort\.cfg$|(^|/)\.mypy\.ini$|(^|/)\.python-lint$|(^|/)\.ruff\.toml$|(^|/)\.lintr$|(^|/)\.ruby-lint\.yml$|(^|/)\.scalafmt\.conf$|(^|/)\.snakefmt\.toml$|(^|/)\.codespellrc$|(^|/)\.tflint\.hcl$|(^|/)trivy\.yaml$|(^|/)\.textlintrc$|(^|/)\.yaml-lint\.yml$|(^|/)\.clj-kondo/config\.edn$|(^|/)pre-release\.rule-settings\.json$|(^|/)release\.rule-settings\.json$'
-RE_PROTECTED_IGNORES='(^|/)\.markdownlintignore$|(^|/)\.eslintignore$|(^|/)\.stylelintignore$|(^|/)\.sqlfluffignore$|(^|/)\.ansible-lint-ignore$|(^|/)\.prettierignore$'
-LINTER_CONFIG_CHANGES=$(printf '%s\n' "$ALL_STAGED" | grep -E "${RE_PROTECTED_SUPERLINTER}|${RE_PROTECTED_IGNORES}" || true)
+# of a deletion of a protected file is also caught. See is_protected_everywhere_file
+# above for the actual list of protected files (issue #186). A file this repo
+# is the declared "Maintain in repo:" owner of (is_maintained_by_current_repo)
+# is exempted -- has no effect on the many entries below that never carry
+# that comment, which stay unconditionally blocked.
+LINTER_CONFIG_CHANGES=""
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if is_protected_everywhere_file "$f" && ! is_maintained_by_current_repo "$f"; then
+        LINTER_CONFIG_CHANGES="${LINTER_CONFIG_CHANGES}${f}
+"
+    fi
+done <<EOF
+$ALL_STAGED
+EOF
 if [ -n "$LINTER_CONFIG_CHANGES" ]; then
     printf '\n\033[31m✗\033[0m %s\n' "Linter/style config files cannot be added, changed, or deleted:" >&2
-    printf '%s\n' "$LINTER_CONFIG_CHANGES" | sed 's/^/  /' | sort -u >&2
+    printf '%s' "$LINTER_CONFIG_CHANGES" | sed 's/^/  /' | sort -u >&2
     die "remove linter config file changes from this commit"
+fi
+
+# Block staged additions, changes, OR deletions of workflow/action files
+# maintained in another repo. See is_maintained_elsewhere above. Checked
+# here, before the STAGED early-exit, for the same reason as the guard above:
+# a commit that only deletes such a file must be caught too.
+MAINTAIN_VIOLATIONS=""
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    is_maintained_elsewhere "$f" && MAINTAIN_VIOLATIONS="${MAINTAIN_VIOLATIONS}${f}
+"
+done <<EOF
+$ALL_STAGED
+EOF
+if [ -n "$MAINTAIN_VIOLATIONS" ]; then
+    printf '\n\033[31m✗\033[0m %s\n' "Workflow/action files maintained in another repo cannot be added, changed, or deleted:" >&2
+    printf '%s' "$MAINTAIN_VIOLATIONS" | sed 's/^/  /' | sort -u >&2
+    die "remove changes to files maintained in another repo from this commit"
 fi
 
 # Only look at staged files that are being added/copied/modified.
@@ -149,26 +352,37 @@ if [ -n "$DOTNET_TOOLS_FILES" ]; then
     die "delete the dotnet-tools.json file(s) listed above and retry"
 fi
 
-# Block staged changes to additional protected files when running in the hooks repo itself.
+# Block staged changes to files that must stay editable only in this hooks
+# repo's own checkout. See is_protected_hooks_repo_file above for the actual
+# list (issue #186 moved most of what used to be here into
+# is_protected_everywhere_file, since it was protected only in the hooks
+# repo purely by omission, not by design).
 if [ "$REPO_ROOT" = "$HOOKS_REPO_DIR" ]; then
-    RE_PROTECTED_BASE='(^|/)\.sqlfluff[^/]*$|(^|/)\.tsqllint[^/]*$|(^|/)\.editorconfig$|(^|/)\.globalconfig$|(^|/)\.ai-instructions$|(^|/)global\.json$|(^|/)Directory\.Build\.props$|^ai/.*\.md$|^\.github/linters/.+|(^|/)\.csharpierrc$|(^|/)\.[^/]*lint[^/]*$'
-
-    PROTECTED_CHANGES=$(printf '%s\n' "$ALL_STAGED" | grep -E "$RE_PROTECTED_BASE" || true)
+    PROTECTED_CHANGES=""
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        is_protected_hooks_repo_file "$f" && PROTECTED_CHANGES="${PROTECTED_CHANGES}${f}
+"
+    done <<EOF
+$ALL_STAGED
+EOF
     if [ -n "$PROTECTED_CHANGES" ]; then
         printf '\n\033[31m✗\033[0m %s\n' "Protected files cannot be added or changed:" >&2
-        echo "$PROTECTED_CHANGES" | sed 's/^/  /' | sort -u >&2
+        printf '%s' "$PROTECTED_CHANGES" | sed 's/^/  /' | sort -u >&2
         die "remove protected file changes from this commit"
     fi
 fi
 
 # ── Template-only files: block .ai-instructions and ai/global/ in non-template repos ──
+# NOTE: is_protected_everywhere_file() above now also unconditionally blocks
+# .ai-instructions and ai/global/*.md in EVERY repo, including the 3 exempted
+# below (issue #186 follow-up) — so this exemption no longer has any effect
+# for those two patterns; it remains meaningful only for a hypothetical
+# non-.md file under ai/global/.
 # .ai-instructions and ai/global/ may only be changed in cs-template,
 # funfair-server-template, or funfair-treasury-reporting.
 if [ "$REPO_ROOT" != "$HOOKS_REPO_DIR" ]; then
-    _REPO_NAME=$(git remote get-url origin 2>/dev/null \
-        | sed 's|.*[/:]||; s|\.git$||' \
-        | tr -d '[:space:]' || true)
-    case "$_REPO_NAME" in
+    case "$CURRENT_REPO_NAME" in
         cs-template|funfair-server-template|funfair-treasury-reporting)
             ;;
         *)

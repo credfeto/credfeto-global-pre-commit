@@ -68,6 +68,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add an explicit --all-files baseline mode to the pre-commit hook, running the full check suite (changelog, .NET, SQL, CloudFormation, and all linters) against the whole tracked tree instead of only staged files (#175)
 - Scan dependency lockfiles for known CVEs with trivy (trivy fs --scanners vuln) as part of pre-commit, triggered when package-lock.json, packages.lock.json, go.sum, requirements*.txt, Gemfile.lock, poetry.lock, or Pipfile.lock changes
 - buildtest now skips `dotnet test` when the solution's only project is a DACPAC (`MSBuild.Sdk.SqlProj`), since there is nothing testable
+- Pre-commit hook now protects .gitattributes and the root .gitignore in every repository, and blocks .github/workflows/*.yml and .github/actions/**/*.yml files from being edited or deleted outside the repo named in their '# Maintain in repo:' comment (read from the already-committed HEAD content, not the staged content, so the comment cannot be rewritten to self-authorise in the same commit) (#186)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
@@ -109,6 +110,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Install PowerShell as a local dotnet tool in the user's dotnet-tools.json manifest (invoked via 'dotnet pwsh') instead of a global tool, so PSScriptAnalyzer works without requiring ~/.dotnet/tools on PATH; also install the PSScriptAnalyzer module automatically
 - run-psscriptanalyzer now recognises PowerShell installed as either a local or global dotnet tool, matching the other pre-commit hooks, instead of failing when it was only installed globally
 - buildtest now always excludes benchmark test projects from the main dotnet test run and instead runs only the affected benchmark projects individually, sequentially, in a separate step, fixing OutOfMemoryException failures caused by aggressive parallelism racing benchmark assemblies against regular tests; multi-targeted benchmark projects are restricted to their latest target framework
+- Pre-commit hook now blocks .globalconfig, global.json, .sqlfluff, .tsqllint config files, and other shared/synced config in every repository, not just the hooks repo itself (#186)
+- Pre-commit hook was checking for .gitleaks.toml and .yaml-lint.yml, but the real filenames in use are .gitleaks and .yamllint.yml, so neither was ever actually protected; both correct names are now checked (#186)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
@@ -133,6 +136,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - install now delegates its setup status report to the check-setup script and aborts when the environment is not fully configured
 - Documented the fixer-script staging and exit-code convention in ai/local/scripts.instructions.md: a fixer must re-stage what it modifies and return 0 on success regardless of whether anything changed, with no special exit code for 'succeeded and changed something'
 - install now refuses to install as a global hook when a system hook is already configured, and vice versa, to prevent conflicting hook installs
+- cs-template, funfair-server-template, and funfair-treasury-reporting can no longer edit .ai-instructions or ai/global/*.md through the pre-commit hook, since those files are now blocked unconditionally in every repository (#186); another mechanism will be needed to update them going forward
+- A file in the always-blocked-everywhere list (.globalconfig, .editorconfig, .ansible-lint, .gitattributes, .gitleaks, .yamllint.yml, root .gitignore, etc.) is now exempted from the block when its already-committed content declares the current repo as its '# Maintain in repo:' owner, restoring the declared owner's ability to maintain its own canonical copy (#186)
 
 ### Deprecated
 ### Removed
