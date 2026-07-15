@@ -105,7 +105,7 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
-@test "changing .ai-instructions in cs-template is allowed" {
+@test "changing .ai-instructions in cs-template is rejected (issue #186: protected in all repos now)" {
     local T
     T="$(make_repo feature/template-only-cs-template-test)"
     git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
@@ -113,10 +113,10 @@ load test_helper
     printf '# instructions\n' > "${T}/.ai-instructions"
     git -C "${T}" add .pre-commit-config.yaml .ai-instructions
     run_hook "${T}"
-    [ "${status}" -eq 0 ]
+    [ "${status}" -eq 1 ]
 }
 
-@test "changing .ai-instructions in funfair-treasury-reporting is allowed" {
+@test "changing .ai-instructions in funfair-treasury-reporting is rejected (issue #186: protected in all repos now)" {
     local T
     T="$(make_repo feature/template-only-treasury-test)"
     git -C "${T}" remote add origin "git@github.com:funfair-tech/funfair-treasury-reporting.git"
@@ -124,10 +124,10 @@ load test_helper
     printf '# instructions\n' > "${T}/.ai-instructions"
     git -C "${T}" add .pre-commit-config.yaml .ai-instructions
     run_hook "${T}"
-    [ "${status}" -eq 0 ]
+    [ "${status}" -eq 1 ]
 }
 
-@test "changing ai/global/ in funfair-treasury-reporting is allowed" {
+@test "changing ai/global/ in funfair-treasury-reporting is rejected (issue #186: protected in all repos now)" {
     local T
     T="$(make_repo feature/template-only-treasury-global-test)"
     git -C "${T}" remote add origin "git@github.com:funfair-tech/funfair-treasury-reporting.git"
@@ -136,7 +136,7 @@ load test_helper
     printf '# global\n' > "${T}/ai/global/test.md"
     git -C "${T}" add .pre-commit-config.yaml ai/global/test.md
     run_hook "${T}"
-    [ "${status}" -eq 0 ]
+    [ "${status}" -eq 1 ]
 }
 
 # ── linter/style config protection (all repos) ───────────────────────────────
@@ -173,6 +173,120 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
+# ── issue #186: .globalconfig and friends, now protected in ALL repos ────────
+
+@test "staging .globalconfig in non-hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/globalconfig-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '<GlobalConfig></GlobalConfig>\n' > "${T}/.globalconfig"
+    git -C "${T}" add .pre-commit-config.yaml .globalconfig
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "modifying an already-committed .globalconfig in non-hooks repo is rejected (credfeto-database-source-generator#169 scenario)" {
+    local T
+    T="$(make_repo feature/globalconfig-modify-nonhooks-test)"
+    # The baseline commit below must bypass the real hook (core.hooksPath) --
+    # with this fix in place a .globalconfig could never be committed through
+    # it in the first place, but the point of this test is what happens when
+    # one is *already* tracked (e.g. from before this fix existed) and gets
+    # modified in place, as in credfeto-database-source-generator#169.
+    mkdir -p "${T}/.no-hooks"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '<GlobalConfig>\n  <NoWarn>FFS0040=suggestion</NoWarn>\n</GlobalConfig>\n' > "${T}/.globalconfig"
+    git -C "${T}" add .pre-commit-config.yaml .globalconfig
+    git -C "${T}" commit --quiet -m baseline
+    printf '<GlobalConfig>\n  <NoWarn>FFS0040=error</NoWarn>\n</GlobalConfig>\n' > "${T}/.globalconfig"
+    git -C "${T}" add .globalconfig
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging a nested .globalconfig in non-hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/globalconfig-nested-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/src"
+    printf '<GlobalConfig></GlobalConfig>\n' > "${T}/src/.globalconfig"
+    git -C "${T}" add .pre-commit-config.yaml src/.globalconfig
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging .globalconfig in hooks repo is still rejected" {
+    local T
+    T="$(make_repo feature/globalconfig-hooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '<GlobalConfig></GlobalConfig>\n' > "${T}/.globalconfig"
+    git -C "${T}" add .pre-commit-config.yaml .globalconfig
+    run_hook_as_hooks_repo "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging global.json in non-hooks repo is now rejected" {
+    local T
+    T="$(make_repo feature/globaljson-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '{"sdk":{"version":"8.0.0"}}\n' > "${T}/global.json"
+    git -C "${T}" add .pre-commit-config.yaml global.json
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging .sqlfluff in non-hooks repo is now rejected" {
+    local T
+    T="$(make_repo feature/sqlfluff-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '[sqlfluff]\ndialect = tsql\n' > "${T}/.sqlfluff"
+    git -C "${T}" add .pre-commit-config.yaml .sqlfluff
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging .tsqllintrc in non-hooks repo is now rejected" {
+    local T
+    T="$(make_repo feature/tsqllintrc-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '{}\n' > "${T}/.tsqllintrc"
+    git -C "${T}" add .pre-commit-config.yaml .tsqllintrc
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging Directory.Build.props in non-hooks repo is now rejected" {
+    local T
+    T="$(make_repo feature/directory-build-props-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '<Project></Project>\n' > "${T}/Directory.Build.props"
+    git -C "${T}" add .pre-commit-config.yaml Directory.Build.props
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging a file under .github/linters/ in non-hooks repo is now rejected" {
+    local T
+    T="$(make_repo feature/github-linters-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/.github/linters"
+    printf 'rules: {}\n' > "${T}/.github/linters/.yamllint.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/linters/.yamllint.yml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging a dotfile matching the broad lint wildcard in non-hooks repo is now rejected" {
+    local T
+    T="$(make_repo feature/broad-lint-wildcard-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'rules: {}\n' > "${T}/.foolint"
+    git -C "${T}" add .pre-commit-config.yaml .foolint
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
 # ── hooks-repo protected file guard ──────────────────────────────────────────
 
 @test "staging .shellcheckrc in hooks repo is rejected" {
@@ -185,7 +299,7 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
-@test "staging global.json in hooks repo is rejected by hooks-repo guard" {
+@test "staging global.json in hooks repo is still rejected" {
     local T
     T="$(make_repo feature/hooks-repo-globaljson-test)"
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
@@ -203,6 +317,28 @@ load test_helper
     git -C "${T}" add .pre-commit-config.yaml README.md
     run_hook_as_hooks_repo "${T}"
     [ "${status}" -eq 0 ]
+}
+
+@test "staging ai/local/*.md in non-hooks repo passes (issue #186: the AI-memory workflow must keep working everywhere)" {
+    local T
+    T="$(make_repo feature/ai-local-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/ai/local"
+    printf '# local notes\n' > "${T}/ai/local/notes.instructions.md"
+    git -C "${T}" add .pre-commit-config.yaml ai/local/notes.instructions.md
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "staging ai/local/*.md in hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/ai-local-hooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/ai/local"
+    printf '# local notes\n' > "${T}/ai/local/notes.instructions.md"
+    git -C "${T}" add .pre-commit-config.yaml ai/local/notes.instructions.md
+    run_hook_as_hooks_repo "${T}"
+    [ "${status}" -eq 1 ]
 }
 
 # ── clean commit ──────────────────────────────────────────────────────────────
