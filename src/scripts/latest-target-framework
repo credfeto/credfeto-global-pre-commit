@@ -1,0 +1,27 @@
+#! /bin/sh
+# Prints the latest target framework moniker for a multi-targeted .csproj
+# (e.g. "net10.0" out of "net8.0;net9.0;net10.0"), or nothing if the project
+# targets a single framework (or none is found). Used by buildtest to
+# restrict benchmark test runs to only the latest target framework --
+# older frameworks are assumed to work.
+#
+# Usage: latest-target-framework <csproj-file>
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+CSPROJ="$1"
+[ -n "$CSPROJ" ] || die "usage: latest-target-framework <csproj-file>"
+[ -f "$CSPROJ" ] || die "not a file: $CSPROJ"
+
+FRAMEWORKS=$(sed -n 's/.*<TargetFrameworks>\([^<]*\)<\/TargetFrameworks>.*/\1/p' "$CSPROJ" | head -1)
+[ -n "$FRAMEWORKS" ] || exit 0
+
+FRAMEWORK_COUNT=$(printf '%s\n' "$FRAMEWORKS" | tr ';' '\n' | sed '/^$/d' | wc -l)
+[ "$FRAMEWORK_COUNT" -gt 1 ] || exit 0
+
+printf '%s\n' "$FRAMEWORKS" | tr ';' '\n' | sed '/^$/d' | sort -V | tail -1
+
+exit 0

@@ -1,13 +1,13 @@
 #! /bin/sh
-# Prints, one per line, the --filter-not-namespace values buildtest should pass to
-# `dotnet test` to skip benchmark test projects that the staged change set cannot
-# affect, plus integration tests (always safe to skip in pre-commit).
+# Prints, one per line, the benchmark test project paths (relative to
+# <solution-dir>) that buildtest's separate benchmark-only `dotnet test` step
+# should run.
 #
-# Usage: benchmark-test-filter <solution-dir>
+# Usage: benchmark-test-affected <solution-dir>
 #
 # A benchmark test project (basename matches, case-insensitively, "bench" or
-# "benchmark" immediately followed by ".Test" or ".Tests") is considered affected —
-# and therefore not skipped — when a staged .NET-relevant file falls under its own
+# "benchmark" immediately followed by ".Test" or ".Tests") is affected -- and
+# therefore printed -- when a staged .NET-relevant file falls under its own
 # directory or the directory of any project it references, directly or
 # transitively (via <ProjectReference>). Any staged change to a solution-wide
 # shared build input (Directory.Build.props/targets, Directory.Packages.props,
@@ -16,7 +16,8 @@
 # A ProjectReference that cannot be resolved to a real file (an MSBuild property
 # expansion, a glob, or a stale path) also makes every benchmark affected, since
 # the dependency graph can no longer be trusted. When nothing is staged (e.g. a
-# manual run), no benchmark is skipped.
+# manual run), or staged changes cannot be determined (not a git repo), every
+# benchmark is affected.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -24,15 +25,9 @@ die() {
 }
 
 SOLUTION_DIR="$1"
-[ -n "$SOLUTION_DIR" ] || die "usage: benchmark-test-filter <solution-dir>"
+[ -n "$SOLUTION_DIR" ] || die "usage: benchmark-test-affected <solution-dir>"
 [ -d "$SOLUTION_DIR" ] || die "not a directory: $SOLUTION_DIR"
 SOLUTION_DIR=$(readlink -f "$SOLUTION_DIR")
-
-# Integration tests are always safe to skip in pre-commit.
-printf '*.Integration.Tests\n*.Integration.Tests.*\n'
-
-REPO_ROOT=$(git -C "$SOLUTION_DIR" rev-parse --show-toplevel 2>/dev/null)
-[ -n "$REPO_ROOT" ] || exit 0
 
 ALL_CSPROJ=$(find "$SOLUTION_DIR" -type f -iname "*.csproj" -not -path "*/obj/*" -not -path "*/bin/*")
 BENCH_PROJECTS=""
@@ -48,10 +43,21 @@ $ALL_CSPROJ
 CSPROJ_EOF
 [ -n "$BENCH_PROJECTS" ] || exit 0
 
-# Only staged changes count — a manual run with nothing staged runs every benchmark.
+# Prints every benchmark project path relative to $SOLUTION_DIR -- the "run
+# all" fallback used whenever the affected set cannot be narrowed down.
+print_all() {
+    printf '%s\n' "$BENCH_PROJECTS" | sed '/^$/d' | while IFS= read -r p; do
+        printf '%s\n' "${p#"$SOLUTION_DIR"/}"
+    done
+}
+
+REPO_ROOT=$(git -C "$SOLUTION_DIR" rev-parse --show-toplevel 2>/dev/null)
+[ -n "$REPO_ROOT" ] || { print_all; exit 0; }
+
+# Only staged changes count -- a manual run with nothing staged runs every benchmark.
 CHANGED_RELATIVE=$(git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACM 2>/dev/null \
     | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$')
-[ -n "$CHANGED_RELATIVE" ] || exit 0
+[ -n "$CHANGED_RELATIVE" ] || { print_all; exit 0; }
 
 CHANGED_ABS=""
 while IFS= read -r f; do
@@ -77,11 +83,11 @@ if [ -z "$GLOBAL_TOUCHED" ]; then
 $CHANGED_ABS
 GLOBAL_EOF
 fi
-[ -z "$GLOBAL_TOUCHED" ] || exit 0
+[ -z "$GLOBAL_TOUCHED" ] || { print_all; exit 0; }
 
-EDGES_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.edges.XXXXXXXXXX") || die "mktemp failed"
-BENCH_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.bench.XXXXXXXXXX") || die "mktemp failed"
-UNRESOLVABLE_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-filter.unresolved.XXXXXXXXXX") || die "mktemp failed"
+EDGES_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-affected.edges.XXXXXXXXXX") || die "mktemp failed"
+BENCH_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-affected.bench.XXXXXXXXXX") || die "mktemp failed"
+UNRESOLVABLE_FILE=$(mktemp "${TMPDIR:-/tmp}/benchmark-test-affected.unresolved.XXXXXXXXXX") || die "mktemp failed"
 trap 'rm -f "$EDGES_FILE" "$BENCH_FILE" "$UNRESOLVABLE_FILE"' EXIT
 
 printf '%s\n' "$BENCH_PROJECTS" | sed '/^$/d' > "$BENCH_FILE"
@@ -97,7 +103,7 @@ while IFS= read -r proj; do
         # shellcheck disable=SC2016 # case pattern glob, not a shell expansion
         case "$ref" in
             *'$('* | *'*'* | *'?'*)
-                # MSBuild property expansion or a glob — cannot resolve statically.
+                # MSBuild property expansion or a glob -- cannot resolve statically.
                 printf 'x\n' >> "$UNRESOLVABLE_FILE"
                 continue
                 ;;
@@ -115,8 +121,8 @@ $ALL_CSPROJ
 PROJECTS_EOF
 
 # A ProjectReference we could not resolve means the dependency graph is
-# incomplete — cannot safely tell which benchmarks are affected, so run them all.
-[ -s "$UNRESOLVABLE_FILE" ] && exit 0
+# incomplete -- cannot safely tell which benchmarks are affected, so run them all.
+[ -s "$UNRESOLVABLE_FILE" ] && { print_all; exit 0; }
 
 # For every benchmark project, BFS its transitive ProjectReference closure in a
 # single awk pass (one process, one read of EDGES_FILE) and print "bench|reachable"
@@ -149,7 +155,6 @@ REACHABLE_PAIRS=$(awk -F'|' '
     }
 ' "$EDGES_FILE" "$BENCH_FILE")
 
-SKIP_LIST=""
 while IFS= read -r bench; do
     [ -n "$bench" ] || continue
     AFFECTED=0
@@ -165,18 +170,9 @@ while IFS= read -r bench; do
 $REACHABLE_PAIRS
 PAIRS_EOF
 
-    if [ "$AFFECTED" -eq 0 ]; then
-        ns=$(basename "$bench" .csproj)
-        SKIP_LIST="$SKIP_LIST
-$ns"
-    fi
+    [ "$AFFECTED" -eq 1 ] && printf '%s\n' "${bench#"$SOLUTION_DIR"/}"
 done <<BENCH_EOF
 $BENCH_PROJECTS
 BENCH_EOF
 
-while IFS= read -r ns; do
-    [ -n "$ns" ] || continue
-    printf '*.%s\n*.%s.*\n' "$ns" "$ns"
-done <<SKIP_EOF
-$SKIP_LIST
-SKIP_EOF
+exit 0
