@@ -1,0 +1,33 @@
+#! /bin/sh
+# Prints, one per line, the --filter-not-namespace values buildtest's main
+# `dotnet test` step should pass to unconditionally exclude every benchmark
+# test project (run separately, see benchmark-test-affected) and all
+# integration tests (always safe to skip in pre-commit). Unlike
+# benchmark-test-affected, this does not look at staged changes: every
+# benchmark test project is excluded from the main run regardless of whether
+# it is affected.
+#
+# Usage: benchmark-test-exclude <solution-dir>
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+SOLUTION_DIR="$1"
+[ -n "$SOLUTION_DIR" ] || die "usage: benchmark-test-exclude <solution-dir>"
+[ -d "$SOLUTION_DIR" ] || die "not a directory: $SOLUTION_DIR"
+SOLUTION_DIR=$(readlink -f "$SOLUTION_DIR")
+
+# Integration tests are always safe to skip in pre-commit.
+printf '*.Integration.Tests\n*.Integration.Tests.*\n'
+
+find "$SOLUTION_DIR" -type f -iname "*.csproj" -not -path "*/obj/*" -not -path "*/bin/*" \
+    | while IFS= read -r proj; do
+        [ -n "$proj" ] || continue
+        bn=$(basename "$proj" .csproj)
+        printf '%s\n' "$bn" | grep -qiE '(^|[.])bench(mark)?[.]tests?$' || continue
+        printf '*.%s\n*.%s.*\n' "$bn" "$bn"
+    done
+
+exit 0

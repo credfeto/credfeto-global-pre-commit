@@ -62,7 +62,9 @@ SOURCE_DIR=$(dirname "$SOLUTION")
 
 # Resolved before the cd below so a relative $0 is not re-resolved against the
 # wrong working directory.
-BENCH_FILTER_SCRIPT="$(dirname "$(readlink -f "$0")")/benchmark-test-filter"
+BENCH_EXCLUDE_SCRIPT="$(dirname "$(readlink -f "$0")")/benchmark-test-exclude"
+BENCH_AFFECTED_SCRIPT="$(dirname "$(readlink -f "$0")")/benchmark-test-affected"
+LATEST_FRAMEWORK_SCRIPT="$(dirname "$(readlink -f "$0")")/latest-target-framework"
 DACPAC_ONLY_SCRIPT="$(dirname "$(readlink -f "$0")")/dacpac-only-solution"
 
 PACK=0
@@ -138,16 +140,16 @@ fi
 if "$DACPAC_ONLY_SCRIPT" "$SOURCE_DIR"; then
   info "Only project in solution is a SQL Server database project (dacpac) — skipping tests, nothing testable"
 else
-  info "Determining which benchmark/integration tests to skip..."
-  FILTER_SPEC=$("$BENCH_FILTER_SCRIPT" "$SOURCE_DIR") \
-    || die "######## Benchmark Filter Failed ########"
+  info "Determining benchmark/integration tests to exclude from the main test run..."
+  EXCLUDE_SPEC=$("$BENCH_EXCLUDE_SCRIPT" "$SOURCE_DIR") \
+    || die "######## Benchmark Exclude Failed ########"
   set --
   while IFS= read -r ns; do
       [ -n "$ns" ] || continue
       set -- "$@" --filter-not-namespace "$ns"
-  done <<FILTER_EOF
-$FILTER_SPEC
-FILTER_EOF
+  done <<EXCLUDE_EOF
+$EXCLUDE_SPEC
+EXCLUDE_EOF
 
   info "Testing..."
   dotnet test \
@@ -165,6 +167,47 @@ FILTER_EOF
     "-p:SuppressNETCoreSdkPreviewMessage=true" \
     "-p:Version=0.0.0.1-test" \
     || die "######## Tests Failed ########"
+
+  info "Determining which benchmarks are affected by staged changes..."
+  AFFECTED_SPEC=$("$BENCH_AFFECTED_SCRIPT" "$SOURCE_DIR") \
+    || die "######## Benchmark Affected Detection Failed ########"
+
+  if [ -z "$AFFECTED_SPEC" ]; then
+    info "No benchmark tests affected by staged changes — skipping benchmark test step"
+  else
+    while IFS= read -r bench_project; do
+        [ -n "$bench_project" ] || continue
+
+        # Multi-targeted benchmark projects are only run on their latest
+        # target framework; older frameworks are assumed to work.
+        set --
+        LATEST_FRAMEWORK=$("$LATEST_FRAMEWORK_SCRIPT" "$bench_project") \
+          || die "######## Latest Target Framework Detection Failed ($bench_project) ########"
+        if [ -n "$LATEST_FRAMEWORK" ]; then
+          info "Multiple target frameworks in $bench_project — testing only $LATEST_FRAMEWORK, assuming older frameworks work"
+          set -- --framework "$LATEST_FRAMEWORK"
+        fi
+
+        info "Running benchmark tests: $bench_project"
+        dotnet test "$bench_project" \
+          --configuration Release \
+          --no-restore \
+          --no-build \
+          --long-running 10 \
+          --parallel-algorithm sequential \
+          --ignore-exit-code 8 \
+          "$@" \
+          "-p:ApiCompatGenerateSuppressionFile=true" \
+          "-p:ContinuousIntegrationBuild=true" \
+          "-p:IsProduction=false" \
+          "-p:Optimize=true" \
+          "-p:SuppressNETCoreSdkPreviewMessage=true" \
+          "-p:Version=0.0.0.1-test" \
+          || die "######## Benchmark Tests Failed ($bench_project) ########"
+    done <<AFFECTED_EOF
+$AFFECTED_SPEC
+AFFECTED_EOF
+  fi
 fi
 
 PUBLISHABLE=$(grep -Rl "<IsPublishable>true</IsPublishable>" . --include "*.csproj")
