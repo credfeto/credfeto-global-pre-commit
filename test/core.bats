@@ -277,14 +277,14 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
-@test "staging a dotfile matching the broad lint wildcard in non-hooks repo is now rejected" {
+@test "staging an unrelated dotfile that merely contains lint in its name passes (no broad wildcard, explicit names only)" {
     local T
-    T="$(make_repo feature/broad-lint-wildcard-nonhooks-test)"
+    T="$(make_repo feature/unrelated-lint-named-file-test)"
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf 'rules: {}\n' > "${T}/.foolint"
     git -C "${T}" add .pre-commit-config.yaml .foolint
     run_hook "${T}"
-    [ "${status}" -eq 1 ]
+    [ "${status}" -eq 0 ]
 }
 
 # ── hooks-repo protected file guard ──────────────────────────────────────────
@@ -338,6 +338,279 @@ load test_helper
     printf '# local notes\n' > "${T}/ai/local/notes.instructions.md"
     git -C "${T}" add .pre-commit-config.yaml ai/local/notes.instructions.md
     run_hook_as_hooks_repo "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging root .gitignore in non-hooks repo is rejected (issue #186 follow-up)" {
+    local T
+    T="$(make_repo feature/root-gitignore-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'bin/\nobj/\n' > "${T}/.gitignore"
+    git -C "${T}" add .pre-commit-config.yaml .gitignore
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging a nested .gitignore in non-hooks repo passes (root-only)" {
+    local T
+    T="$(make_repo feature/nested-gitignore-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/src"
+    printf 'bin/\nobj/\n' > "${T}/src/.gitignore"
+    git -C "${T}" add .pre-commit-config.yaml src/.gitignore
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "staging root .gitignore in cs-template is also rejected (no template exemption, consistent with .ai-instructions)" {
+    local T
+    T="$(make_repo feature/root-gitignore-cs-template-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'bin/\nobj/\n' > "${T}/.gitignore"
+    git -C "${T}" add .pre-commit-config.yaml .gitignore
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging root .gitignore in hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/root-gitignore-hooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'bin/\nobj/\n' > "${T}/.gitignore"
+    git -C "${T}" add .pre-commit-config.yaml .gitignore
+    run_hook_as_hooks_repo "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+# ── maintain-in-repo ownership (workflow/action files) ───────────────────────
+
+@test "editing a workflow file maintained in this repo is allowed" {
+    local T
+    T="$(make_repo feature/maintain-own-workflow-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/example-repo.git"
+    mkdir -p "${T}/.no-hooks" "${T}/.github/workflows"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\n# Maintain in repo: example-repo\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/workflows/test.yml
+    git -C "${T}" commit --quiet -m baseline
+    printf -- '---\n# Maintain in repo: example-repo\nname: test\non: push\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .github/workflows/test.yml
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "editing a workflow file maintained in a different repo is rejected" {
+    local T
+    T="$(make_repo feature/maintain-other-workflow-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/attacker-repo.git"
+    mkdir -p "${T}/.no-hooks" "${T}/.github/workflows"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\n# Maintain in repo: owner-repo\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/workflows/test.yml
+    git -C "${T}" commit --quiet -m baseline
+    printf -- '---\n# Maintain in repo: owner-repo\nname: test\non: push\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .github/workflows/test.yml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "rewriting the ownership comment to self-authorise in the same commit is still rejected" {
+    local T
+    T="$(make_repo feature/maintain-rewrite-attack-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/attacker-repo.git"
+    mkdir -p "${T}/.no-hooks" "${T}/.github/workflows"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\n# Maintain in repo: owner-repo\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/workflows/test.yml
+    git -C "${T}" commit --quiet -m baseline
+    # Attempt to claim ownership by rewriting the comment in the same diff --
+    # the check must still consult HEAD's (unmodified) declared owner.
+    printf -- '---\n# Maintain in repo: attacker-repo\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .github/workflows/test.yml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "editing an action.yml maintained in a different repo is rejected" {
+    local T
+    T="$(make_repo feature/maintain-other-action-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/attacker-repo.git"
+    mkdir -p "${T}/.no-hooks" "${T}/.github/actions/some-action"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\n# Maintain in repo: owner-repo\nname: test\n' > "${T}/.github/actions/some-action/action.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/actions/some-action/action.yml
+    git -C "${T}" commit --quiet -m baseline
+    printf -- '---\n# Maintain in repo: owner-repo\nname: test v2\n' > "${T}/.github/actions/some-action/action.yml"
+    git -C "${T}" add .github/actions/some-action/action.yml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "deleting a workflow file maintained in a different repo is rejected" {
+    local T
+    T="$(make_repo feature/maintain-delete-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/attacker-repo.git"
+    mkdir -p "${T}/.no-hooks" "${T}/.github/workflows"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\n# Maintain in repo: owner-repo\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/workflows/test.yml
+    git -C "${T}" commit --quiet -m baseline
+    git -C "${T}" rm --quiet .github/workflows/test.yml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "editing a workflow file with no ownership comment is allowed from any repo" {
+    local T
+    T="$(make_repo feature/maintain-no-marker-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/some-repo.git"
+    mkdir -p "${T}/.no-hooks" "${T}/.github/workflows"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/workflows/test.yml
+    git -C "${T}" commit --quiet -m baseline
+    printf -- '---\nname: test\non: push\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .github/workflows/test.yml
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "adding a new workflow file in a template repo without self-declaring ownership is rejected" {
+    local T
+    T="$(make_repo feature/maintain-new-file-template-no-marker-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/example-server-template.git"
+    mkdir -p "${T}/.github/workflows"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/workflows/test.yml
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "adding a new workflow file in a template repo that self-declares ownership is allowed" {
+    local T
+    T="$(make_repo feature/maintain-new-file-template-marker-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/example-server-template.git"
+    mkdir -p "${T}/.github/workflows"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\n# Maintain in repo: example-server-template\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/workflows/test.yml
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "adding a new workflow file in a non-template repo requires no ownership marker" {
+    local T
+    T="$(make_repo feature/maintain-new-file-nontemplate-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/some-service.git"
+    mkdir -p "${T}/.github/workflows"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '---\nname: test\n' > "${T}/.github/workflows/test.yml"
+    git -C "${T}" add .pre-commit-config.yaml .github/workflows/test.yml
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "a file outside .github/workflows and .github/actions with a maintain comment is not checked" {
+    local T
+    T="$(make_repo feature/maintain-unrelated-file-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/attacker-repo.git"
+    mkdir -p "${T}/.no-hooks" "${T}/config"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '# Maintain in repo: owner-repo\nkey: value\n' > "${T}/config/settings.yml"
+    git -C "${T}" add .pre-commit-config.yaml config/settings.yml
+    git -C "${T}" commit --quiet -m baseline
+    printf -- '# Maintain in repo: owner-repo\nkey: changed\n' > "${T}/config/settings.yml"
+    git -C "${T}" add config/settings.yml
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── maintain-in-repo exemption for the always-blocked list (issue #186 follow-up) ──
+
+@test "editing a protected file is allowed when this repo is the declared owner" {
+    local T
+    T="$(make_repo feature/maintain-exempt-shellcheckrc-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/example-server-template.git"
+    mkdir -p "${T}/.no-hooks"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '# Maintain in repo: example-server-template\ncheck-sourced=false\n' > "${T}/.shellcheckrc"
+    git -C "${T}" add .pre-commit-config.yaml .shellcheckrc
+    git -C "${T}" commit --quiet -m baseline
+    printf -- '# Maintain in repo: example-server-template\ncheck-sourced=true\n' > "${T}/.shellcheckrc"
+    git -C "${T}" add .shellcheckrc
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "editing .globalconfig is still rejected when this repo is not the declared owner" {
+    local T
+    T="$(make_repo feature/maintain-not-exempt-globalconfig-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/some-consumer-repo.git"
+    mkdir -p "${T}/.no-hooks"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '# Maintain in repo: example-server-template\n<GlobalConfig></GlobalConfig>\n' > "${T}/.globalconfig"
+    git -C "${T}" add .pre-commit-config.yaml .globalconfig
+    git -C "${T}" commit --quiet -m baseline
+    printf -- '# Maintain in repo: example-server-template\n<GlobalConfig>\n  <NoWarn>FFS0040=error</NoWarn>\n</GlobalConfig>\n' > "${T}/.globalconfig"
+    git -C "${T}" add .globalconfig
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "rewriting .globalconfig's ownership comment to self-authorise in the same commit is still rejected" {
+    local T
+    T="$(make_repo feature/maintain-globalconfig-rewrite-attack-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/some-consumer-repo.git"
+    mkdir -p "${T}/.no-hooks"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf -- '# Maintain in repo: example-server-template\n<GlobalConfig></GlobalConfig>\n' > "${T}/.globalconfig"
+    git -C "${T}" add .pre-commit-config.yaml .globalconfig
+    git -C "${T}" commit --quiet -m baseline
+    printf -- '# Maintain in repo: some-consumer-repo\n<GlobalConfig></GlobalConfig>\n' > "${T}/.globalconfig"
+    git -C "${T}" add .globalconfig
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging .gitleaks (no extension) in non-hooks repo is rejected (was a pre-existing naming bug)" {
+    local T
+    T="$(make_repo feature/gitleaks-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '[allowlist]\n' > "${T}/.gitleaks"
+    git -C "${T}" add .pre-commit-config.yaml .gitleaks
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging .gitattributes in non-hooks repo is rejected (was missing entirely)" {
+    local T
+    T="$(make_repo feature/gitattributes-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '* text=auto\n' > "${T}/.gitattributes"
+    git -C "${T}" add .pre-commit-config.yaml .gitattributes
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging .yamllint.yml in non-hooks repo is rejected (was a pre-existing naming bug)" {
+    local T
+    T="$(make_repo feature/yamllint-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'rules: {}\n' > "${T}/.yamllint.yml"
+    git -C "${T}" add .pre-commit-config.yaml .yamllint.yml
+    run_hook "${T}"
     [ "${status}" -eq 1 ]
 }
 
