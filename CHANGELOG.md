@@ -69,6 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Scan dependency lockfiles for known CVEs with trivy (trivy fs --scanners vuln) as part of pre-commit, triggered when package-lock.json, packages.lock.json, go.sum, requirements*.txt, Gemfile.lock, poetry.lock, or Pipfile.lock changes
 - buildtest now skips `dotnet test` when the solution's only project is a DACPAC (`MSBuild.Sdk.SqlProj`), since there is nothing testable
 - Pre-commit hook now protects .gitattributes and the root .gitignore in every repository, and blocks .github/workflows/*.yml and .github/actions/**/*.yml files from being edited or deleted outside the repo named in their '# Maintain in repo:' comment (read from the already-committed HEAD content, not the staged content, so the comment cannot be rewritten to self-authorise in the same commit) (#186)
+- ai/global/*.md changes are now whitelisted for cs-template specifically, restoring its ability to author the canonical ai/global instructions it distributes; funfair-server-template and funfair-treasury-reporting, which only ever receive ai/global via the sync, remain blocked (#186)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)

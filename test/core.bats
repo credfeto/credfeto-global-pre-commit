@@ -105,6 +105,18 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
+@test "changing ai/global/ in cs-template is allowed (whitelisted: it's the canonical source)" {
+    local T
+    T="$(make_repo feature/ai-global-cs-template-whitelist-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/ai/global"
+    printf '# global\n' > "${T}/ai/global/test.md"
+    git -C "${T}" add .pre-commit-config.yaml ai/global/test.md
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
 @test "changing .ai-instructions in cs-template is rejected (issue #186: protected in all repos now)" {
     local T
     T="$(make_repo feature/template-only-cs-template-test)"
