@@ -113,6 +113,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - buildtest now always excludes benchmark test projects from the main dotnet test run and instead runs only the affected benchmark projects individually, sequentially, in a separate step, fixing OutOfMemoryException failures caused by aggressive parallelism racing benchmark assemblies against regular tests; multi-targeted benchmark projects are restricted to their latest target framework
 - Pre-commit hook now blocks .globalconfig, global.json, .sqlfluff, .tsqllint config files, and other shared/synced config in every repository, not just the hooks repo itself (#186)
 - Pre-commit hook was checking for .gitleaks.toml and .yaml-lint.yml, but the real filenames in use are .gitleaks and .yamllint.yml, so neither was ever actually protected; both correct names are now checked (#186)
+- buildtest's per-project benchmark run no longer passes --long-running/--parallel-algorithm flags to dotnet test, since some benchmark test projects' test host rejects them as invalid arguments (exit code 5, zero tests ran) instead of running
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

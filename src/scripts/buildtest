@@ -191,8 +191,6 @@ else
           --configuration Release \
           --no-restore \
           --no-build \
-          --long-running 10 \
-          --parallel-algorithm sequential \
           --ignore-exit-code 8 \
           "$@" \
           "-p:ApiCompatGenerateSuppressionFile=false" \
