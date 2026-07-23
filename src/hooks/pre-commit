@@ -221,14 +221,15 @@ is_maintained_by_current_repo() {
 # Returns 0 if $1 is explicitly whitelisted for the current repo, for a
 # reason other than a Maintain-in-repo comment (issue #186 follow-up).
 #
-# ai/global/*.md is whitelisted for cs-template only — it is the canonical
-# source ai/global is authored in and distributed from. funfair-server-template
-# and funfair-treasury-reporting only ever receive ai/global via the sync,
-# never author it, so they are deliberately not whitelisted here and stay
-# blocked, unlike the old template-only guard's exemption for all three.
+# ai/global/*.md and .ai-instructions are whitelisted for cs-template only —
+# it is the canonical source both are authored in and distributed from.
+# funfair-server-template and funfair-treasury-reporting only ever receive
+# them via the sync, never author them, so they are deliberately not
+# whitelisted here and stay blocked, unlike the old template-only guard's
+# exemption for all three.
 is_explicitly_whitelisted() {
     case "$1" in
-        ai/global/*.md) [ "$CURRENT_REPO_NAME" = "cs-template" ] ;;
+        ai/global/*.md | .ai-instructions) [ "$CURRENT_REPO_NAME" = "cs-template" ] ;;
         *) return 1 ;;
     esac
 }
