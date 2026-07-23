@@ -13,6 +13,22 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
+@test "nothing staged is allowed when amending (issue #195: message-only amend of an unpushed commit)" {
+    local T
+    T="$(make_repo)"
+    # Baseline commit made through a no-op hooksPath -- it only needs to
+    # exist so there is a HEAD to (simulate) amending; the guard under test
+    # is the one this bats invocation exercises via run_hook_as_amend below,
+    # not this setup commit.
+    mkdir -p "${T}/.no-hooks"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    git -C "${T}" add .pre-commit-config.yaml
+    git -C "${T}" commit --quiet -m baseline
+    run_hook_as_amend "${T}"
+    [ "${status}" -eq 0 ]
+}
+
 # ── branch protection ─────────────────────────────────────────────────────────
 
 @test "commit on main branch is rejected" {

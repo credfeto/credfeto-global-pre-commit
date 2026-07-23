@@ -106,6 +106,21 @@ run_hook() {
     ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
 }
 
+# Runs the hook with IS_AMEND_TEST_OVERRIDE=1, simulating the invoking git
+# commit having been run with --amend (see is_amend in src/hooks/pre-commit —
+# the real signal is the parent process's own command line, which this
+# bash -c/sh invocation can never make look like `git commit --amend`).
+run_hook_as_amend() {
+    local _repo="$1"
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        env PATH="$2" IS_AMEND_TEST_OVERRIDE=1 sh "$3"
+    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+}
+
 # Runs the hook in --all-files (baseline) mode using TEST_PATH.
 # Sets $status and $output via bats run.
 run_hook_all_files() {
