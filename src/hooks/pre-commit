@@ -50,6 +50,40 @@ is_container() {
 
 has_cmd() { command -v "$1" > /dev/null 2>&1; }
 
+# Returns 0 if the invoking `git commit` was run with --amend, so the
+# empty-stage guard below can let a legitimate message-only amend of an
+# unpushed commit through (ai/global/git-commits.instructions.md:11's
+# documented exception). git passes the pre-commit hook no argument or
+# environment variable naming the flags it was invoked with, and no earlier
+# hook runs that could tell us either -- the only real signal is the
+# invoking git process's own command line, read from the parent PID.
+# Deliberately fails open (unreadable/empty cmdline counts as amend): a false
+# "not amend" blocks a legitimate amend, whereas a false "is amend" on a
+# genuinely empty non-amend commit is still caught by git's own refusal to
+# create an empty commit without --allow-empty, so treating "can't tell" as
+# amend is the safer default of the two.
+# IS_AMEND_TEST_OVERRIDE is a test-only escape hatch (bats' bash -c/sh
+# invocation of this script has no real `git commit` parent to inspect);
+# never set this variable in production shells.
+is_amend() {
+    if [ -n "${IS_AMEND_TEST_OVERRIDE:-}" ]; then
+        [ "$IS_AMEND_TEST_OVERRIDE" = "1" ]
+        return
+    fi
+    _cmdline=""
+    if [ -r "/proc/$PPID/cmdline" ]; then
+        _cmdline=$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2> /dev/null)
+    fi
+    if [ -z "$_cmdline" ] && has_cmd ps; then
+        _cmdline=$(ps -o args= -p "$PPID" 2> /dev/null)
+    fi
+    case "$_cmdline" in
+        *--amend*) return 0 ;;
+        "") return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Mark the active PR and issue as blocked.  No-ops silently when gh is absent,
 # no PR exists for the branch, or any gh command fails.
 mark_blocked() {
@@ -292,9 +326,11 @@ case "${1:-}" in
 esac
 
 # Abort immediately if nothing is staged — prevents accidental empty commits.
-# Skipped in all-files mode, which is expected to run against a clean tree.
+# Skipped in all-files mode, which is expected to run against a clean tree,
+# and skipped for a --amend (see is_amend above), which legitimately has
+# nothing staged when only the commit message is being changed (issue #195).
 ALL_STAGED=$(git diff --cached --name-only)
-if [ "$MODE" = "commit" ]; then
+if [ "$MODE" = "commit" ] && ! is_amend; then
     [ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
 fi
 
