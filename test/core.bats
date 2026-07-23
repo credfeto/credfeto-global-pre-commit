@@ -117,15 +117,15 @@ load test_helper
     [ "${status}" -eq 0 ]
 }
 
-@test "changing .ai-instructions in cs-template is rejected (issue #186: protected in all repos now)" {
+@test "changing .ai-instructions in cs-template is allowed (whitelisted: it's the canonical source)" {
     local T
-    T="$(make_repo feature/template-only-cs-template-test)"
+    T="$(make_repo feature/ai-instructions-cs-template-whitelist-test)"
     git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# instructions\n' > "${T}/.ai-instructions"
     git -C "${T}" add .pre-commit-config.yaml .ai-instructions
     run_hook "${T}"
-    [ "${status}" -eq 1 ]
+    [ "${status}" -eq 0 ]
 }
 
 @test "changing .ai-instructions in funfair-treasury-reporting is rejected (issue #186: protected in all repos now)" {
@@ -374,7 +374,7 @@ load test_helper
     [ "${status}" -eq 0 ]
 }
 
-@test "staging root .gitignore in cs-template is also rejected (no template exemption, consistent with .ai-instructions)" {
+@test "staging root .gitignore in cs-template is also rejected (no template exemption; unlike .ai-instructions/ai/global, it has no cs-template-authored canonical copy to protect)" {
     local T
     T="$(make_repo feature/root-gitignore-cs-template-test)"
     git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
