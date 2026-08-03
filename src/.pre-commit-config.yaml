@@ -74,6 +74,14 @@ repos:
         entry: detect-private-key
         language: system
         types: [text]
+        # certs/*.local.{pem,key} and certs/localhost.{pem,key} are the repo
+        # convention for self-signed, local-only dev certificates (generated
+        # by a checked-in certs/generate script, e.g.
+        # credfeto-dev-package-cache, credfeto-photos). They are deliberately
+        # committed and pose no risk. Scoped to this naming pattern rather
+        # than the whole certs/ directory, so any other key dropped there is
+        # still caught.
+        exclude: ^certs/([^/]*\.local|localhost)\.(pem|key)$
 
       # ── Secrets scanning — TruffleHog ─────────────────────────────────────
       # Mirrors the official hook from trufflesecurity/trufflehog

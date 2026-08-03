@@ -217,6 +217,7 @@ DETECT_PRIVATE_KEY_CONFIG='repos:
         entry: detect-private-key
         language: system
         types: [text]
+        exclude: ^certs/([^/]*\.local|localhost)\.(pem|key)$
 '
 
 TRUFFLEHOG_CONFIG='repos:
@@ -1240,6 +1241,47 @@ EOF
     git -C "${T}" add .pre-commit-config.yaml clean.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
+}
+
+@test "PEM private key under certs/ matching *.local naming is excluded from detect-private-key" {
+    if ! command -v detect-private-key > /dev/null 2>&1; then
+        skip "detect-private-key not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    if ! command -v openssl > /dev/null 2>&1; then
+        skip "openssl not installed"
+    fi
+    local T
+    T="$(make_repo feature/detect-private-key-certs-exclude-test)"
+    printf '%s' "${DETECT_PRIVATE_KEY_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/certs"
+    openssl genrsa 512 2>/dev/null > "${T}/certs/localhost.key"
+    openssl genrsa 512 2>/dev/null > "${T}/certs/npm.local.pem"
+    git -C "${T}" add .pre-commit-config.yaml certs/localhost.key certs/npm.local.pem
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "PEM private key under certs/ not matching *.local naming is still rejected by detect-private-key" {
+    if ! command -v detect-private-key > /dev/null 2>&1; then
+        skip "detect-private-key not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    if ! command -v openssl > /dev/null 2>&1; then
+        skip "openssl not installed"
+    fi
+    local T
+    T="$(make_repo feature/detect-private-key-certs-not-excluded-test)"
+    printf '%s' "${DETECT_PRIVATE_KEY_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/certs"
+    openssl genrsa 512 2>/dev/null > "${T}/certs/production.key"
+    git -C "${T}" add .pre-commit-config.yaml certs/production.key
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
 }
 
 # ── mixed-line-ending ─────────────────────────────────────────────────────────
