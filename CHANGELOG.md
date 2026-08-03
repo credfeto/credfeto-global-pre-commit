@@ -118,6 +118,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fix test/sql.bats acceptance-test fixtures to commit .sqlfluff/.tsqllintrc as a baseline before the tested diff, so they no longer trip the protected-everywhere config-file check introduced in #187 and 'valid SQL passes' genuinely exercises sqlfluff/tsqllint rather than being rejected before either linter runs
 - Pre-commit hook now whitelists cs-template to edit its own canonical .ai-instructions, matching the existing ai/global/*.md whitelist, so the template's own instructions can be maintained through normal commits again
 - Pre-commit hook's empty-stage guard no longer blocks a legitimate message-only 'git commit --amend' of an unpushed commit, detected via the invoking git process's command line (#195)
+- Exclude local dev certs (certs/*.local.{pem,key}, certs/localhost.{pem,key}) from detect-private-key false positives (#203)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
