@@ -45,6 +45,7 @@ ACTIONLINT_CONFIG='repos:
         entry: actionlint
         language: system
         files: ^\.github/workflows/.*\.(yml|yaml)$
+        require_serial: true
 '
 
 COMPOSITE_ACTION_LINT_CONFIG='repos:
@@ -514,6 +515,29 @@ END_OF_FILE_FIXER_CONFIG='repos:
     git -C "${T}" add .pre-commit-config.yaml ".github/workflows/valid.yml"
     run_hook "${T}"
     [ "${status}" -eq 0 ]
+}
+
+@test "broken workflow among several is still rejected under require_serial" {
+    # require_serial: true (added for #205) makes pre-commit run actionlint as
+    # a single process over all matched files instead of sharding them across
+    # concurrent processes. This confirms that serialising does not mask a
+    # real finding when multiple workflow files are checked together.
+    if ! command -v actionlint > /dev/null 2>&1; then
+        skip "actionlint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/serial-multi-workflow-test)"
+    printf '%s' "${ACTIONLINT_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/.github/workflows"
+    printf 'name: Valid One\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo "Hello One"\n' > "${T}/.github/workflows/valid-one.yml"
+    printf 'name: Valid Two\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo "Hello Two"\n' > "${T}/.github/workflows/valid-two.yml"
+    printf "name: Broken\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo \"\${{ steps.undefined.outputs.value }}\"\n" > "${T}/.github/workflows/broken.yml"
+    git -C "${T}" add .pre-commit-config.yaml ".github/workflows/valid-one.yml" ".github/workflows/valid-two.yml" ".github/workflows/broken.yml"
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
 }
 
 # ── stylelint ─────────────────────────────────────────────────────────────────
