@@ -189,11 +189,18 @@ repos:
         args: [--config, .github/linters/.hadolint.yaml]
 
       # ── VALIDATE_GITHUB_ACTIONS — workflows ──────────────────────────────
+      # require_serial: true avoids sharding shellcheck invocations (which
+      # actionlint shells out to per embedded `run:` script) across concurrent
+      # pre-commit processes. On hosts where shellcheck is firejail-wrapped,
+      # firejail serialises sandbox startup through one global lockfile and
+      # fails rather than waits, so concurrent processes race for it and fail
+      # intermittently. See #205.
       - id: actionlint
         name: actionlint
         entry: actionlint
         language: system
         files: ^\.github/workflows/.*\.(yml|yaml)$
+        require_serial: true
 
       # ── VALIDATE_GITHUB_ACTIONS — composite actions ───────────────────────
       - id: composite-action-lint
