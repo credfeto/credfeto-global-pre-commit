@@ -866,17 +866,25 @@ EOF
     [ "${status}" -eq 0 ]
     _venv_python="${T}/.git/credfeto-precommit-pylint-venv/bin/python3"
     _stamp="${T}/.git/credfeto-precommit-pylint-venv/.requirements-hash"
-    # The venv is not yet layered with certifi.
-    run "${_venv_python}" -c 'import certifi'
+    # The venv is not yet layered with cowsay. Deliberately not certifi/requests
+    # or another networking-adjacent package: GitHub Actions' Ubuntu runner
+    # image and ansible-lint's apt dependency chain already pull those into
+    # system site-packages, which a --system-site-packages venv inherits
+    # regardless of whether this wrapper ever installed them (seen in CI as a
+    # false failure of the "not yet layered" assertion below). cowsay has no
+    # legitimate reason to be a transitive dependency of anything on the
+    # runner, so its absence/presence actually reflects this wrapper's own
+    # install step.
+    run "${_venv_python}" -c 'import cowsay'
     [ "${status}" -ne 0 ]
-    printf 'six==1.16.0\ncertifi\n' > "${T}/requirements.txt"
+    printf 'six==1.16.0\ncowsay\n' > "${T}/requirements.txt"
     run_hook "${T}"
     [ "${status}" -eq 0 ]
     # A rebuild is proven behaviourally (the newly-declared dependency is now
     # importable from the venv) rather than via inode identity, which is not a
     # reliable rebuild signal: rm -rf followed immediately by re-creation can
     # have the filesystem reuse the just-freed inode number for the new file.
-    run "${_venv_python}" -c 'import certifi'
+    run "${_venv_python}" -c 'import cowsay'
     [ "${status}" -eq 0 ]
     _hash_after="$(sha256sum "${T}/requirements.txt" | cut -d' ' -f1)"
     [ "$(cat "${_stamp}")" = "${_hash_after}" ]
