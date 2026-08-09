@@ -878,6 +878,7 @@ EOF
     run "${_venv_python}" -c 'import cowsay'
     [ "${status}" -ne 0 ]
     printf 'six==1.16.0\ncowsay\n' > "${T}/requirements.txt"
+    git -C "${T}" add requirements.txt
     run_hook "${T}"
     [ "${status}" -eq 0 ]
     # A rebuild is proven behaviourally (the newly-declared dependency is now
