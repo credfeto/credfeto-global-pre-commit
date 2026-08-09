@@ -851,7 +851,7 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T _probe _venv_python _inode_before _inode_after
+    local T _probe _venv_python _stamp _hash_after
     _probe="${BATS_TEST_TMPDIR}/venvprobe"
     if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
         skip "python3 -m venv is not functional in this environment (install python3-venv)"
@@ -865,12 +865,21 @@ EOF
     run_hook "${T}"
     [ "${status}" -eq 0 ]
     _venv_python="${T}/.git/credfeto-precommit-pylint-venv/bin/python3"
-    _inode_before="$(stat -c %i "${_venv_python}")"
+    _stamp="${T}/.git/credfeto-precommit-pylint-venv/.requirements-hash"
+    # The venv is not yet layered with certifi.
+    run "${_venv_python}" -c 'import certifi'
+    [ "${status}" -ne 0 ]
     printf 'six==1.16.0\ncertifi\n' > "${T}/requirements.txt"
     run_hook "${T}"
     [ "${status}" -eq 0 ]
-    _inode_after="$(stat -c %i "${_venv_python}")"
-    [ "${_inode_before}" != "${_inode_after}" ]
+    # A rebuild is proven behaviourally (the newly-declared dependency is now
+    # importable from the venv) rather than via inode identity, which is not a
+    # reliable rebuild signal: rm -rf followed immediately by re-creation can
+    # have the filesystem reuse the just-freed inode number for the new file.
+    run "${_venv_python}" -c 'import certifi'
+    [ "${status}" -eq 0 ]
+    _hash_after="$(sha256sum "${T}/requirements.txt" | cut -d' ' -f1)"
+    [ "$(cat "${_stamp}")" = "${_hash_after}" ]
 }
 
 @test "run-pylint wrapper installs pyproject.toml [project.dependencies] into a cached venv so pylint resolves the import" {
