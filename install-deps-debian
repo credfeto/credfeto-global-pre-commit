@@ -32,6 +32,7 @@ sudo apt-get install -y \
     shellcheck \
     yamllint \
     python3-flake8 \
+    python3-venv \
     libxml2-utils \
     curl \
     gpg \

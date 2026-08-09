@@ -14,6 +14,14 @@
 # from pre-commit to the host (or the container image). install.sh below lists
 # what each hook needs.
 #
+# pylint is the one exception that self-manages a venv: the `entry` below is
+# the run-pylint wrapper rather than pylint directly, because the system
+# pylint's site-packages can never see a consuming repo's own Python
+# dependencies (declared via requirements.txt or pyproject.toml). The wrapper
+# still runs as `language: system` — it does not opt into pre-commit's own
+# venv machinery — it just builds/reuses its own venv on top of the system
+# pylint when the repo declares dependencies. See src/scripts/run-pylint.
+#
 # VALIDATE_SQLFLUFF and VALIDATE_CLOUDFORMATION are handled by dedicated
 # checks in hooks/pre-commit and are not duplicated here.
 
@@ -212,7 +220,7 @@ repos:
       # ── VALIDATE_PYTHON_PYLINT ────────────────────────────────────────────
       - id: pylint
         name: pylint
-        entry: pylint
+        entry: run-pylint
         language: system
         types: [python]
 

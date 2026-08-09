@@ -68,6 +68,20 @@ PYLINT_CONFIG='repos:
         types: [python]
 '
 
+# Own scoped config for the run-pylint wrapper tests below (entry: run-pylint
+# rather than entry: pylint), per linters.instructions.md's "own scoped
+# config" rule — these exercise the wrapper's venv/manifest handling, not
+# pylint itself, and must not be masked by PYLINT_CONFIG's direct entry.
+PYLINT_WRAPPER_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: run-pylint
+        language: system
+        types: [python]
+'
+
 FLAKE8_CONFIG='repos:
   - repo: local
     hooks:
@@ -715,6 +729,178 @@ _ansible_env_ok() {
     git -C "${T}" add .pre-commit-config.yaml good.py
     run_hook "${T}"
     [ "${status}" -eq 0 ]
+}
+
+# ── run-pylint wrapper (repo-declared dependency resolution) ───────────────────
+
+@test "run-pylint wrapper behaves like plain pylint when the repo declares no dependency manifest" {
+    if ! command -v pylint > /dev/null 2>&1; then
+        skip "pylint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/pylint-wrapper-no-manifest)"
+    printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'def bad():\n    print(undefined_var)\n' > "${T}/bad.py"
+    git -C "${T}" add .pre-commit-config.yaml bad.py
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"E0602"* ]]
+    [ ! -d "${T}/.git/credfeto-precommit-pylint-venv" ]
+}
+
+@test "run-pylint wrapper does not build a venv for a pyproject.toml with no [project.dependencies]" {
+    if ! command -v pylint > /dev/null 2>&1; then
+        skip "pylint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/pylint-wrapper-pyproject-no-deps)"
+    printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    cat > "${T}/pyproject.toml" <<'EOF'
+[tool.black]
+line-length = 100
+EOF
+    printf 'def bad():\n    print(undefined_var)\n' > "${T}/bad.py"
+    git -C "${T}" add .pre-commit-config.yaml pyproject.toml bad.py
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"E0602"* ]]
+    [ ! -d "${T}/.git/credfeto-precommit-pylint-venv" ]
+}
+
+@test "run-pylint wrapper falls back to system pylint when a declared dependency cannot be installed" {
+    if ! command -v pylint > /dev/null 2>&1; then
+        skip "pylint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/pylint-wrapper-install-fail)"
+    printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'this-package-definitely-does-not-exist-nonexistent-xyz123==0.0.0\n' > "${T}/requirements.txt"
+    printf 'def bad():\n    print(undefined_var)\n' > "${T}/bad.py"
+    git -C "${T}" add .pre-commit-config.yaml requirements.txt bad.py
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"warning: run-pylint:"* ]]
+    [[ "${output}" == *"E0602"* ]]
+    [ ! -d "${T}/.git/credfeto-precommit-pylint-venv" ]
+}
+
+@test "run-pylint wrapper installs requirements.txt dependencies into a cached venv so pylint resolves the import" {
+    if ! command -v pylint > /dev/null 2>&1; then
+        skip "pylint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T _probe
+    _probe="${BATS_TEST_TMPDIR}/venvprobe"
+    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+        skip "python3 -m venv is not functional in this environment (install python3-venv)"
+    fi
+    rm -rf "${_probe}"
+    T="$(make_repo feature/pylint-wrapper-reqs)"
+    printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'six==1.16.0\n' > "${T}/requirements.txt"
+    printf '"""Uses six."""\n\nimport six\n\nprint(six.__version__)\n' > "${T}/good.py"
+    git -C "${T}" add .pre-commit-config.yaml requirements.txt good.py
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+    [ -x "${T}/.git/credfeto-precommit-pylint-venv/bin/python3" ]
+}
+
+@test "run-pylint wrapper reuses the cached venv when requirements.txt is unchanged" {
+    if ! command -v pylint > /dev/null 2>&1; then
+        skip "pylint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T _probe _venv_python _inode_before _inode_after
+    _probe="${BATS_TEST_TMPDIR}/venvprobe"
+    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+        skip "python3 -m venv is not functional in this environment (install python3-venv)"
+    fi
+    rm -rf "${_probe}"
+    T="$(make_repo feature/pylint-wrapper-reqs-cache)"
+    printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'six==1.16.0\n' > "${T}/requirements.txt"
+    printf '"""Uses six."""\n\nimport six\n\nprint(six.__version__)\n' > "${T}/good.py"
+    git -C "${T}" add .pre-commit-config.yaml requirements.txt good.py
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+    _venv_python="${T}/.git/credfeto-precommit-pylint-venv/bin/python3"
+    _inode_before="$(stat -c %i "${_venv_python}")"
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+    _inode_after="$(stat -c %i "${_venv_python}")"
+    [ "${_inode_before}" = "${_inode_after}" ]
+}
+
+@test "run-pylint wrapper rebuilds the venv when requirements.txt changes" {
+    if ! command -v pylint > /dev/null 2>&1; then
+        skip "pylint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T _probe _venv_python _inode_before _inode_after
+    _probe="${BATS_TEST_TMPDIR}/venvprobe"
+    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+        skip "python3 -m venv is not functional in this environment (install python3-venv)"
+    fi
+    rm -rf "${_probe}"
+    T="$(make_repo feature/pylint-wrapper-reqs-rebuild)"
+    printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf 'six==1.16.0\n' > "${T}/requirements.txt"
+    printf '"""Uses six."""\n\nimport six\n\nprint(six.__version__)\n' > "${T}/good.py"
+    git -C "${T}" add .pre-commit-config.yaml requirements.txt good.py
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+    _venv_python="${T}/.git/credfeto-precommit-pylint-venv/bin/python3"
+    _inode_before="$(stat -c %i "${_venv_python}")"
+    printf 'six==1.16.0\ncertifi\n' > "${T}/requirements.txt"
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+    _inode_after="$(stat -c %i "${_venv_python}")"
+    [ "${_inode_before}" != "${_inode_after}" ]
+}
+
+@test "run-pylint wrapper installs pyproject.toml [project.dependencies] into a cached venv so pylint resolves the import" {
+    if ! command -v pylint > /dev/null 2>&1; then
+        skip "pylint not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T _probe
+    _probe="${BATS_TEST_TMPDIR}/venvprobe"
+    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+        skip "python3 -m venv is not functional in this environment (install python3-venv)"
+    fi
+    rm -rf "${_probe}"
+    T="$(make_repo feature/pylint-wrapper-pyproject-deps)"
+    printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    cat > "${T}/pyproject.toml" <<'EOF'
+[project]
+name = "wrapper-test"
+version = "0.0.1"
+dependencies = [
+    "six==1.16.0",
+]
+EOF
+    printf '"""Uses six."""\n\nimport six\n\nprint(six.__version__)\n' > "${T}/good.py"
+    git -C "${T}" add .pre-commit-config.yaml pyproject.toml good.py
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+    [ -x "${T}/.git/credfeto-precommit-pylint-venv/bin/python3" ]
 }
 
 # ── flake8 ────────────────────────────────────────────────────────────────────

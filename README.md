@@ -58,7 +58,7 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
 | Source | Packages |
 | -------- | ---------- |
-| `apt` | `git`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-pylint`, `libxml2-utils`, `curl`, `gpg`, `pipx` |
+| `apt` | `git`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-pylint`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx` |
 | `apt` (fallback: `pipx`) | `ansible-lint` — installed via `pipx` on older releases where the `apt` package is unavailable |
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
