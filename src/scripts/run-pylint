@@ -95,10 +95,13 @@ fi
 if ! "$VENV_DIR/bin/python3" -c 'import pylint' > /dev/null 2>&1; then
     # --system-site-packages only inherits a system-wide pylint install; it
     # does not see a pipx-isolated one (see install-deps-debian's pylint
-    # fallback for Ubuntu 24.04+, which apt no longer packages).
-    warn "pylint is not importable from the venv (system pylint may be a pipx install)"
-    rm -rf "$VENV_DIR"
-    exec pylint "$@"
+    # fallback for Ubuntu 24.04+, which apt no longer packages). Install
+    # pylint into the venv itself so the repo's own deps are still resolvable.
+    if ! "$VENV_DIR/bin/pip" install --quiet pylint; then
+        warn "pylint is not importable from the venv and could not be installed into it"
+        rm -rf "$VENV_DIR"
+        exec pylint "$@"
+    fi
 fi
 
 echo "$MANIFEST_HASH" > "$STAMP"
