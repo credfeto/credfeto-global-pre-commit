@@ -196,6 +196,17 @@ repos:
         files: (^|/)Dockerfile[^/]*$
         args: [--config, .github/linters/.hadolint.yaml]
 
+      # ── Compose volume mount modes — not part of Super-linter's VALIDATE_*
+      # set; added independently. Catches typo'd short-syntax modes (e.g.
+      # ":r" instead of ":ro") that neither YAML parsing nor the official
+      # compose-spec JSON schema catch, since the schema treats the whole
+      # entry as a free-form string. Bundled script — no external tool.
+      - id: check-compose-volumes
+        name: check-compose-volumes
+        entry: check-compose-volumes
+        language: system
+        files: (^|/)(docker-)?compose(\.[^/]+)?\.ya?ml$
+
       # ── VALIDATE_GITHUB_ACTIONS — workflows ──────────────────────────────
       # require_serial: true avoids sharding shellcheck invocations (which
       # actionlint shells out to per embedded `run:` script) across concurrent
