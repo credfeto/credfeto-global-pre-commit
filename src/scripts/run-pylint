@@ -22,10 +22,8 @@ PYPROJECT_TOML="$REPO_ROOT/pyproject.toml"
 
 if [ -f "$REQUIREMENTS_TXT" ]; then
     MANIFEST="$REQUIREMENTS_TXT"
-    IS_PYPROJECT=
 elif [ -f "$PYPROJECT_TOML" ]; then
     MANIFEST="$PYPROJECT_TOML"
-    IS_PYPROJECT=1
 else
     exec pylint "$@"
 fi
@@ -78,7 +76,7 @@ fi
 rm -rf "$VENV_DIR"
 mkdir -p "$VENV_DIR"
 
-if [ -z "$IS_PYPROJECT" ]; then
+if [ "$MANIFEST" = "$REQUIREMENTS_TXT" ]; then
     REQS="$REQUIREMENTS_TXT"
 else
     extract_pyproject_deps "$PYPROJECT_TOML" > "$GENERATED_REQS"
