@@ -28,8 +28,12 @@ else
     exec pylint "$@"
 fi
 
-warn() {
-    printf '\nwarning: run-pylint: %s\n' "$*" >&2
+info() {
+    if [ -t 1 ]; then
+        printf '\n\033[32m→\033[0m %s\n' "$*"
+    else
+        printf '\n→ %s\n' "$*"
+    fi
 }
 
 # Prints the PEP 621 [project.dependencies] array from a pyproject.toml as
@@ -92,12 +96,12 @@ else
 fi
 
 if ! python3 -m venv --system-site-packages "$VENV_DIR" 2>/dev/null; then
-    warn "failed to create venv — check python3-venv is installed"
+    info "warning: run-pylint: failed to create venv — check python3-venv is installed"
     fallback "$@"
 fi
 
 if ! "$VENV_DIR/bin/pip" install --quiet -r "$REQS"; then
-    warn "failed to install dependencies from $REQS"
+    info "warning: run-pylint: failed to install dependencies from $REQS"
     fallback "$@"
 fi
 
@@ -107,7 +111,7 @@ if ! "$VENV_DIR/bin/python3" -c 'import pylint' > /dev/null 2>&1; then
     # fallback for Ubuntu 24.04+, which apt no longer packages). Install
     # pylint into the venv itself so the repo's own deps are still resolvable.
     if ! "$VENV_DIR/bin/pip" install --quiet pylint; then
-        warn "pylint is not importable from the venv and could not be installed into it"
+        info "warning: run-pylint: pylint is not importable from the venv and could not be installed into it"
         fallback "$@"
     fi
 fi
