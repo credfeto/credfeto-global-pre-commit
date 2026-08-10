@@ -733,6 +733,16 @@ _ansible_env_ok() {
 
 # ── run-pylint wrapper (repo-declared dependency resolution) ───────────────────
 
+_venv_functional_ok() {
+    local _probe
+    _probe="${BATS_TEST_TMPDIR}/venvprobe"
+    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+        return 1
+    fi
+    rm -rf "${_probe}"
+    return 0
+}
+
 @test "run-pylint wrapper behaves like plain pylint when the repo declares no dependency manifest" {
     if ! command -v pylint > /dev/null 2>&1; then
         skip "pylint not installed"
@@ -800,12 +810,10 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T _probe
-    _probe="${BATS_TEST_TMPDIR}/venvprobe"
-    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+    local T
+    if ! _venv_functional_ok; then
         skip "python3 -m venv is not functional in this environment (install python3-venv)"
     fi
-    rm -rf "${_probe}"
     T="$(make_repo feature/pylint-wrapper-reqs)"
     printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'six==1.16.0\n' > "${T}/requirements.txt"
@@ -823,12 +831,10 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T _probe _venv_python _inode_before _inode_after
-    _probe="${BATS_TEST_TMPDIR}/venvprobe"
-    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+    local T _venv_python _inode_before _inode_after
+    if ! _venv_functional_ok; then
         skip "python3 -m venv is not functional in this environment (install python3-venv)"
     fi
-    rm -rf "${_probe}"
     T="$(make_repo feature/pylint-wrapper-reqs-cache)"
     printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'six==1.16.0\n' > "${T}/requirements.txt"
@@ -851,12 +857,10 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T _probe _venv_python _stamp _hash_after
-    _probe="${BATS_TEST_TMPDIR}/venvprobe"
-    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+    local T _venv_python _stamp _hash_after
+    if ! _venv_functional_ok; then
         skip "python3 -m venv is not functional in this environment (install python3-venv)"
     fi
-    rm -rf "${_probe}"
     T="$(make_repo feature/pylint-wrapper-reqs-rebuild)"
     printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'six==1.16.0\n' > "${T}/requirements.txt"
@@ -898,12 +902,10 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T _probe
-    _probe="${BATS_TEST_TMPDIR}/venvprobe"
-    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
+    local T
+    if ! _venv_functional_ok; then
         skip "python3 -m venv is not functional in this environment (install python3-venv)"
     fi
-    rm -rf "${_probe}"
     T="$(make_repo feature/pylint-wrapper-pyproject-deps)"
     printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     cat > "${T}/pyproject.toml" <<'EOF'

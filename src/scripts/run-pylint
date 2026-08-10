@@ -22,8 +22,10 @@ PYPROJECT_TOML="$REPO_ROOT/pyproject.toml"
 
 if [ -f "$REQUIREMENTS_TXT" ]; then
     MANIFEST="$REQUIREMENTS_TXT"
+    IS_PYPROJECT=
 elif [ -f "$PYPROJECT_TOML" ]; then
     MANIFEST="$PYPROJECT_TOML"
+    IS_PYPROJECT=1
 else
     exec pylint "$@"
 fi
@@ -59,37 +61,42 @@ VENV_DIR="$GIT_DIR/credfeto-precommit-pylint-venv"
 GENERATED_REQS="$VENV_DIR/requirements.txt"
 STAMP="$VENV_DIR/.requirements-hash"
 
-MANIFEST_HASH=$(sha256sum "$MANIFEST" | cut -d' ' -f1)
+fallback() {
+    rm -rf "$VENV_DIR"
+    exec pylint "$@"
+}
 
-if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$MANIFEST_HASH" ] && [ -x "$VENV_DIR/bin/python3" ]; then
+MANIFEST_HASH=$(sha256sum "$MANIFEST") && MANIFEST_HASH=${MANIFEST_HASH%% *}
+
+CACHED_HASH=
+[ -f "$STAMP" ] && read -r CACHED_HASH < "$STAMP"
+
+if [ "$CACHED_HASH" = "$MANIFEST_HASH" ] && [ -x "$VENV_DIR/bin/python3" ]; then
     exec "$VENV_DIR/bin/python3" -m pylint "$@"
 fi
 
 rm -rf "$VENV_DIR"
 mkdir -p "$VENV_DIR"
 
-if [ "$MANIFEST" = "$REQUIREMENTS_TXT" ]; then
+if [ -z "$IS_PYPROJECT" ]; then
     REQS="$REQUIREMENTS_TXT"
 else
     extract_pyproject_deps "$PYPROJECT_TOML" > "$GENERATED_REQS"
     if [ ! -s "$GENERATED_REQS" ]; then
         # No [project.dependencies] key — nothing to install.
-        rm -rf "$VENV_DIR"
-        exec pylint "$@"
+        fallback "$@"
     fi
     REQS="$GENERATED_REQS"
 fi
 
 if ! python3 -m venv --system-site-packages "$VENV_DIR" 2>/dev/null; then
     warn "failed to create venv — check python3-venv is installed"
-    rm -rf "$VENV_DIR"
-    exec pylint "$@"
+    fallback "$@"
 fi
 
 if ! "$VENV_DIR/bin/pip" install --quiet -r "$REQS"; then
     warn "failed to install dependencies from $REQS"
-    rm -rf "$VENV_DIR"
-    exec pylint "$@"
+    fallback "$@"
 fi
 
 if ! "$VENV_DIR/bin/python3" -c 'import pylint' > /dev/null 2>&1; then
@@ -99,8 +106,7 @@ if ! "$VENV_DIR/bin/python3" -c 'import pylint' > /dev/null 2>&1; then
     # pylint into the venv itself so the repo's own deps are still resolvable.
     if ! "$VENV_DIR/bin/pip" install --quiet pylint; then
         warn "pylint is not importable from the venv and could not be installed into it"
-        rm -rf "$VENV_DIR"
-        exec pylint "$@"
+        fallback "$@"
     fi
 fi
 
