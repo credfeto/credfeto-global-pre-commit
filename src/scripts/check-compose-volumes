@@ -1,0 +1,51 @@
+#!/bin/sh
+# Flags docker-compose / compose volume short-syntax entries
+# (SOURCE:TARGET:MODE) whose trailing MODE isn't a value Docker actually
+# recognises — most commonly ":r" typed in place of ":ro". Neither YAML
+# syntax checking nor the official compose-spec JSON schema catch this: the
+# schema treats the whole entry as a free-form string, so the typo is only
+# ever discovered when someone tries to run the stack.
+# Valid modes: https://docs.docker.com/reference/compose-file/services/#short-syntax-5
+
+is_valid_mode() {
+    OLD_IFS=$IFS
+    IFS=,
+    for TOKEN in $1; do
+        case "$TOKEN" in
+            ro | rw | z | Z | private | rprivate | shared | rshared | slave | rslave | relabel | nocopy | delegated | cached | consistent) ;;
+            *)
+                IFS=$OLD_IFS
+                return 1
+                ;;
+        esac
+    done
+    IFS=$OLD_IFS
+    return 0
+}
+
+VIOLATIONS=""
+
+for FILE in "$@"; do
+    CANDIDATES=$(grep -nE '^[[:space:]]*-[[:space:]]*"?[^":[:space:]]+:/[^":[:space:]]+:[A-Za-z][A-Za-z,]*"?[[:space:]]*$' "$FILE") || continue
+
+    while IFS= read -r ENTRY; do
+        [ -z "$ENTRY" ] && continue
+        LINE_NO=${ENTRY%%:*}
+        REST=${ENTRY#*:}
+        MODE=$(printf '%s\n' "$REST" | sed -E 's/^[[:space:]]*-[[:space:]]*"?[^":[:space:]]+:\/[^":[:space:]]+:([A-Za-z][A-Za-z,]*)"?[[:space:]]*$/\1/')
+        if ! is_valid_mode "$MODE"; then
+            VIOLATIONS="${VIOLATIONS}  ${FILE}:${LINE_NO}: invalid volume mount mode \"${MODE}\" — did you mean \"ro\" or \"rw\"?
+"
+        fi
+    done <<EOF
+$CANDIDATES
+EOF
+done
+
+if [ -n "$VIOLATIONS" ]; then
+    printf '\n\033[31m✗\033[0m %s\n' "Invalid docker-compose volume mount mode(s):" >&2
+    printf '%s' "$VIOLATIONS" >&2
+    exit 1
+fi
+
+exit 0
