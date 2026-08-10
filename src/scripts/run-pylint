@@ -73,17 +73,21 @@ if [ "$CACHED_HASH" = "$MANIFEST_HASH" ] && [ -x "$VENV_DIR/bin/python3" ]; then
     exec "$VENV_DIR/bin/python3" -m pylint "$@"
 fi
 
+if [ "$MANIFEST" = "$PYPROJECT_TOML" ]; then
+    GENERATED_DEPS=$(extract_pyproject_deps "$PYPROJECT_TOML")
+    if [ -z "$GENERATED_DEPS" ]; then
+        # No [project.dependencies] key — nothing to install.
+        fallback "$@"
+    fi
+fi
+
 rm -rf "$VENV_DIR"
 mkdir -p "$VENV_DIR"
 
 if [ "$MANIFEST" = "$REQUIREMENTS_TXT" ]; then
     REQS="$REQUIREMENTS_TXT"
 else
-    extract_pyproject_deps "$PYPROJECT_TOML" > "$GENERATED_REQS"
-    if [ ! -s "$GENERATED_REQS" ]; then
-        # No [project.dependencies] key — nothing to install.
-        fallback "$@"
-    fi
+    printf '%s\n' "$GENERATED_DEPS" > "$GENERATED_REQS"
     REQS="$GENERATED_REQS"
 fi
 

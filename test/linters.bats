@@ -736,14 +736,20 @@ _ansible_env_ok() {
 # Matches VENV_DIR in src/scripts/run-pylint.
 PYLINT_VENV_DIR="credfeto-precommit-pylint-venv"
 
+# python3 -m venv is slow enough, and needed by 4 tests below, that the
+# probe's pass/fail verdict is cached to disk for the run (BATS_RUN_TMPDIR is
+# shared across the whole run) rather than rebuilt from scratch every call.
 _venv_functional_ok() {
-    local _probe
-    _probe="${BATS_TEST_TMPDIR}/venvprobe"
-    if ! python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1; then
-        return 1
+    local _cache="${BATS_RUN_TMPDIR}/venv-functional-ok"
+    if [ -f "${_cache}" ]; then
+        [ "$(cat "${_cache}")" = "0" ]
+        return
     fi
+    local _probe="${BATS_TEST_TMPDIR}/venvprobe" _result=0
+    python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1 || _result=1
     rm -rf "${_probe}"
-    return 0
+    echo "${_result}" > "${_cache}"
+    [ "${_result}" = "0" ]
 }
 
 _require_functional_venv() {
@@ -752,11 +758,28 @@ _require_functional_venv() {
     fi
 }
 
+# Writes a good.py that imports/uses six, the shared probe module used to
+# prove a declared dependency is actually resolvable from the venv.
+_write_six_probe_module() {
+    printf '"""Uses six."""\n\nimport six\n\nprint(six.__version__)\n' > "$1/good.py"
+}
+
 # Writes a requirements.txt + good.py pair declaring/using six, the shared
 # fixture dependency for the venv-caching tests below.
 _write_six_fixture() {
     printf 'six==1.16.0\n' > "$1/requirements.txt"
-    printf '"""Uses six."""\n\nimport six\n\nprint(six.__version__)\n' > "$1/good.py"
+    _write_six_probe_module "$1"
+}
+
+# Asserts pylint ran directly against $3 with no venv left behind and
+# rejected the undefined-variable fixture, shared by the "no venv built"
+# tests below. Takes $status/$output as $1/$2 rather than reading the bats
+# globals directly, so shellcheck can see they stay within the @test's own
+# subshell.
+_assert_ran_without_venv() {
+    [ "$1" -eq 1 ]
+    [[ "$2" == *"E0602"* ]]
+    [ ! -d "$3/.git/${PYLINT_VENV_DIR}" ]
 }
 
 @test "run-pylint wrapper behaves like plain pylint when the repo declares no dependency manifest" {
@@ -772,9 +795,7 @@ _write_six_fixture() {
     printf 'def bad():\n    print(undefined_var)\n' > "${T}/bad.py"
     git -C "${T}" add .pre-commit-config.yaml bad.py
     run_hook "${T}"
-    [ "${status}" -eq 1 ]
-    [[ "${output}" == *"E0602"* ]]
-    [ ! -d "${T}/.git/${PYLINT_VENV_DIR}" ]
+    _assert_ran_without_venv "${status}" "${output}" "${T}"
 }
 
 @test "run-pylint wrapper does not build a venv for a pyproject.toml with no [project.dependencies]" {
@@ -794,9 +815,7 @@ EOF
     printf 'def bad():\n    print(undefined_var)\n' > "${T}/bad.py"
     git -C "${T}" add .pre-commit-config.yaml pyproject.toml bad.py
     run_hook "${T}"
-    [ "${status}" -eq 1 ]
-    [[ "${output}" == *"E0602"* ]]
-    [ ! -d "${T}/.git/${PYLINT_VENV_DIR}" ]
+    _assert_ran_without_venv "${status}" "${output}" "${T}"
 }
 
 @test "run-pylint wrapper falls back to system pylint when a declared dependency cannot be installed" {
@@ -813,10 +832,8 @@ EOF
     printf 'def bad():\n    print(undefined_var)\n' > "${T}/bad.py"
     git -C "${T}" add .pre-commit-config.yaml requirements.txt bad.py
     run_hook "${T}"
-    [ "${status}" -eq 1 ]
     [[ "${output}" == *"warning: run-pylint:"* ]]
-    [[ "${output}" == *"E0602"* ]]
-    [ ! -d "${T}/.git/${PYLINT_VENV_DIR}" ]
+    _assert_ran_without_venv "${status}" "${output}" "${T}"
 }
 
 @test "run-pylint wrapper installs requirements.txt dependencies into a cached venv so pylint resolves the import" {
@@ -921,7 +938,7 @@ dependencies = [
     "six==1.16.0",
 ]
 EOF
-    printf '"""Uses six."""\n\nimport six\n\nprint(six.__version__)\n' > "${T}/good.py"
+    _write_six_probe_module "${T}"
     git -C "${T}" add .pre-commit-config.yaml pyproject.toml good.py
     run_hook "${T}"
     [ "${status}" -eq 0 ]
