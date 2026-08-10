@@ -1,0 +1,120 @@
+#!/bin/sh
+# Wrapper for pylint. If the repo declares Python dependencies via a
+# requirements.txt or a PEP 621 pyproject.toml [project.dependencies] array,
+# builds/reuses a --system-site-packages venv (inherits the pinned system
+# pylint + its deps) with those dependencies layered on top, then runs pylint
+# via that venv's own Python — so pylint's import resolution can see the
+# repo's own dependencies, which the system pylint's site-packages never can
+# (every repo can declare arbitrary Python deps; there is no fixed list to
+# bake into the shared container image). If neither manifest is present,
+# execs system pylint directly — current behaviour, zero overhead. If venv
+# creation or dependency install fails for any reason, falls back to system
+# pylint with a stderr warning rather than hard-failing every commit in the
+# repo (possible E0401 false positives on the repo's own imports, same as
+# today, rather than every commit failing on a transient PyPI outage or an
+# unbuildable manifest). Cached under $(git rev-parse --git-dir), keyed by a
+# hash of the manifest, so unchanged manifests reuse the venv across repeated
+# pre-commit runs within the same container.
+
+REPO_ROOT=$(git rev-parse --show-toplevel) || exec pylint "$@"
+REQUIREMENTS_TXT="$REPO_ROOT/requirements.txt"
+PYPROJECT_TOML="$REPO_ROOT/pyproject.toml"
+
+if [ -f "$REQUIREMENTS_TXT" ]; then
+    MANIFEST="$REQUIREMENTS_TXT"
+elif [ -f "$PYPROJECT_TOML" ]; then
+    MANIFEST="$PYPROJECT_TOML"
+else
+    exec pylint "$@"
+fi
+
+info() {
+    if [ -t 1 ]; then
+        printf '\n\033[32m→\033[0m %s\n' "$*"
+    else
+        printf '\n→ %s\n' "$*"
+    fi
+}
+
+# Prints the PEP 621 [project.dependencies] array from a pyproject.toml as
+# PEP 508 requirement strings, one per line. Prints nothing if there is no
+# such key (e.g. a pyproject.toml that only holds [tool.*] config).
+extract_pyproject_deps() {
+    if python3 -c 'import tomllib' > /dev/null 2>&1; then
+        python3 -c '
+import sys, tomllib
+with open(sys.argv[1], "rb") as fh:
+    data = tomllib.load(fh)
+for dep in data.get("project", {}).get("dependencies") or []:
+    print(dep)
+' "$1" 2>/dev/null
+        return
+    fi
+    # Fallback for python3 builds without tomllib (< 3.11): a grep/sed
+    # heuristic over the `dependencies = [ ... ]` array body. Handles the
+    # common double-quoted, one-entry-per-line style only.
+    sed -n '/^[[:space:]]*dependencies[[:space:]]*=[[:space:]]*\[/,/\]/p' "$1" \
+        | grep -o '"[^"]*"' \
+        | sed 's/^"//;s/"$//'
+}
+
+GIT_DIR=$(git rev-parse --absolute-git-dir) || exec pylint "$@"
+VENV_DIR="$GIT_DIR/credfeto-precommit-pylint-venv"
+GENERATED_REQS="$VENV_DIR/requirements.txt"
+STAMP="$VENV_DIR/.requirements-hash"
+
+fallback() {
+    rm -rf "$VENV_DIR"
+    exec pylint "$@"
+}
+
+MANIFEST_HASH=$(sha256sum "$MANIFEST") && MANIFEST_HASH=${MANIFEST_HASH%% *}
+
+CACHED_HASH=
+[ -f "$STAMP" ] && read -r CACHED_HASH < "$STAMP"
+
+if [ "$CACHED_HASH" = "$MANIFEST_HASH" ] && [ -x "$VENV_DIR/bin/python3" ]; then
+    exec "$VENV_DIR/bin/python3" -m pylint "$@"
+fi
+
+if [ "$MANIFEST" = "$PYPROJECT_TOML" ]; then
+    GENERATED_DEPS=$(extract_pyproject_deps "$PYPROJECT_TOML")
+    if [ -z "$GENERATED_DEPS" ]; then
+        # No [project.dependencies] key — nothing to install.
+        fallback "$@"
+    fi
+fi
+
+rm -rf "$VENV_DIR"
+mkdir -p "$VENV_DIR"
+
+if [ "$MANIFEST" = "$REQUIREMENTS_TXT" ]; then
+    REQS="$REQUIREMENTS_TXT"
+else
+    printf '%s\n' "$GENERATED_DEPS" > "$GENERATED_REQS"
+    REQS="$GENERATED_REQS"
+fi
+
+if ! python3 -m venv --system-site-packages "$VENV_DIR" 2>/dev/null; then
+    info "warning: run-pylint: failed to create venv — check python3-venv is installed"
+    fallback "$@"
+fi
+
+if ! "$VENV_DIR/bin/pip" install --quiet -r "$REQS"; then
+    info "warning: run-pylint: failed to install dependencies from $REQS"
+    fallback "$@"
+fi
+
+if ! "$VENV_DIR/bin/python3" -c 'import pylint' > /dev/null 2>&1; then
+    # --system-site-packages only inherits a system-wide pylint install; it
+    # does not see a pipx-isolated one (see install-deps-debian's pylint
+    # fallback for Ubuntu 24.04+, which apt no longer packages). Install
+    # pylint into the venv itself so the repo's own deps are still resolvable.
+    if ! "$VENV_DIR/bin/pip" install --quiet pylint; then
+        info "warning: run-pylint: pylint is not importable from the venv and could not be installed into it"
+        fallback "$@"
+    fi
+fi
+
+echo "$MANIFEST_HASH" > "$STAMP"
+exec "$VENV_DIR/bin/python3" -m pylint "$@"
