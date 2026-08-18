@@ -64,6 +64,7 @@ sudo pacman -S --needed --noconfirm \
     libxml2 \
     python-pipx \
     trivy \
+    parallel \
     || die "pacman install failed"
 
 # ── AUR packages ──────────────────────────────────────────────────────────────

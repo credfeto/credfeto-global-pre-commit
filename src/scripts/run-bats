@@ -101,4 +101,24 @@ fi
 
 export TMPDIR="$BATS_RESOLVED_TMPDIR"
 
-exec bats --recursive "$REPO_ROOT/test"
+# GNU parallel is bats' own prerequisite for --jobs; without it (or without a
+# usable CPU count) fall through to today's unmodified serial run rather than
+# failing. The job count is min(nproc, 8) - capped, not a raw core-count
+# passthrough, since this script ships to every consumer repo on unknown
+# hardware - and a computed count of 1 is skipped so a single-core/low-core
+# host doesn't pay GNU parallel's overhead for zero actual parallelism.
+# Deliberately not passing --no-parallelize-within-files: consumer repos'
+# slow tests are typically concentrated inside a handful of files, not
+# spread across many.
+BATS_JOBS_ARGS=()
+if command -v parallel > /dev/null 2>&1; then
+    CPU_COUNT=$(nproc 2>/dev/null) || CPU_COUNT=$(getconf _NPROCESSORS_ONLN 2>/dev/null) || CPU_COUNT=0
+    case "$CPU_COUNT" in (*[!0-9]*) CPU_COUNT=0 ;; esac
+    if [ "$CPU_COUNT" -ge 1 ] 2>/dev/null; then
+        BATS_JOBS="$CPU_COUNT"
+        [ "$BATS_JOBS" -gt 8 ] && BATS_JOBS=8
+        [ "$BATS_JOBS" -gt 1 ] && BATS_JOBS_ARGS=(--jobs "$BATS_JOBS")
+    fi
+fi
+
+exec bats "${BATS_JOBS_ARGS[@]}" --recursive "$REPO_ROOT/test"

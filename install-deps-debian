@@ -37,6 +37,7 @@ sudo apt-get install -y \
     curl \
     gpg \
     pipx \
+    parallel \
     || die "apt-get install failed"
 
 # Ensure pipx is available even on older systems that lack the apt package.

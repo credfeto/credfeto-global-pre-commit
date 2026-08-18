@@ -247,6 +247,12 @@ else
     cross "VALIDATE_BATS — bats tests       (*.bats)" "not installed"
 fi
 
+if has parallel; then
+    skip  "bats --jobs N parallelisation (GNU parallel)" "$(parallel --version 2>/dev/null | head -1)"
+else
+    cross "bats --jobs N parallelisation (GNU parallel)" "not installed — bats runs serially"
+fi
+
 skip  "VALIDATE_SQLFLUFF — sqlfluff (*.sql)"  "handled by dedicated SQL check above"
 skip  "VALIDATE_CLOUDFORMATION — cfn-lint"    "handled by dedicated CFN check above"
 
@@ -278,6 +284,7 @@ has xmllint       || MISSING_SYSTEM="$MISSING_SYSTEM xmllint"
 $PWSH_OK          || MISSING_SYSTEM="$MISSING_SYSTEM pwsh"
 has bats          || MISSING_SYSTEM="$MISSING_SYSTEM bats"
 has trivy         || MISSING_SYSTEM="$MISSING_SYSTEM trivy"
+has parallel      || MISSING_SYSTEM="$MISSING_SYSTEM parallel"
 
 if [ -n "$MISSING_SYSTEM" ]; then
     echo ""
@@ -302,6 +309,7 @@ if [ -n "$MISSING_SYSTEM" ]; then
     $PWSH_OK          || echo "  pwsh:           run ./install-deps-arch or ./install-deps-debian (installs as a local dotnet tool + PSScriptAnalyzer module)"
     has bats          || echo "  bats:           apt install bats  # or pacman -S bash-bats"
     has trivy         || echo "  trivy:          pacman -S trivy  # or https://github.com/aquasecurity/trivy/releases"
+    has parallel      || echo "  parallel:       apt install parallel  # or pacman -S parallel"
 fi
 
 echo ""

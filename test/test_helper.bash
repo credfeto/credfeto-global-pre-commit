@@ -52,19 +52,46 @@ TEST_GIT_SIGNINGKEY=""
 
 # Generates the shared test GPG key on first use; reuses it on subsequent calls
 # (within this run and across files, via the GNUPGHOME/keyid cache above).
+# Guarded with flock: under `bats --jobs N` multiple test files run as separate
+# concurrent processes and would otherwise race on this check-then-create
+# sequence against the one shared GNUPGHOME.
 ensure_test_gpg_key() {
     local _keyid_file="${GNUPGHOME}/.keyid"
-    if [ -f "${_keyid_file}" ]; then
-        TEST_GIT_SIGNINGKEY="$(cat "${_keyid_file}")"
-        return 0
-    fi
     mkdir -p "${GNUPGHOME}"
     chmod 700 "${GNUPGHOME}"
-    gpg --batch --pinentry-mode loopback --passphrase '' \
-        --quick-generate-key "${TEST_GIT_EMAIL}" ed25519 sign never > /dev/null 2>&1
-    TEST_GIT_SIGNINGKEY="$(gpg --batch --list-secret-keys --with-colons "${TEST_GIT_EMAIL}" \
-        | awk -F: '/^sec/{print $5; exit}')"
-    printf '%s' "${TEST_GIT_SIGNINGKEY}" > "${_keyid_file}"
+    (
+        flock -x 200
+        if [ ! -f "${_keyid_file}" ]; then
+            gpg --batch --pinentry-mode loopback --passphrase '' \
+                --quick-generate-key "${TEST_GIT_EMAIL}" ed25519 sign never > /dev/null 2>&1
+            gpg --batch --list-secret-keys --with-colons "${TEST_GIT_EMAIL}" \
+                | awk -F: '/^sec/{print $5; exit}' > "${_keyid_file}"
+        fi
+    ) 200> "${_keyid_file}.lock"
+    TEST_GIT_SIGNINGKEY="$(cat "${_keyid_file}")"
+}
+
+# Second, distinct test GPG identity (different email), used only by
+# identity.bats's signingkey-email-mismatch test. Cached and flock-guarded
+# the same way as ensure_test_gpg_key() above.
+OTHER_TEST_GIT_EMAIL="other@example.com"
+OTHER_TEST_GIT_SIGNINGKEY=""
+
+ensure_other_test_gpg_key() {
+    local _keyid_file="${GNUPGHOME}/.other-keyid"
+    mkdir -p "${GNUPGHOME}"
+    chmod 700 "${GNUPGHOME}"
+    (
+        flock -x 200
+        if [ ! -f "${_keyid_file}" ]; then
+            gpg --batch --pinentry-mode loopback --passphrase '' \
+                --quick-generate-key "${OTHER_TEST_GIT_EMAIL}" ed25519 sign never > /dev/null 2>&1
+            gpg --batch --list-secret-keys --with-colons "${OTHER_TEST_GIT_EMAIL}" \
+                | awk -F: '/^sec/{print $5; exit}' > "${_keyid_file}"
+        fi
+    ) 200> "${_keyid_file}.lock"
+    # shellcheck disable=SC2034 # read by test/identity.bats via `load test_helper`
+    OTHER_TEST_GIT_SIGNINGKEY="$(cat "${_keyid_file}")"
 }
 
 # Creates an isolated git repository in BATS_TEST_TMPDIR on the given branch
