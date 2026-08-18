@@ -50,48 +50,47 @@ GNUPGHOME="${BATS_RUN_TMPDIR}/gnupg"
 export GNUPGHOME
 TEST_GIT_SIGNINGKEY=""
 
-# Generates the shared test GPG key on first use; reuses it on subsequent calls
-# (within this run and across files, via the GNUPGHOME/keyid cache above).
-# Guarded with flock: under `bats --jobs N` multiple test files run as separate
-# concurrent processes and would otherwise race on this check-then-create
-# sequence against the one shared GNUPGHOME.
-ensure_test_gpg_key() {
-    local _keyid_file="${GNUPGHOME}/.keyid"
+# Generates a test GPG key on first use; reuses it on subsequent calls (within
+# this run and across files, via the GNUPGHOME/keyid cache above). Guarded with
+# flock: under `bats --jobs N` multiple test files run as separate concurrent
+# processes and would otherwise race on the check-then-create sequence against
+# the one shared GNUPGHOME. The plain existence check up front is a fast path
+# for the (overwhelmingly common) already-cached case, avoiding a fork/flock
+# on every call once the key has been generated.
+_ensure_gpg_key() {
+    local _email="$1"
+    local _keyid_file="$2"
+    if [ -f "${_keyid_file}" ]; then
+        cat "${_keyid_file}"
+        return 0
+    fi
     mkdir -p "${GNUPGHOME}"
     chmod 700 "${GNUPGHOME}"
     (
         flock -x 200
         if [ ! -f "${_keyid_file}" ]; then
             gpg --batch --pinentry-mode loopback --passphrase '' \
-                --quick-generate-key "${TEST_GIT_EMAIL}" ed25519 sign never > /dev/null 2>&1
-            gpg --batch --list-secret-keys --with-colons "${TEST_GIT_EMAIL}" \
+                --quick-generate-key "${_email}" ed25519 sign never > /dev/null 2>&1
+            gpg --batch --list-secret-keys --with-colons "${_email}" \
                 | awk -F: '/^sec/{print $5; exit}' > "${_keyid_file}"
         fi
     ) 200> "${_keyid_file}.lock"
-    TEST_GIT_SIGNINGKEY="$(cat "${_keyid_file}")"
+    cat "${_keyid_file}"
+}
+
+ensure_test_gpg_key() {
+    TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${TEST_GIT_EMAIL}" "${GNUPGHOME}/.keyid")"
 }
 
 # Second, distinct test GPG identity (different email), used only by
-# identity.bats's signingkey-email-mismatch test. Cached and flock-guarded
-# the same way as ensure_test_gpg_key() above.
+# identity.bats's signingkey-email-mismatch test. Cached the same way as
+# ensure_test_gpg_key() above, via the shared _ensure_gpg_key() helper.
 OTHER_TEST_GIT_EMAIL="other@example.com"
 OTHER_TEST_GIT_SIGNINGKEY=""
 
 ensure_other_test_gpg_key() {
-    local _keyid_file="${GNUPGHOME}/.other-keyid"
-    mkdir -p "${GNUPGHOME}"
-    chmod 700 "${GNUPGHOME}"
-    (
-        flock -x 200
-        if [ ! -f "${_keyid_file}" ]; then
-            gpg --batch --pinentry-mode loopback --passphrase '' \
-                --quick-generate-key "${OTHER_TEST_GIT_EMAIL}" ed25519 sign never > /dev/null 2>&1
-            gpg --batch --list-secret-keys --with-colons "${OTHER_TEST_GIT_EMAIL}" \
-                | awk -F: '/^sec/{print $5; exit}' > "${_keyid_file}"
-        fi
-    ) 200> "${_keyid_file}.lock"
     # shellcheck disable=SC2034 # read by test/identity.bats via `load test_helper`
-    OTHER_TEST_GIT_SIGNINGKEY="$(cat "${_keyid_file}")"
+    OTHER_TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${OTHER_TEST_GIT_EMAIL}" "${GNUPGHOME}/.other-keyid")"
 }
 
 # Creates an isolated git repository in BATS_TEST_TMPDIR on the given branch
