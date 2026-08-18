@@ -31,9 +31,11 @@ setup() {
     STUB_BIN="$(mktemp -d "${REPO_DIR}/test/.stub.XXXXXX")"
     FAKE_CACHE="$(mktemp -d "${REPO_DIR}/test/.cache.XXXXXX")"
     ENV_DIR="$(mktemp -d "${REPO_DIR}/test/.envdir.XXXXXX")"
+    export HOOKS_REPO_DIR_TEST_OVERRIDE="${ENV_DIR}"
 }
 
 teardown() {
+    unset HOOKS_REPO_DIR_TEST_OVERRIDE
     [ -n "${STUB_BIN}" ] && rm -rf "${STUB_BIN}"
     [ -n "${FAKE_CACHE}" ] && rm -rf "${FAKE_CACHE}"
     [ -n "${ENV_DIR}" ] && rm -rf "${ENV_DIR}"
@@ -45,7 +47,7 @@ teardown() {
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
-    run_hook "${T}" "${ENV_DIR}"
+    run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
 
@@ -58,7 +60,7 @@ teardown() {
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
-    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}" "${ENV_DIR}"
+    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}"
     [ "${status}" -eq 0 ]
 }
 
@@ -71,7 +73,7 @@ teardown() {
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
-    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}" "${ENV_DIR}"
+    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}"
     [ "${status}" -eq 1 ]
 }
 
@@ -84,7 +86,7 @@ teardown() {
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
-    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}" "${ENV_DIR}"
+    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}"
     [ "${status}" -eq 0 ]
 }
 
@@ -101,7 +103,7 @@ teardown() {
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
-    run_hook_env_as_agent "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}" "${ENV_DIR}"
+    run_hook_env_as_agent "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}"
     [ "${status}" -eq 0 ]
 }
 
@@ -117,6 +119,6 @@ teardown() {
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
-    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}" "${ENV_DIR}"
+    run_hook_env "${T}" "${STUB_BIN}:${TEST_PATH}" "${FAKE_CACHE}"
     [ "${status}" -eq 1 ]
 }
