@@ -50,40 +50,56 @@ GNUPGHOME="${BATS_RUN_TMPDIR}/gnupg"
 export GNUPGHOME
 TEST_GIT_SIGNINGKEY=""
 
+# Runs "$@" once per bats run, guarded by flock on <marker>.lock so concurrent
+# bats --jobs processes racing the check-then-create sequence against shared
+# state (a GPG key, a downloaded trivy DB) serialise instead of corrupting it.
+# The marker is only created once "$@" succeeds. Always locks under fd 200:
+# each call runs in its own subshell, so the fd number isn't shared state.
+# _run_once <marker_file> <command...>
+_run_once() {
+    local _marker="$1"
+    shift
+    (
+        flock -x 200
+        if [ ! -f "${_marker}" ]; then
+            "$@" && touch "${_marker}"
+        fi
+    ) 200> "${_marker}.lock"
+}
+
+# Generates a test GPG key. The marker file doubles as the keyid cache.
+_generate_gpg_keyid() {
+    local _email="$1"
+    local _keyid_file="$2"
+    gpg --batch --pinentry-mode loopback --passphrase '' \
+        --quick-generate-key "${_email}" ed25519 sign never > /dev/null 2>&1
+    gpg --batch --list-secret-keys --with-colons "${_email}" \
+        | awk -F: '/^sec/{print $5; exit}' > "${_keyid_file}"
+}
+
 # Generates a test GPG key on first use; reuses it on subsequent calls (within
-# this run and across files, via the GNUPGHOME/keyid cache above). Guarded with
-# flock: under `bats --jobs N` multiple test files run as separate concurrent
-# processes and would otherwise race on the check-then-create sequence against
-# the one shared GNUPGHOME. The plain existence check up front is a fast path
-# for the (overwhelmingly common) already-cached case, avoiding a fork/flock
-# on every call once the key has been generated.
+# this run and across files, via the GNUPGHOME/keyid cache above). The plain
+# existence check up front is a fast path for the (overwhelmingly common)
+# already-cached case, avoiding the mkdir/chmod/flock work once the key has
+# been generated.
 _ensure_gpg_key() {
     local _email="$1"
     local _keyid_file="$2"
-    if [ -f "${_keyid_file}" ]; then
-        cat "${_keyid_file}"
-        return 0
+    if [ ! -f "${_keyid_file}" ]; then
+        mkdir -p "${GNUPGHOME}"
+        chmod 700 "${GNUPGHOME}"
+        _run_once "${_keyid_file}" _generate_gpg_keyid "${_email}" "${_keyid_file}"
     fi
-    mkdir -p "${GNUPGHOME}"
-    chmod 700 "${GNUPGHOME}"
-    (
-        flock -x 200
-        if [ ! -f "${_keyid_file}" ]; then
-            gpg --batch --pinentry-mode loopback --passphrase '' \
-                --quick-generate-key "${_email}" ed25519 sign never > /dev/null 2>&1
-            gpg --batch --list-secret-keys --with-colons "${_email}" \
-                | awk -F: '/^sec/{print $5; exit}' > "${_keyid_file}"
-        fi
-    ) 200> "${_keyid_file}.lock"
-    cat "${_keyid_file}"
+    IFS= read -r _keyid < "${_keyid_file}"
+    printf '%s' "${_keyid}"
 }
 
 ensure_test_gpg_key() {
     TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${TEST_GIT_EMAIL}" "${GNUPGHOME}/.keyid")"
 }
 
-# Pre-warms trivy's vulnerability DB once per bats run, guarded by flock the
-# same way as _ensure_gpg_key above. trivy's own metadata.json write has no
+# Pre-warms trivy's vulnerability DB once per bats run, via the same _run_once
+# guard as _ensure_gpg_key above. trivy's own metadata.json write has no
 # cross-process lock, so two of linters.bats's trivy tests updating the DB at
 # the same moment under bats --jobs raced and corrupted the loser's read
 # (json decode error: EOF). Warming the shared cache once before either test's
@@ -92,13 +108,7 @@ _TRIVY_DB_WARM_MARKER="${BATS_RUN_TMPDIR}/.trivy-db-warm"
 ensure_trivy_db_warm() {
     command -v trivy > /dev/null 2>&1 || return 0
     [ -f "${_TRIVY_DB_WARM_MARKER}" ] && return 0
-    (
-        flock -x 201
-        if [ ! -f "${_TRIVY_DB_WARM_MARKER}" ]; then
-            trivy fs --download-db-only --quiet "${BATS_RUN_TMPDIR}" \
-                && touch "${_TRIVY_DB_WARM_MARKER}"
-        fi
-    ) 201> "${_TRIVY_DB_WARM_MARKER}.lock"
+    _run_once "${_TRIVY_DB_WARM_MARKER}" trivy fs --download-db-only --quiet "${BATS_RUN_TMPDIR}"
 }
 
 # Second, distinct test GPG identity (different email), used only by
