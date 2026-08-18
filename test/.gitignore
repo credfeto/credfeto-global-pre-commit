@@ -1,4 +1,6 @@
 # Temporary stub-bin directories created by freshness tests; auto-cleaned on teardown.
 .stub.*
+# Temporary HOOKS_REPO_DIR_TEST_OVERRIDE directories created by freshness tests; auto-cleaned on teardown.
+.envdir.*
 # Bats fixture directories
 .fixture.*

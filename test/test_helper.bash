@@ -122,15 +122,19 @@ make_repo() {
 # the same fix in src/scripts/run-bats).
 # The four per-run tmpdir vars are also cleared so the inner bats starts with a
 # fresh tmpdir hierarchy rather than re-using the outer suite directories.
+# An optional 2nd arg sets HOOKS_REPO_DIR_TEST_OVERRIDE (see run_hook_env above).
+# run_hook <repo> [hooks_repo_dir_override]
 run_hook() {
     local _repo="$1"
+    local _override="${2:-}"
     run bash -c '
         cd "$1"
         unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
+        [ -n "$4" ] && export HOOKS_REPO_DIR_TEST_OVERRIDE="$4"
         env PATH="$2" sh "$3"
-    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}" "${_override}"
 }
 
 # Runs the hook with IS_AMEND_TEST_OVERRIDE=1, simulating the invoking git
@@ -162,18 +166,23 @@ run_hook_all_files() {
 }
 
 # Runs the hook with a custom PATH and XDG_CACHE_HOME (for freshness tests).
-# run_hook_env <repo> <path> <xdg_cache_home>
+# An optional 4th arg sets HOOKS_REPO_DIR_TEST_OVERRIDE, so freshness tests can
+# each point the hook at their own isolated .env location (see freshness.bats)
+# rather than racing on the shared repo-root .env under bats --jobs.
+# run_hook_env <repo> <path> <xdg_cache_home> [hooks_repo_dir_override]
 run_hook_env() {
     local _repo="$1"
     local _path="$2"
     local _cache="$3"
+    local _override="${4:-}"
     run bash -c '
         cd "$1"
         unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
+        [ -n "$5" ] && export HOOKS_REPO_DIR_TEST_OVERRIDE="$5"
         env PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
-    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
+    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}" "${_override}"
 }
 
 # Runs the hook in the given repo directory with HOOKS_REPO_DIR_TEST_OVERRIDE set to the
@@ -197,16 +206,19 @@ in_container() {
 }
 
 # Runs the hook as an AI agent (CLAUDECODE=1) with a custom PATH and XDG_CACHE_HOME.
-# run_hook_env_as_agent <repo> <path> <xdg_cache_home>
+# An optional 4th arg sets HOOKS_REPO_DIR_TEST_OVERRIDE (see run_hook_env above).
+# run_hook_env_as_agent <repo> <path> <xdg_cache_home> [hooks_repo_dir_override]
 run_hook_env_as_agent() {
     local _repo="$1"
     local _path="$2"
     local _cache="$3"
+    local _override="${4:-}"
     run bash -c '
         cd "$1"
         unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
+        [ -n "$5" ] && export HOOKS_REPO_DIR_TEST_OVERRIDE="$5"
         env CLAUDECODE=1 PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
-    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
+    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}" "${_override}"
 }
