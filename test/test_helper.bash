@@ -53,12 +53,16 @@ TEST_GIT_SIGNINGKEY=""
 # Runs "$@" once per bats run, guarded by flock on <marker>.lock so concurrent
 # bats --jobs processes racing the check-then-create sequence against shared
 # state (a GPG key, a downloaded trivy DB) serialise instead of corrupting it.
-# The marker is only created once "$@" succeeds. Always locks under fd 200:
-# each call runs in its own subshell, so the fd number isn't shared state.
+# The marker is only created once "$@" succeeds. The plain existence check up
+# front is a fast path for the (overwhelmingly common) already-cached case,
+# avoiding flock/subshell overhead once the marker exists. Always locks under
+# fd 200: each call runs in its own subshell, so the fd number isn't shared
+# state.
 # _run_once <marker_file> <command...>
 _run_once() {
     local _marker="$1"
     shift
+    [ -f "${_marker}" ] && return 0
     (
         flock -x 200
         if [ ! -f "${_marker}" ]; then
@@ -78,18 +82,15 @@ _generate_gpg_keyid() {
 }
 
 # Generates a test GPG key on first use; reuses it on subsequent calls (within
-# this run and across files, via the GNUPGHOME/keyid cache above). The plain
-# existence check up front is a fast path for the (overwhelmingly common)
-# already-cached case, avoiding the mkdir/chmod/flock work once the key has
-# been generated.
+# this run and across files, via the GNUPGHOME/keyid cache above). mkdir/chmod
+# are cheap and idempotent, so they run unconditionally; _run_once's own fast
+# path skips the flock/generate work once the key has been generated.
 _ensure_gpg_key() {
     local _email="$1"
     local _keyid_file="$2"
-    if [ ! -f "${_keyid_file}" ]; then
-        mkdir -p "${GNUPGHOME}"
-        chmod 700 "${GNUPGHOME}"
-        _run_once "${_keyid_file}" _generate_gpg_keyid "${_email}" "${_keyid_file}"
-    fi
+    mkdir -p "${GNUPGHOME}"
+    chmod 700 "${GNUPGHOME}"
+    _run_once "${_keyid_file}" _generate_gpg_keyid "${_email}" "${_keyid_file}"
     IFS= read -r _keyid < "${_keyid_file}"
     printf '%s' "${_keyid}"
 }
@@ -107,7 +108,6 @@ ensure_test_gpg_key() {
 _TRIVY_DB_WARM_MARKER="${BATS_RUN_TMPDIR}/.trivy-db-warm"
 ensure_trivy_db_warm() {
     command -v trivy > /dev/null 2>&1 || return 0
-    [ -f "${_TRIVY_DB_WARM_MARKER}" ] && return 0
     _run_once "${_TRIVY_DB_WARM_MARKER}" trivy fs --download-db-only --quiet "${BATS_RUN_TMPDIR}"
 }
 
@@ -150,19 +150,17 @@ make_repo() {
 # the same fix in src/scripts/run-bats).
 # The four per-run tmpdir vars are also cleared so the inner bats starts with a
 # fresh tmpdir hierarchy rather than re-using the outer suite directories.
-# An optional 2nd arg sets HOOKS_REPO_DIR_TEST_OVERRIDE (see run_hook_env above).
-# run_hook <repo> [hooks_repo_dir_override]
+# HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats),
+# is inherited by bash -c like any other exported variable.
 run_hook() {
     local _repo="$1"
-    local _override="${2:-}"
     run bash -c '
         cd "$1"
         unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
-        [ -n "$4" ] && export HOOKS_REPO_DIR_TEST_OVERRIDE="$4"
         env PATH="$2" sh "$3"
-    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}" "${_override}"
+    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
 }
 
 # Runs the hook with IS_AMEND_TEST_OVERRIDE=1, simulating the invoking git
@@ -194,23 +192,20 @@ run_hook_all_files() {
 }
 
 # Runs the hook with a custom PATH and XDG_CACHE_HOME (for freshness tests).
-# An optional 4th arg sets HOOKS_REPO_DIR_TEST_OVERRIDE, so freshness tests can
-# each point the hook at their own isolated .env location (see freshness.bats)
-# rather than racing on the shared repo-root .env under bats --jobs.
-# run_hook_env <repo> <path> <xdg_cache_home> [hooks_repo_dir_override]
+# HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats),
+# is inherited by bash -c like any other exported variable.
+# run_hook_env <repo> <path> <xdg_cache_home>
 run_hook_env() {
     local _repo="$1"
     local _path="$2"
     local _cache="$3"
-    local _override="${4:-}"
     run bash -c '
         cd "$1"
         unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
-        [ -n "$5" ] && export HOOKS_REPO_DIR_TEST_OVERRIDE="$5"
         env PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
-    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}" "${_override}"
+    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
 }
 
 # Runs the hook in the given repo directory with HOOKS_REPO_DIR_TEST_OVERRIDE set to the
@@ -234,19 +229,18 @@ in_container() {
 }
 
 # Runs the hook as an AI agent (CLAUDECODE=1) with a custom PATH and XDG_CACHE_HOME.
-# An optional 4th arg sets HOOKS_REPO_DIR_TEST_OVERRIDE (see run_hook_env above).
-# run_hook_env_as_agent <repo> <path> <xdg_cache_home> [hooks_repo_dir_override]
+# HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats),
+# is inherited by bash -c like any other exported variable.
+# run_hook_env_as_agent <repo> <path> <xdg_cache_home>
 run_hook_env_as_agent() {
     local _repo="$1"
     local _path="$2"
     local _cache="$3"
-    local _override="${4:-}"
     run bash -c '
         cd "$1"
         unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
-        [ -n "$5" ] && export HOOKS_REPO_DIR_TEST_OVERRIDE="$5"
         env CLAUDECODE=1 PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
-    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}" "${_override}"
+    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
 }
