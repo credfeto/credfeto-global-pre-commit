@@ -1066,6 +1066,7 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
+    ensure_trivy_db_warm
     local T
     T="$(make_repo feature/vulnerable-lockfile-test)"
     printf '%s' "${TRIVY_CONFIG}" > "${T}/.pre-commit-config.yaml"
@@ -1110,6 +1111,7 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
+    ensure_trivy_db_warm
     local T
     T="$(make_repo feature/clean-lockfile-test)"
     printf '%s' "${TRIVY_CONFIG}" > "${T}/.pre-commit-config.yaml"

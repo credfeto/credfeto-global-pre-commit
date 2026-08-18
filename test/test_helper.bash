@@ -82,6 +82,25 @@ ensure_test_gpg_key() {
     TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${TEST_GIT_EMAIL}" "${GNUPGHOME}/.keyid")"
 }
 
+# Pre-warms trivy's vulnerability DB once per bats run, guarded by flock the
+# same way as _ensure_gpg_key above. trivy's own metadata.json write has no
+# cross-process lock, so two of linters.bats's trivy tests updating the DB at
+# the same moment under bats --jobs raced and corrupted the loser's read
+# (json decode error: EOF). Warming the shared cache once before either test's
+# own trivy invocation means both see an already-fresh DB and never write.
+_TRIVY_DB_WARM_MARKER="${BATS_RUN_TMPDIR}/.trivy-db-warm"
+ensure_trivy_db_warm() {
+    command -v trivy > /dev/null 2>&1 || return 0
+    [ -f "${_TRIVY_DB_WARM_MARKER}" ] && return 0
+    (
+        flock -x 201
+        if [ ! -f "${_TRIVY_DB_WARM_MARKER}" ]; then
+            trivy fs --download-db-only --quiet "${BATS_RUN_TMPDIR}" \
+                && touch "${_TRIVY_DB_WARM_MARKER}"
+        fi
+    ) 201> "${_TRIVY_DB_WARM_MARKER}.lock"
+}
+
 # Second, distinct test GPG identity (different email), used only by
 # identity.bats's signingkey-email-mismatch test. Cached the same way as
 # ensure_test_gpg_key() above, via the shared _ensure_gpg_key() helper.
