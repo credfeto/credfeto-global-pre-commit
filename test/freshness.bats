@@ -35,7 +35,6 @@ setup() {
 }
 
 teardown() {
-    unset HOOKS_REPO_DIR_TEST_OVERRIDE
     [ -n "${STUB_BIN}" ] && rm -rf "${STUB_BIN}"
     [ -n "${FAKE_CACHE}" ] && rm -rf "${FAKE_CACHE}"
     [ -n "${ENV_DIR}" ] && rm -rf "${ENV_DIR}"

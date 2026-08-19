@@ -5,6 +5,13 @@
 
 load test_helper
 
+# Warms trivy's vulnerability DB once for the whole file (not per-test) so
+# every trivy-invoking test here, present or future, is covered automatically
+# rather than relying on each test remembering to call ensure_trivy_db_warm.
+setup_file() {
+    ensure_trivy_db_warm
+}
+
 SHELLCHECK_CONFIG='repos:
   - repo: local
     hooks:
@@ -1066,7 +1073,6 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    ensure_trivy_db_warm
     local T
     T="$(make_repo feature/vulnerable-lockfile-test)"
     printf '%s' "${TRIVY_CONFIG}" > "${T}/.pre-commit-config.yaml"
@@ -1111,7 +1117,6 @@ EOF
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    ensure_trivy_db_warm
     local T
     T="$(make_repo feature/clean-lockfile-test)"
     printf '%s' "${TRIVY_CONFIG}" > "${T}/.pre-commit-config.yaml"

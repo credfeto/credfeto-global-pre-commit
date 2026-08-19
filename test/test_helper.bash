@@ -75,10 +75,13 @@ _run_once() {
     ) 200> "${_marker}.lock"
 }
 
-# Generates a test GPG key, writing the keyid to _keyid_file only after both
-# gpg calls complete. chmod lives here (not in _ensure_gpg_key) so it only
-# runs once, on the generate path, instead of on every call; the directory
-# itself is already guaranteed to exist by _run_once's own mkdir -p above.
+# Generates a test GPG key. The final gpg | awk redirect truncates _keyid_file
+# up front and fills it in only once awk produces output, so this must only
+# ever run behind the _run_once ".done" marker in _ensure_gpg_key below, never
+# using _keyid_file itself as the marker. chmod lives here (not in
+# _ensure_gpg_key) so it only runs once, on the generate path, instead of on
+# every call; the directory itself is already guaranteed to exist by
+# _run_once's own mkdir -p above.
 _generate_gpg_keyid() {
     local _email="$1"
     local _keyid_file="$2"
