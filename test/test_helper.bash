@@ -86,8 +86,8 @@ _run_once() {
 _run_once_value() {
     local _value_file="$1"
     shift
-    _run_once "${_value_file}.done" "$@"
-    IFS= read -r _value < "${_value_file}"
+    _run_once "${_value_file}.done" "$@" || return 1
+    IFS= read -r _value < "${_value_file}" || return 1
     printf '%s' "${_value}"
 }
 
