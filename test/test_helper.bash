@@ -55,14 +55,18 @@ TEST_GIT_SIGNINGKEY=""
 # state (a GPG key, a downloaded trivy DB) serialise instead of corrupting it.
 # The marker is only created once "$@" succeeds. The plain existence check up
 # front is a fast path for the (overwhelmingly common) already-cached case,
-# avoiding flock/subshell overhead once the marker exists. Always locks under
-# fd 200: each call runs in its own subshell, so the fd number isn't shared
-# state.
+# avoiding flock/subshell overhead once the marker exists. mkdir -p on the
+# marker's directory only runs on that same slow path, guaranteeing the
+# directory exists before the "200> ${_marker}.lock" redirect below, which
+# would otherwise fail on a marker whose directory nothing has created yet.
+# Always locks under fd 200: each call runs in its own subshell, so the fd
+# number isn't shared state.
 # _run_once <marker_file> <command...>
 _run_once() {
     local _marker="$1"
     shift
     [ -f "${_marker}" ] && return 0
+    mkdir -p "$(dirname "${_marker}")"
     (
         flock -x 200
         if [ ! -f "${_marker}" ]; then
@@ -71,10 +75,14 @@ _run_once() {
     ) 200> "${_marker}.lock"
 }
 
-# Generates a test GPG key. The marker file doubles as the keyid cache.
+# Generates a test GPG key, writing the keyid to _keyid_file only after both
+# gpg calls complete. chmod lives here (not in _ensure_gpg_key) so it only
+# runs once, on the generate path, instead of on every call; the directory
+# itself is already guaranteed to exist by _run_once's own mkdir -p above.
 _generate_gpg_keyid() {
     local _email="$1"
     local _keyid_file="$2"
+    chmod 700 "${GNUPGHOME}"
     gpg --batch --pinentry-mode loopback --passphrase '' \
         --quick-generate-key "${_email}" ed25519 sign never > /dev/null 2>&1
     gpg --batch --list-secret-keys --with-colons "${_email}" \
@@ -82,15 +90,16 @@ _generate_gpg_keyid() {
 }
 
 # Generates a test GPG key on first use; reuses it on subsequent calls (within
-# this run and across files, via the GNUPGHOME/keyid cache above). mkdir/chmod
-# are cheap and idempotent, so they run unconditionally; _run_once's own fast
-# path skips the flock/generate work once the key has been generated.
+# this run and across files, via the GNUPGHOME/keyid cache above). The
+# _run_once marker is "${_keyid_file}.done", distinct from _keyid_file itself:
+# _generate_gpg_keyid's redirect into _keyid_file creates/truncates it before
+# its content is fully written, so using _keyid_file as its own marker would
+# let a concurrent _run_once fast path (line "[ -f "${_marker}" ] && return 0")
+# observe it mid-write and read a half-written keyid.
 _ensure_gpg_key() {
     local _email="$1"
     local _keyid_file="$2"
-    mkdir -p "${GNUPGHOME}"
-    chmod 700 "${GNUPGHOME}"
-    _run_once "${_keyid_file}" _generate_gpg_keyid "${_email}" "${_keyid_file}"
+    _run_once "${_keyid_file}.done" _generate_gpg_keyid "${_email}" "${_keyid_file}"
     IFS= read -r _keyid < "${_keyid_file}"
     printf '%s' "${_keyid}"
 }
