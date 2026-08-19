@@ -75,13 +75,26 @@ _run_once() {
     ) 200> "${_marker}.lock"
 }
 
-# Generates a test GPG key. The final gpg | awk redirect truncates _keyid_file
-# up front and fills it in only once awk produces output, so this must only
-# ever run behind the _run_once ".done" marker in _ensure_gpg_key below, never
-# using _keyid_file itself as the marker. chmod lives here (not in
-# _ensure_gpg_key) so it only runs once, on the generate path, instead of on
-# every call; the directory itself is already guaranteed to exist by
-# _run_once's own mkdir -p above.
+# Runs <command...> (which must write its single-line result into
+# <value_file>) at most once via _run_once, then reads back and prints the
+# cached result. The _run_once marker is "<value_file>.done", distinct from
+# <value_file> itself: a producer's redirect into <value_file> creates/
+# truncates it before its content is fully written, so using <value_file> as
+# its own marker would let a concurrent _run_once fast path
+# ([ -f "${_marker}" ] && return 0) observe it mid-write.
+# _run_once_value <value_file> <command...>
+_run_once_value() {
+    local _value_file="$1"
+    shift
+    _run_once "${_value_file}.done" "$@"
+    IFS= read -r _value < "${_value_file}"
+    printf '%s' "${_value}"
+}
+
+# Generates a test GPG key, writing its keyid into _keyid_file. chmod lives
+# here (not in _ensure_gpg_key) so it only runs once, on the generate path,
+# instead of on every call; the directory itself is already guaranteed to
+# exist by _run_once's own mkdir -p.
 _generate_gpg_keyid() {
     local _email="$1"
     local _keyid_file="$2"
@@ -93,18 +106,11 @@ _generate_gpg_keyid() {
 }
 
 # Generates a test GPG key on first use; reuses it on subsequent calls (within
-# this run and across files, via the GNUPGHOME/keyid cache above). The
-# _run_once marker is "${_keyid_file}.done", distinct from _keyid_file itself:
-# _generate_gpg_keyid's redirect into _keyid_file creates/truncates it before
-# its content is fully written, so using _keyid_file as its own marker would
-# let a concurrent _run_once fast path (line "[ -f "${_marker}" ] && return 0")
-# observe it mid-write and read a half-written keyid.
+# this run and across files, via the GNUPGHOME/keyid cache above).
 _ensure_gpg_key() {
     local _email="$1"
     local _keyid_file="$2"
-    _run_once "${_keyid_file}.done" _generate_gpg_keyid "${_email}" "${_keyid_file}"
-    IFS= read -r _keyid < "${_keyid_file}"
-    printf '%s' "${_keyid}"
+    _run_once_value "${_keyid_file}" _generate_gpg_keyid "${_email}" "${_keyid_file}"
 }
 
 ensure_test_gpg_key() {
@@ -117,10 +123,9 @@ ensure_test_gpg_key() {
 # the same moment under bats --jobs raced and corrupted the loser's read
 # (json decode error: EOF). Warming the shared cache once before either test's
 # own trivy invocation means both see an already-fresh DB and never write.
-_TRIVY_DB_WARM_MARKER="${BATS_RUN_TMPDIR}/.trivy-db-warm"
 ensure_trivy_db_warm() {
     command -v trivy > /dev/null 2>&1 || return 0
-    _run_once "${_TRIVY_DB_WARM_MARKER}" trivy fs --download-db-only --quiet "${BATS_RUN_TMPDIR}"
+    _run_once "${BATS_RUN_TMPDIR}/.trivy-db-warm" trivy fs --download-db-only --quiet "${BATS_RUN_TMPDIR}"
 }
 
 # Second, distinct test GPG identity (different email), used only by
