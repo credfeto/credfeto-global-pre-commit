@@ -162,8 +162,9 @@ make_repo() {
 # the same fix in src/scripts/run-bats).
 # The four per-run tmpdir vars are also cleared so the inner bats starts with a
 # fresh tmpdir hierarchy rather than re-using the outer suite directories.
-# HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats),
-# is inherited by bash -c like any other exported variable.
+# HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats), is
+# inherited by bash -c like any other exported variable, and this applies to every
+# run_hook* helper in this file, not just this one.
 run_hook() {
     local _repo="$1"
     run bash -c '
@@ -204,8 +205,6 @@ run_hook_all_files() {
 }
 
 # Runs the hook with a custom PATH and XDG_CACHE_HOME (for freshness tests).
-# HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats),
-# is inherited by bash -c like any other exported variable.
 # run_hook_env <repo> <path> <xdg_cache_home>
 run_hook_env() {
     local _repo="$1"
@@ -241,8 +240,6 @@ in_container() {
 }
 
 # Runs the hook as an AI agent (CLAUDECODE=1) with a custom PATH and XDG_CACHE_HOME.
-# HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats),
-# is inherited by bash -c like any other exported variable.
 # run_hook_env_as_agent <repo> <path> <xdg_cache_home>
 run_hook_env_as_agent() {
     local _repo="$1"
