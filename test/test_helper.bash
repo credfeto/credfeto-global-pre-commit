@@ -100,9 +100,10 @@ _generate_gpg_keyid() {
     local _keyid_file="$2"
     chmod 700 "${GNUPGHOME}"
     gpg --batch --pinentry-mode loopback --passphrase '' \
-        --quick-generate-key "${_email}" ed25519 sign never > /dev/null 2>&1
+        --quick-generate-key "${_email}" ed25519 sign never > /dev/null 2>&1 || return 1
     gpg --batch --list-secret-keys --with-colons "${_email}" \
         | awk -F: '/^sec/{print $5; exit}' > "${_keyid_file}"
+    [ -s "${_keyid_file}" ]
 }
 
 # Generates a test GPG key on first use; reuses it on subsequent calls (within
