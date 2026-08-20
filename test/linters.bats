@@ -5,6 +5,17 @@
 
 load test_helper
 
+# Warms trivy's vulnerability DB once for the whole file (not per-test) so
+# every trivy-invoking test here, present or future, is covered automatically
+# rather than relying on each test remembering to call ensure_trivy_db_warm.
+# Skipped when pre-commit is absent, matching the trivy tests' own guard below
+# (both are required for those tests to run at all) so a trivy-only host
+# doesn't pay for a DB download whose only consumers will skip anyway.
+setup_file() {
+    command -v pre-commit > /dev/null 2>&1 && ensure_trivy_db_warm
+    return 0
+}
+
 SHELLCHECK_CONFIG='repos:
   - repo: local
     hooks:
@@ -749,17 +760,21 @@ PYLINT_VENV_DIR="credfeto-precommit-pylint-venv"
 # python3 -m venv is slow enough, and needed by 4 tests below, that the
 # probe's pass/fail verdict is cached to disk for the run (BATS_RUN_TMPDIR is
 # shared across the whole run) rather than rebuilt from scratch every call.
-_venv_functional_ok() {
-    local _cache="${BATS_RUN_TMPDIR}/venv-functional-ok"
-    if [ -f "${_cache}" ]; then
-        [ "$(cat "${_cache}")" = "0" ]
-        return
-    fi
-    local _probe="${BATS_TEST_TMPDIR}/venvprobe" _result=0
+# Guarded by the same _run_once_value helper as the GPG key/trivy DB warm-ups
+# in test_helper.bash: bats 1.10.x doesn't reset BATS_TEST_TMPDIR between
+# tests in the same file, so two tests racing the check-then-create sequence
+# under bats --jobs could otherwise collide on the same probe directory, not
+# just the cache file.
+_probe_venv_functional() {
+    local _cache="$1" _probe="${BATS_TEST_TMPDIR}/venvprobe" _result=0
     python3 -m venv --system-site-packages "${_probe}" > /dev/null 2>&1 || _result=1
     rm -rf "${_probe}"
     echo "${_result}" > "${_cache}"
-    [ "${_result}" = "0" ]
+}
+
+_venv_functional_ok() {
+    local _cache="${BATS_RUN_TMPDIR}/venv-functional-ok"
+    [ "$(_run_once_value "${_cache}" _probe_venv_functional "${_cache}")" = "0" ]
 }
 
 _require_functional_venv() {

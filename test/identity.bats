@@ -14,21 +14,6 @@ load test_helper
 
 CHECK_IDENTITY="${REPO_DIR}/src/scripts/check-identity"
 
-# Second, distinct test key (different email) used only by the
-# signingkey-email-mismatch test below.
-OTHER_EMAIL="other@example.com"
-ensure_other_test_gpg_key() {
-    OTHER_SIGNINGKEY="$(gpg --batch --list-secret-keys --with-colons "${OTHER_EMAIL}" 2>/dev/null \
-        | awk -F: '/^sec/{print $5; exit}')"
-    if [ -n "${OTHER_SIGNINGKEY}" ]; then
-        return 0
-    fi
-    gpg --batch --pinentry-mode loopback --passphrase '' \
-        --quick-generate-key "${OTHER_EMAIL}" ed25519 sign never > /dev/null 2>&1
-    OTHER_SIGNINGKEY="$(gpg --batch --list-secret-keys --with-colons "${OTHER_EMAIL}" \
-        | awk -F: '/^sec/{print $5; exit}')"
-}
-
 # Runs check-identity inside "$1". Sets $status and $output via bats run.
 run_check_identity() {
     local _repo="$1"
@@ -92,7 +77,7 @@ run_check_identity() {
     ensure_other_test_gpg_key
     local T
     T="$(make_repo feature/identity-mismatched-signingkey-test)"
-    git -C "${T}" config user.signingkey "${OTHER_SIGNINGKEY}"
+    git -C "${T}" config user.signingkey "${OTHER_TEST_GIT_SIGNINGKEY}"
     run_check_identity "${T}"
     [ "${status}" -eq 1 ]
     [[ "${output}" == *"is not associated with"* ]]

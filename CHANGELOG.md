@@ -148,6 +148,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - install now refuses to install as a global hook when a system hook is already configured, and vice versa, to prevent conflicting hook installs
 - cs-template, funfair-server-template, and funfair-treasury-reporting can no longer edit .ai-instructions or ai/global/*.md through the pre-commit hook, since those files are now blocked unconditionally in every repository (#186); another mechanism will be needed to update them going forward
 - A file in the always-blocked-everywhere list (.globalconfig, .editorconfig, .ansible-lint, .gitattributes, .gitleaks, .yamllint.yml, root .gitignore, etc.) is now exempted from the block when its already-committed content declares the current repo as its '# Maintain in repo:' owner, restoring the declared owner's ability to maintain its own canonical copy (#186)
+- Run bats test suite in parallel using CPU-count-derived --jobs N in run-bats and acceptance-test (#211)
 
 ### Deprecated
 ### Removed

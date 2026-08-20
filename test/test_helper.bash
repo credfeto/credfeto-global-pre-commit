@@ -50,21 +50,94 @@ GNUPGHOME="${BATS_RUN_TMPDIR}/gnupg"
 export GNUPGHOME
 TEST_GIT_SIGNINGKEY=""
 
-# Generates the shared test GPG key on first use; reuses it on subsequent calls
-# (within this run and across files, via the GNUPGHOME/keyid cache above).
-ensure_test_gpg_key() {
-    local _keyid_file="${GNUPGHOME}/.keyid"
-    if [ -f "${_keyid_file}" ]; then
-        TEST_GIT_SIGNINGKEY="$(cat "${_keyid_file}")"
-        return 0
-    fi
-    mkdir -p "${GNUPGHOME}"
+# Runs "$@" once per bats run, guarded by flock on <marker>.lock so concurrent
+# bats --jobs processes racing the check-then-create sequence against shared
+# state (a GPG key, a downloaded trivy DB) serialise instead of corrupting it.
+# The marker is only created once "$@" succeeds. The plain existence check up
+# front is a fast path for the (overwhelmingly common) already-cached case,
+# avoiding flock/subshell overhead once the marker exists. mkdir -p on the
+# marker's directory only runs on that same slow path, guaranteeing the
+# directory exists before the "200> ${_marker}.lock" redirect below, which
+# would otherwise fail on a marker whose directory nothing has created yet.
+# Always locks under fd 200: each call runs in its own subshell, so the fd
+# number isn't shared state.
+# _run_once <marker_file> <command...>
+_run_once() {
+    local _marker="$1"
+    shift
+    [ -f "${_marker}" ] && return 0
+    mkdir -p "$(dirname "${_marker}")"
+    (
+        flock -x 200
+        if [ ! -f "${_marker}" ]; then
+            "$@" && touch "${_marker}"
+        fi
+    ) 200> "${_marker}.lock"
+}
+
+# Runs <command...> (which must write its single-line result into
+# <value_file>) at most once via _run_once, then reads back and prints the
+# cached result. The _run_once marker is "<value_file>.done", distinct from
+# <value_file> itself: a producer's redirect into <value_file> creates/
+# truncates it before its content is fully written, so using <value_file> as
+# its own marker would let a concurrent _run_once fast path
+# ([ -f "${_marker}" ] && return 0) observe it mid-write.
+# _run_once_value <value_file> <command...>
+_run_once_value() {
+    local _value_file="$1"
+    shift
+    _run_once "${_value_file}.done" "$@" || return 1
+    IFS= read -r _value < "${_value_file}" || return 1
+    printf '%s' "${_value}"
+}
+
+# Generates a test GPG key, writing its keyid into _keyid_file. chmod lives
+# here (not in _ensure_gpg_key) so it only runs once, on the generate path,
+# instead of on every call; the directory itself is already guaranteed to
+# exist by _run_once's own mkdir -p.
+_generate_gpg_keyid() {
+    local _email="$1"
+    local _keyid_file="$2"
     chmod 700 "${GNUPGHOME}"
     gpg --batch --pinentry-mode loopback --passphrase '' \
-        --quick-generate-key "${TEST_GIT_EMAIL}" ed25519 sign never > /dev/null 2>&1
-    TEST_GIT_SIGNINGKEY="$(gpg --batch --list-secret-keys --with-colons "${TEST_GIT_EMAIL}" \
-        | awk -F: '/^sec/{print $5; exit}')"
-    printf '%s' "${TEST_GIT_SIGNINGKEY}" > "${_keyid_file}"
+        --quick-generate-key "${_email}" ed25519 sign never > /dev/null 2>&1 || return 1
+    gpg --batch --list-secret-keys --with-colons "${_email}" \
+        | awk -F: '/^sec/{print $5; exit}' > "${_keyid_file}"
+    [ -s "${_keyid_file}" ]
+}
+
+# Generates a test GPG key on first use; reuses it on subsequent calls (within
+# this run and across files, via the GNUPGHOME/keyid cache above).
+_ensure_gpg_key() {
+    local _email="$1"
+    local _keyid_file="$2"
+    _run_once_value "${_keyid_file}" _generate_gpg_keyid "${_email}" "${_keyid_file}"
+}
+
+ensure_test_gpg_key() {
+    TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${TEST_GIT_EMAIL}" "${GNUPGHOME}/.keyid")"
+}
+
+# Pre-warms trivy's vulnerability DB once per bats run, via the same _run_once
+# guard as _ensure_gpg_key above. trivy's own metadata.json write has no
+# cross-process lock, so two of linters.bats's trivy tests updating the DB at
+# the same moment under bats --jobs raced and corrupted the loser's read
+# (json decode error: EOF). Warming the shared cache once before either test's
+# own trivy invocation means both see an already-fresh DB and never write.
+ensure_trivy_db_warm() {
+    command -v trivy > /dev/null 2>&1 || return 0
+    _run_once "${BATS_RUN_TMPDIR}/.trivy-db-warm" trivy fs --download-db-only --quiet "${BATS_RUN_TMPDIR}"
+}
+
+# Second, distinct test GPG identity (different email), used only by
+# identity.bats's signingkey-email-mismatch test. Cached the same way as
+# ensure_test_gpg_key() above, via the shared _ensure_gpg_key() helper.
+OTHER_TEST_GIT_EMAIL="other@example.com"
+OTHER_TEST_GIT_SIGNINGKEY=""
+
+ensure_other_test_gpg_key() {
+    # shellcheck disable=SC2034 # read by test/identity.bats via `load test_helper`
+    OTHER_TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${OTHER_TEST_GIT_EMAIL}" "${GNUPGHOME}/.other-keyid")"
 }
 
 # Creates an isolated git repository in BATS_TEST_TMPDIR on the given branch
@@ -95,6 +168,9 @@ make_repo() {
 # the same fix in src/scripts/run-bats).
 # The four per-run tmpdir vars are also cleared so the inner bats starts with a
 # fresh tmpdir hierarchy rather than re-using the outer suite directories.
+# HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats), is
+# inherited by bash -c like any other exported variable, and this applies to every
+# run_hook* helper in this file, not just this one.
 run_hook() {
     local _repo="$1"
     run bash -c '

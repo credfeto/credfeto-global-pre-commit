@@ -14,4 +14,22 @@ die() {
 command -v git > /dev/null 2>&1 || die "git is not installed"
 command -v bats > /dev/null 2>&1 || die "bats is not installed — run ./install-deps-debian or ./install-deps-arch"
 
-exec bats --print-output-on-failure --recursive "${REPO_DIR}/test"
+# GNU parallel is bats' own prerequisite for --jobs; without it (or without a
+# usable CPU count) fall through to today's unmodified serial run rather than
+# failing. The job count is min(nproc, 8) - capped, not a raw core-count
+# passthrough - and a computed count of 1 is skipped so a low-core host
+# doesn't pay GNU parallel's overhead for zero actual parallelism.
+# Deliberately not passing --no-parallelize-within-files: this repo's own
+# slow tests are concentrated inside a handful of files (see #211), not
+# spread across many.
+BATS_JOBS=""
+if command -v parallel > /dev/null 2>&1; then
+    CPU_COUNT=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)
+    case "$CPU_COUNT" in ('' | *[!0-9]*) CPU_COUNT=0 ;; esac
+    [ "$CPU_COUNT" -gt 8 ] && CPU_COUNT=8
+    [ "$CPU_COUNT" -gt 1 ] && BATS_JOBS="$CPU_COUNT"
+fi
+
+set -- --print-output-on-failure --recursive "${REPO_DIR}/test"
+[ -n "$BATS_JOBS" ] && set -- --jobs "$BATS_JOBS" "$@"
+exec bats "$@"
