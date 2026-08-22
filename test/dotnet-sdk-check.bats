@@ -38,19 +38,7 @@ run_require_compatible_dotnet_sdk() {
     local _fake="${BATS_TEST_TMPDIR}/good-dotnet"
     # --version resolves successfully (exit 0), matching the working-SDK-band case.
     write_fake_dotnet "${_fake}" <<'EOF'
-case "$1" in
-    --version)
-        echo "10.0.400"
-        exit 0
-        ;;
-    --list-sdks)
-        printf '10.0.400 [/usr/share/dotnet/sdk]\n'
-        exit 0
-        ;;
-    *)
-        exit 0
-        ;;
-esac
+exit 0
 EOF
     run_require_compatible_dotnet_sdk "${_fake}"
     [ "${status}" -eq 0 ]
