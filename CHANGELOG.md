@@ -122,6 +122,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Exclude local dev certs (certs/*.local.{pem,key}, certs/localhost.{pem,key}) from detect-private-key false positives (#203)
 - actionlint hook now runs as a single serialised process, avoiding intermittent pre-commit failures when concurrent hook processes race a firejail-wrapped shellcheck's lock (#205)
 - pylint hook now resolves a repo's own declared Python dependencies (requirements.txt or pyproject.toml [project.dependencies]) via a self-managed venv, instead of only seeing the shared container image's site-packages
+- TBD - to be finalized after review
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
