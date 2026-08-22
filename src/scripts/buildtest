@@ -66,6 +66,9 @@ BENCH_AFFECTED_SCRIPT="$(dirname "$(readlink -f "$0")")/benchmark-test-affected"
 LATEST_FRAMEWORK_SCRIPT="$(dirname "$(readlink -f "$0")")/latest-target-framework"
 DACPAC_ONLY_SCRIPT="$(dirname "$(readlink -f "$0")")/dacpac-only-solution"
 
+# shellcheck source=src/scripts/lib/dotnet-sdk-check.sh
+. "$(dirname "$(readlink -f "$0")")/lib/dotnet-sdk-check.sh"
+
 PACK=0
 HAS_PACKED=$(grep -R "<IsPackable>true</IsPackable>" . --include "*.csproj" | head -1)
 if [ -n "$HAS_PACKED" ]; then
@@ -82,6 +85,8 @@ info "Restoring tools..."
 dotnet tool restore || die "######## Tool Restore Failed ########"
 
 cd "$SOURCE_DIR" || die "Could not change to $SOURCE_DIR"
+
+require_compatible_dotnet_sdk
 
 RULESET_TYPE=
 RULESET_FILE=
