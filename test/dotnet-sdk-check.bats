@@ -12,13 +12,32 @@ load test_helper
 
 LIB="${REPO_DIR}/src/scripts/lib/dotnet-sdk-check.sh"
 
-# Writes a fake `dotnet` executable to "$1/dotnet" whose --version resolves
-# successfully (exit 0), matching the working-SDK-band case.
-write_good_dotnet() {
+# Writes a fake `dotnet` executable to "$1/dotnet" from the case-statement
+# body piped in on stdin.
+write_fake_dotnet() {
     local _dir="$1"
     mkdir -p "${_dir}"
-    cat > "${_dir}/dotnet" <<'EOF'
-#!/bin/sh
+    { printf '#!/bin/sh\n'; cat; } > "${_dir}/dotnet"
+    chmod +x "${_dir}/dotnet"
+}
+
+# Sources $LIB with a fake die() and calls require_compatible_dotnet_sdk,
+# with "$1" (a directory holding a fake dotnet written by write_fake_dotnet)
+# first on PATH.
+run_require_compatible_dotnet_sdk() {
+    local _fake="$1"
+    # shellcheck disable=SC2016 # intentionally literal — expanded by the inner sh, not here
+    run env PATH="${_fake}:${TEST_PATH}" sh -c '
+        die() { printf "DIED: %s\n" "$*"; exit 1; }
+        . "$1"
+        require_compatible_dotnet_sdk
+    ' _ "${LIB}"
+}
+
+@test "require_compatible_dotnet_sdk returns 0 with no output when the SDK resolves" {
+    local _fake="${BATS_TEST_TMPDIR}/good-dotnet"
+    # --version resolves successfully (exit 0), matching the working-SDK-band case.
+    write_fake_dotnet "${_fake}" <<'EOF'
 case "$1" in
     --version)
         echo "10.0.400"
@@ -33,18 +52,17 @@ case "$1" in
         ;;
 esac
 EOF
-    chmod +x "${_dir}/dotnet"
+    run_require_compatible_dotnet_sdk "${_fake}"
+    [ "${status}" -eq 0 ]
+    [ -z "${output}" ]
 }
 
-# Writes a fake `dotnet` executable to "$1/dotnet" that succeeds for
-# --list-sdks (printing a canned installed-SDK list, bypassing global.json
-# resolution like the real dotnet does) but exits 155 with the real-world
-# exit-155 SDK-resolution error text for --version (or anything else).
-write_bad_dotnet() {
-    local _dir="$1"
-    mkdir -p "${_dir}"
-    cat > "${_dir}/dotnet" <<'EOF'
-#!/bin/sh
+@test "require_compatible_dotnet_sdk dies with the SDK-band mismatch details, not a missing-tool message" {
+    local _fake="${BATS_TEST_TMPDIR}/bad-dotnet"
+    # --list-sdks succeeds (printing a canned installed-SDK list, bypassing
+    # global.json resolution like the real dotnet does) but --version (or
+    # anything else) exits 155 with the real-world SDK-resolution error text.
+    write_fake_dotnet "${_fake}" <<'EOF'
 case "$1" in
     --list-sdks)
         printf '9.0.317 [/usr/share/dotnet/sdk]\n10.0.400 [/usr/share/dotnet/sdk]\n'
@@ -58,31 +76,7 @@ case "$1" in
         ;;
 esac
 EOF
-    chmod +x "${_dir}/dotnet"
-}
-
-@test "require_compatible_dotnet_sdk returns 0 with no output when the SDK resolves" {
-    local _fake="${BATS_TEST_TMPDIR}/good-dotnet"
-    write_good_dotnet "${_fake}"
-    # shellcheck disable=SC2016 # intentionally literal — expanded by the inner sh, not here
-    run env PATH="${_fake}:${TEST_PATH}" sh -c '
-        die() { printf "DIED: %s\n" "$*"; exit 1; }
-        . "$1"
-        require_compatible_dotnet_sdk
-    ' _ "${LIB}"
-    [ "${status}" -eq 0 ]
-    [ -z "${output}" ]
-}
-
-@test "require_compatible_dotnet_sdk dies with the SDK-band mismatch details, not a missing-tool message" {
-    local _fake="${BATS_TEST_TMPDIR}/bad-dotnet"
-    write_bad_dotnet "${_fake}"
-    # shellcheck disable=SC2016 # intentionally literal — expanded by the inner sh, not here
-    run env PATH="${_fake}:${TEST_PATH}" sh -c '
-        die() { printf "DIED: %s\n" "$*"; exit 1; }
-        . "$1"
-        require_compatible_dotnet_sdk
-    ' _ "${LIB}"
+    run_require_compatible_dotnet_sdk "${_fake}"
     [ "${status}" -eq 1 ]
     [[ "${output}" == *"Requested SDK version: 10.0.302"* ]]
     [[ "${output}" == *"10.0.400 [/usr/share/dotnet/sdk]"* ]]
