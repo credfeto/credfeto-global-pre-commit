@@ -43,6 +43,11 @@ require_dotnet_tool() {
     die "$1 ($2) dotnet tool is not installed"
 }
 
+# shellcheck source=src/scripts/lib/dotnet-sdk-check.sh
+. "$(dirname "$(readlink -f "$0")")/lib/dotnet-sdk-check.sh"
+
+require_compatible_dotnet_sdk
+
 require_dotnet_tool buildcheck FunFair.BuildCheck
 
 SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
