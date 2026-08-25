@@ -98,6 +98,32 @@ load test_helper
     [ "${status}" -eq 0 ]
 }
 
+# A commit consisting solely of a renamed file whose content was also edited
+# is reported by git as status R, not M. Regression for a bug where STAGED
+# was computed with --diff-filter=ACM, excluding R, so such a commit made
+# STAGED empty and the hook exited 0 before running any check below it —
+# including this dotnet-tools.json guard.
+@test "rename with content edit (no other staged changes) still runs checks" {
+    local T
+    T="$(make_repo feature/rename-with-edit-test)"
+    mkdir -p "${T}/.no-hooks"
+    git -C "${T}" config core.hooksPath "${T}/.no-hooks"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'line1\nline2\nline3\nline4\nline5\n' > "${T}/old.txt"
+    git -C "${T}" add .pre-commit-config.yaml old.txt
+    git -C "${T}" commit --quiet -m baseline
+
+    mkdir -p "${T}/.config"
+    printf '{}\n' > "${T}/.config/dotnet-tools.json"
+
+    git -C "${T}" mv old.txt new.txt
+    printf 'line1\nline2-edited\nline3\nline4\nline5\nline6\n' > "${T}/new.txt"
+    git -C "${T}" add new.txt
+
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
 # ── template-only file protection ────────────────────────────────────────────
 
 @test "changing .ai-instructions in a non-template repo is rejected" {

@@ -380,9 +380,12 @@ if [ -n "$MAINTAIN_VIOLATIONS" ]; then
     die "remove changes to files maintained in another repo from this commit"
 fi
 
-# Only look at staged files that are being added/copied/modified.
+# Only look at staged files that are being added/copied/modified/renamed.
+# Renamed files must be included: git reports a renamed file with edited
+# content as status R, not M, so excluding R let rename+edit-only commits
+# skip every check below.
 # Skipped in all-files mode — an empty stage does not mean "nothing to check".
-STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
 if [ "$MODE" = "commit" ]; then
     [ -z "$STAGED" ] && exit 0
 fi
