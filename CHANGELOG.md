@@ -123,7 +123,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - actionlint hook now runs as a single serialised process, avoiding intermittent pre-commit failures when concurrent hook processes race a firejail-wrapped shellcheck's lock (#205)
 - pylint hook now resolves a repo's own declared Python dependencies (requirements.txt or pyproject.toml [project.dependencies]) via a self-managed venv, instead of only seeing the shared container image's site-packages
 - buildtest/buildcheck now fail immediately with a clear .NET SDK feature-band mismatch message instead of a misleading "tool not installed" diagnosis when the repo's global.json pins an SDK band that isn't installed (#213)
-- pre-commit hook no longer skips all checks for commits consisting solely of renamed files with edited content (STAGED now includes diff-filter R)
+- pre-commit hook no longer skips all checks for commits consisting solely of renamed files with edited content
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
