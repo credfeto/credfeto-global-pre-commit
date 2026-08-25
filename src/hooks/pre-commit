@@ -380,8 +380,8 @@ if [ -n "$MAINTAIN_VIOLATIONS" ]; then
     die "remove changes to files maintained in another repo from this commit"
 fi
 
-# Only look at staged files that still exist on disk (exclude deletions:
-# lower-casing a diff-filter letter excludes it, per git-diff(1)). Deliberately
+# Only look at staged files, excluding deletions (lower-casing a diff-filter
+# letter excludes it, per git-diff(1)). Deliberately
 # exclusion-based rather than an inclusion list: an inclusion list (e.g. ACM)
 # silently drops any status letter someone forgot to enumerate — that is
 # exactly how a rename with edited content (status R, not M) was excluded and
