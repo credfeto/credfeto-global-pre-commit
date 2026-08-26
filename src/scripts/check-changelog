@@ -75,10 +75,18 @@ _REPO_NAME=$(git remote get-url origin 2>/dev/null \
     | tr -d '[:space:]')
 case "$_REPO_NAME" in
     *-template*)
-        REF=$(mktemp "${TMPDIR:-/tmp}/check-changelog.ref.XXXXXXXXXX") || die "mktemp failed"
-        ACTUAL_NORM=$(mktemp "${TMPDIR:-/tmp}/check-changelog.actual.XXXXXXXXXX") || die "mktemp failed"
-        REF_NORM=$(mktemp "${TMPDIR:-/tmp}/check-changelog.refnorm.XXXXXXXXXX") || die "mktemp failed"
-        trap 'rm -f "$REF" "$ACTUAL_NORM" "$REF_NORM"' EXIT
+        # A private, safely-created (0700) directory to hold the working files below.
+        # `dotnet changelog -f <file> -a ...` only lays down the full skeleton when
+        # the target file does not exist yet; against an existing-but-empty file it
+        # errors instead. Reserving a directory rather than the files themselves
+        # means REF's path can be handed to that first call while still unoccupied,
+        # without ever mktemp-then-rm'ing a file (which would reopen the TOCTOU
+        # window mktemp exists to close).
+        REFDIR=$(mktemp -d "${TMPDIR:-/tmp}/check-changelog.XXXXXXXXXX") || die "mktemp -d failed"
+        trap 'rm -rf "$REFDIR"' EXIT
+        REF="$REFDIR/reference-changelog.md"
+        ACTUAL_NORM="$REFDIR/actual.norm"
+        REF_NORM="$REFDIR/reference.norm"
 
         # Ask the tool itself to produce a blank changelog: add a probe entry to a
         # fresh file (which also lays down the full pristine skeleton), then remove

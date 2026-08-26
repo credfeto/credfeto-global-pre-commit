@@ -38,8 +38,12 @@ Releases that have at least been deployed to staging, BUT NOT necessarily releas
 #   - `tool list` reports credfeto.changelog.cmd as installed
 #   - `changelog --lint -f FILE` always reports success (lint correctness is
 #     a pre-existing, separately covered concern — not under test here)
-#   - `changelog -f FILE -a ... -m ...` (re)writes FILE to the pristine blank
-#     skeleton, mirroring what the real tool produces for a fresh file
+#   - `changelog -f FILE -a ... -m ...` writes FILE to the pristine blank
+#     skeleton, mirroring what the real tool produces for a fresh file, but
+#     only when FILE does not already exist — like the real tool, it errors
+#     against an existing (even empty) file instead of overwriting it. This
+#     is what catches a regression to pre-creating the reference file (e.g.
+#     `mktemp` on a bare path) before the first `-a` call.
 #   - `changelog -f FILE -r ... -m ...` and `--lint --fix` are no-ops, since
 #     starting from the pristine skeleton they have nothing to do
 fake_dotnet_path() {
@@ -71,6 +75,10 @@ if [ "$1" = "changelog" ]; then
         esac
     done
     if [ "$ADD" -eq 1 ] && [ -n "$FILE" ]; then
+        if [ -e "$FILE" ]; then
+            echo "ERROR: Could not find [Unreleased] section of file" >&2
+            exit 1
+        fi
         cp "$DIR/pristine.md" "$FILE"
         exit 0
     fi
@@ -178,6 +186,17 @@ CHANGELOG_EOF
     git -C "${T}" add CHANGELOG.md
     run_check_changelog "${T}" "${FAKE_BIN}"
     [ "${status}" -eq 0 ]
+}
+
+@test "reference blank changelog is generated even though the fake dotnet errors on an existing file (regression guard for #219)" {
+    local T
+    T="$(make_repo feature/changelog-template-reference-generation-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
+    printf '%s\n' "${PRISTINE_CHANGELOG}" > "${T}/CHANGELOG.md"
+    git -C "${T}" add CHANGELOG.md
+    run_check_changelog "${T}" "${FAKE_BIN}"
+    [ "${status}" -eq 0 ]
+    [[ "${output}" != *"could not generate reference blank changelog"* ]]
 }
 
 @test "CHANGELOG.md with entries in a non-template repo passes (blank check does not apply)" {
