@@ -83,6 +83,11 @@ case "$_REPO_NAME" in
         # Ask the tool itself to produce a blank changelog: add a probe entry to a
         # fresh file (which also lays down the full pristine skeleton), then remove
         # it, then let --lint --fix normalise formatting (e.g. blank-line rules).
+        # `dotnet changelog -f <file> -a ...` only lays down the skeleton when the
+        # file does not exist yet; against an existing-but-empty file (what mktemp
+        # just created) it errors instead. Remove it here so the first call below
+        # sees a missing path, keeping mktemp only to reserve a unique, safe name.
+        rm -f "$REF"
         dotnet changelog -f "$REF" -a Added -m "__template_blank_check__" >/dev/null 2>&1
         dotnet changelog -f "$REF" -r Added -m "__template_blank_check__" >/dev/null 2>&1
         dotnet changelog -f "$REF" --lint --fix >/dev/null 2>&1

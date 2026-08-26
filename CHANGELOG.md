@@ -124,6 +124,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - pylint hook now resolves a repo's own declared Python dependencies (requirements.txt or pyproject.toml [project.dependencies]) via a self-managed venv, instead of only seeing the shared container image's site-packages
 - buildtest/buildcheck now fail immediately with a clear .NET SDK feature-band mismatch message instead of a misleading "tool not installed" diagnosis when the repo's global.json pins an SDK band that isn't installed (#213)
 - pre-commit hook no longer skips all checks for commits consisting solely of renamed files with edited content
+- check-changelog: template blank-check no longer fails with "could not generate reference blank changelog" when mktemp pre-creates an empty reference file (issue #219)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
