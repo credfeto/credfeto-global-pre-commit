@@ -124,6 +124,16 @@ CHECK_COMPOSE_VOLUMES_CONFIG='repos:
         files: (^|/)(docker-)?compose(\.[^/]+)?\.ya?ml$
 '
 
+CHECK_MSBUILD_PATH_SEPARATOR_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: check-msbuild-path-separator
+        name: check-msbuild-path-separator
+        entry: check-msbuild-path-separator
+        language: system
+        files: \.(props|targets|csproj|sln|slnx)$
+'
+
 TRIVY_CONFIG='repos:
   - repo: local
     hooks:
@@ -1068,6 +1078,36 @@ EOF
     printf '%s' "${CHECK_COMPOSE_VOLUMES_CONFIG}" > "${T}/.pre-commit-config.yaml"
     printf 'services:\n  app:\n    image: alpine:3.20\n    volumes:\n      - ./data:/data:ro\n      - ./cache:/cache:rw\n      - myvol:/var/lib/data\n' > "${T}/docker-compose.yml"
     git -C "${T}" add .pre-commit-config.yaml docker-compose.yml
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# ── check-msbuild-path-separator ─────────────────────────────────────────────
+
+@test ".props file with backslash path separator is rejected" {
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/msbuild-backslash-test)"
+    printf '%s' "${CHECK_MSBUILD_PATH_SEPARATOR_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <PropertyGroup>\n    <LicensePath>$(MSBuildThisFileDirectory)..\\LICENSE</LicensePath>\n    <ResultsDir>$(SolutionDir)\\..\\results\\output</ResultsDir>\n  </PropertyGroup>\n</Project>\n' > "${T}/Sample.csproj"
+    git -C "${T}" add .pre-commit-config.yaml Sample.csproj
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test ".props file using forward slashes, with PackagePath root marker and a comment exclusion, passes" {
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/msbuild-forward-slash-test)"
+    printf '%s' "${CHECK_MSBUILD_PATH_SEPARATOR_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <PropertyGroup>\n    <LicensePath>$(MSBuildThisFileDirectory)../LICENSE</LicensePath>\n  </PropertyGroup>\n  <ItemGroup>\n    <None Include="results/output.txt" PackagePath="\\" />\n  </ItemGroup>\n  <!-- Bad: $(SolutionDir)\\..\\results - use forward slashes instead -->\n</Project>\n' > "${T}/Sample.csproj"
+    git -C "${T}" add .pre-commit-config.yaml Sample.csproj
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }
