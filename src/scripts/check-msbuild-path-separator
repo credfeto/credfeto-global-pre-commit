@@ -1,0 +1,36 @@
+#!/bin/sh
+# Flags a literal backslash used as a path separator in MSBuild project
+# files (*.props/*.targets/*.csproj/*.sln/*.slnx). Backslash is a legal
+# filename character on Linux, not a separator, so a hand-typed backslash
+# path (e.g. "$(MSBuildThisFileDirectory)..\LICENSE" or
+# "$(SolutionDir)\..\results\...") silently never resolves on Linux
+# self-hosted runners even though it looks correct on Windows. Forward
+# slash is the cross-platform-correct separator for MSBuild/.NET tooling
+# on every OS.
+# Excludes the legitimate NuGet PackagePath="\" root-marker convention and
+# backslashes inside single-line XML comments.
+
+VIOLATIONS=""
+
+for FILE in "$@"; do
+    CANDIDATES=$(grep -nE '(\.\.\\|\\\.\\|\)\\)' "$FILE" \
+        | grep -vE '<!--.*-->' \
+        | grep -vE 'PackagePath[[:space:]]*=[[:space:]]*"\\"|<PackagePath>\\</PackagePath>') || continue
+
+    while IFS= read -r ENTRY; do
+        [ -z "$ENTRY" ] && continue
+        LINE_NO=${ENTRY%%:*}
+        VIOLATIONS="${VIOLATIONS}  ${FILE}:${LINE_NO}: literal backslash used as a path separator — use / instead
+"
+    done <<EOF
+$CANDIDATES
+EOF
+done
+
+if [ -n "$VIOLATIONS" ]; then
+    printf '\n\033[31m✗\033[0m %s\n' "Backslash used as a path separator in MSBuild file(s):" >&2
+    printf '%s' "$VIOLATIONS" >&2
+    exit 1
+fi
+
+exit 0

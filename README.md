@@ -248,6 +248,7 @@ staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
 | --- | --- | --- |
 | Dependency vulnerabilities | `trivy fs --scanners vuln` | `package-lock.json`, `packages.lock.json`, `go.sum`, `requirements*.txt`, `Gemfile.lock`, `poetry.lock`, `Pipfile.lock` |
 | Compose volume mount mode typos (e.g. `:r` instead of `:ro`) | `check-compose-volumes` (bundled, no external tool) | `docker-compose*.yml/yaml`, `compose*.yml/yaml` |
+| Backslash used as a path separator in MSBuild files | `check-msbuild-path-separator` (bundled, no external tool) | `*.props`, `*.targets`, `*.csproj`, `*.sln`, `*.slnx` |
 
 `trivy`'s secret scanner is deliberately not enabled — it would duplicate the
 verified-only `trufflehog` check above with noisier, unverified findings.
