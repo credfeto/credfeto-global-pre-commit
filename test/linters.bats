@@ -1123,6 +1123,15 @@ EOF
     [ "${status}" -eq 1 ]
 }
 
+@test ".csproj file with a chain of macro references separated by backslashes is rejected" {
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <ItemGroup>\n    <Import Project="$(A)\\$(B)\\$(C)" />\n  </ItemGroup>\n</Project>\n' > "${T}/Sample.csproj"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
+    [ "${status}" -eq 1 ]
+}
+
 @test ".csproj file with a violation sandwiched between two single-line comments on the same line is still rejected" {
     local T="${BATS_TEST_TMPDIR}/msbuild"
     mkdir -p "${T}"

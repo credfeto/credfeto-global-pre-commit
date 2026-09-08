@@ -14,18 +14,32 @@
 # directly). That backslash is correct there, not a bug. .slnx, the newer
 # XML solution format, uses forward slashes and remains covered.
 #
-# A backslash is flagged only when it sits next to a path-segment
-# character (letter/digit/dot/underscore/hyphen) on at least one side.
-# This catches an ordinary mid-path backslash (e.g. "packages\Foo") as
-# well as the "..\" and ")\" forms, while a bare backslash between quotes
-# (the NuGet PackagePath="\" root-marker convention, or any other quoted
-# single-backslash literal) never matches, needing no exclusion of its
-# own.
+# A backslash is flagged when it sits next to a path-segment character
+# (letter/digit/dot/underscore/hyphen) on at least one side, or right
+# after a macro's closing ')' (so a chain of property references like
+# "$(A)\$(B)\$(C)" is still caught even though '$' and '(' are not
+# path-segment characters). This catches an ordinary mid-path backslash
+# (e.g. "packages\Foo") as well as the "..\" form, while a bare backslash
+# between quotes (the NuGet PackagePath="\" root-marker convention, or
+# any other quoted single-backslash literal) never matches, needing no
+# exclusion of its own.
 #
 # XML comments, single- or multi-line, are stripped before matching, with
 # the in-comment state tracked across lines so a comment spanning several
 # lines is handled correctly and a real violation sharing a line with a
 # comment is still caught.
+#
+# Known limitations, accepted as out of scope for a grep/awk heuristic
+# (a full XML/MSBuild parser here would be over-engineering relative to
+# every other bundled hook in this repo): a literal "<!--" inside a
+# <![CDATA[...]]> section is misread as a real comment opener; an
+# unclosed "<!--" (the file is not valid XML at that point) silently
+# disables the check for the rest of that file; and a backslash inside
+# genuinely unrelated content next to a path-segment character (e.g. a
+# regex literal in a custom property value) can be flagged. The
+# asymmetric cost favours this trade-off: a false positive here is a
+# blocked commit with a clear fix; a false negative is a silent CI
+# failure on a Linux self-hosted runner.
 CANDIDATES=$(awk '
     FNR == 1 { in_comment = 0 }
     {
@@ -45,7 +59,7 @@ CANDIDATES=$(awk '
                 in_comment = 1
             }
         }
-        if (code ~ /[A-Za-z0-9_.-]\\|\\[A-Za-z0-9_.-]/) print FILENAME ":" FNR
+        if (code ~ /[A-Za-z0-9_.)-]\\|\\[A-Za-z0-9_.-]/) print FILENAME ":" FNR
     }
 ' "$@")
 
