@@ -124,16 +124,6 @@ CHECK_COMPOSE_VOLUMES_CONFIG='repos:
         files: (^|/)(docker-)?compose(\.[^/]+)?\.ya?ml$
 '
 
-CHECK_MSBUILD_PATH_SEPARATOR_CONFIG='repos:
-  - repo: local
-    hooks:
-      - id: check-msbuild-path-separator
-        name: check-msbuild-path-separator
-        entry: check-msbuild-path-separator
-        language: system
-        files: \.(props|targets|csproj|sln|slnx)$
-'
-
 TRIVY_CONFIG='repos:
   - repo: local
     hooks:
@@ -1083,32 +1073,27 @@ EOF
 }
 
 # ── check-msbuild-path-separator ─────────────────────────────────────────────
+# Invoked directly (not via run_hook) because *.csproj/*.props/*.targets/*.sln/
+# *.slnx are also DOTNET_CHANGES triggers in src/hooks/pre-commit, so a fixture
+# that passes this hook cleanly would otherwise fall through into the .NET
+# buildcheck/buildtest stage and fail on tooling this test has no need of (see
+# dacpac-only-solution.bats for the same direct-invocation pattern).
 
 @test ".props file with backslash path separator is rejected" {
-    if ! command -v pre-commit > /dev/null 2>&1; then
-        skip "pre-commit not installed"
-    fi
-    local T
-    T="$(make_repo feature/msbuild-backslash-test)"
-    printf '%s' "${CHECK_MSBUILD_PATH_SEPARATOR_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
     # shellcheck disable=SC2016
     printf '<Project>\n  <PropertyGroup>\n    <LicensePath>$(MSBuildThisFileDirectory)..\\LICENSE</LicensePath>\n    <ResultsDir>$(SolutionDir)\\..\\results\\output</ResultsDir>\n  </PropertyGroup>\n</Project>\n' > "${T}/Sample.csproj"
-    git -C "${T}" add .pre-commit-config.yaml Sample.csproj
-    run_hook "${T}"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
     [ "${status}" -eq 1 ]
 }
 
 @test ".props file using forward slashes, with PackagePath root marker and a comment exclusion, passes" {
-    if ! command -v pre-commit > /dev/null 2>&1; then
-        skip "pre-commit not installed"
-    fi
-    local T
-    T="$(make_repo feature/msbuild-forward-slash-test)"
-    printf '%s' "${CHECK_MSBUILD_PATH_SEPARATOR_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
     # shellcheck disable=SC2016
     printf '<Project>\n  <PropertyGroup>\n    <LicensePath>$(MSBuildThisFileDirectory)../LICENSE</LicensePath>\n  </PropertyGroup>\n  <ItemGroup>\n    <None Include="results/output.txt" PackagePath="\\" />\n  </ItemGroup>\n  <!-- Bad: $(SolutionDir)\\..\\results - use forward slashes instead -->\n</Project>\n' > "${T}/Sample.csproj"
-    git -C "${T}" add .pre-commit-config.yaml Sample.csproj
-    run_hook "${T}"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
     [ "${status}" -eq 0 ]
 }
 
