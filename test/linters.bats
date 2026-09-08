@@ -1088,13 +1088,22 @@ EOF
     [ "${status}" -eq 1 ]
 }
 
-@test ".props file using forward slashes, with PackagePath root marker and a comment exclusion, passes" {
+@test ".props file using forward slashes, with a PackagePath root marker (no match) and an excluded comment, passes" {
     local T="${BATS_TEST_TMPDIR}/msbuild"
     mkdir -p "${T}"
     # shellcheck disable=SC2016
     printf '<Project>\n  <PropertyGroup>\n    <LicensePath>$(MSBuildThisFileDirectory)../LICENSE</LicensePath>\n  </PropertyGroup>\n  <ItemGroup>\n    <None Include="results/output.txt" PackagePath="\\" />\n  </ItemGroup>\n  <!-- Bad: $(SolutionDir)\\..\\results - use forward slashes instead -->\n</Project>\n' > "${T}/Sample.csproj"
     run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
     [ "${status}" -eq 0 ]
+}
+
+@test ".props file with a real violation on the same line as a PackagePath root marker is still rejected" {
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <ItemGroup>\n    <None Include="$(OutDir)\\extra.dll" PackagePath="\\" />\n  </ItemGroup>\n</Project>\n' > "${T}/Sample.csproj"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
+    [ "${status}" -eq 1 ]
 }
 
 # ── trivy ────────────────────────────────────────────────────────────────────
