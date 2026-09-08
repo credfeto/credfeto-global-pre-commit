@@ -1079,7 +1079,7 @@ EOF
 # buildcheck/buildtest stage and fail on tooling this test has no need of (see
 # dacpac-only-solution.bats for the same direct-invocation pattern).
 
-@test ".props file with backslash path separator is rejected" {
+@test ".csproj file with backslash path separator is rejected" {
     local T="${BATS_TEST_TMPDIR}/msbuild"
     mkdir -p "${T}"
     # shellcheck disable=SC2016
@@ -1088,7 +1088,7 @@ EOF
     [ "${status}" -eq 1 ]
 }
 
-@test ".props file using forward slashes, with a PackagePath root marker (no match) and an excluded comment, passes" {
+@test ".csproj file using forward slashes, with a PackagePath root marker (no match) and an excluded comment, passes" {
     local T="${BATS_TEST_TMPDIR}/msbuild"
     mkdir -p "${T}"
     # shellcheck disable=SC2016
@@ -1097,12 +1097,33 @@ EOF
     [ "${status}" -eq 0 ]
 }
 
-@test ".props file with a real violation on the same line as a PackagePath root marker is still rejected" {
+@test ".csproj file with a real violation on the same line as a PackagePath root marker is still rejected" {
     local T="${BATS_TEST_TMPDIR}/msbuild"
     mkdir -p "${T}"
     # shellcheck disable=SC2016
     printf '<Project>\n  <ItemGroup>\n    <None Include="$(OutDir)\\extra.dll" PackagePath="\\" />\n  </ItemGroup>\n</Project>\n' > "${T}/Sample.csproj"
     run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
+    [ "${status}" -eq 1 ]
+}
+
+@test ".csproj file with a real violation sharing a line with a trailing comment is still rejected" {
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <PropertyGroup>\n    <LicensePath>$(MSBuildThisFileDirectory)..\\LICENSE</LicensePath> <!-- keep this --> \n  </PropertyGroup>\n</Project>\n' > "${T}/Sample.csproj"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
+    [ "${status}" -eq 1 ]
+}
+
+@test "check-msbuild-path-separator's registered files pattern covers .props/.targets/.csproj/.slnx but excludes .sln" {
+    local PATTERN
+    PATTERN=$(awk '/- id: check-msbuild-path-separator/{f=1} f && /files:/{print $2; exit}' "${REPO_DIR}/src/.pre-commit-config.yaml")
+    [ -n "${PATTERN}" ]
+    for FILE in Sample.props Sample.targets Sample.csproj Sample.slnx; do
+        run grep -Eq "${PATTERN}" <<< "${FILE}"
+        [ "${status}" -eq 0 ]
+    done
+    run grep -Eq "${PATTERN}" <<< "Sample.sln"
     [ "${status}" -eq 1 ]
 }
 
