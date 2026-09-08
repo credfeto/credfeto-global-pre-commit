@@ -7,14 +7,17 @@
 # self-hosted runners even though it looks correct on Windows. Forward
 # slash is the cross-platform-correct separator for MSBuild/.NET tooling
 # on every OS.
-# Excludes the legitimate NuGet PackagePath="\" root-marker convention and
-# backslashes inside single-line XML comments.
+# Excludes backslashes inside single-line XML comments. The legitimate NuGet
+# PackagePath="\" root-marker convention needs no exclusion of its own: a
+# bare backslash between quotes never matches the detection regex below in
+# the first place, and a whole-line exclusion for it would silently swallow
+# a real violation sharing the line with a PackagePath="\" attribute.
 
 # /dev/null as an extra operand forces grep to prefix every match with its
 # filename even when only one real file is given (-H is a GNU extension, not
 # POSIX) — one grep invocation across all files instead of one per file.
 CANDIDATES=$(grep -nE '(\.\.\\|\\\.\\|\)\\)' "$@" /dev/null \
-    | grep -vE '<!--.*-->|PackagePath[[:space:]]*=[[:space:]]*"\\"|<PackagePath>\\</PackagePath>')
+    | grep -v '<!--.*-->')
 
 if [ -n "$CANDIDATES" ]; then
     printf '\n\033[31m✗\033[0m %s\n' "Backslash used as a path separator in MSBuild file(s):" >&2
