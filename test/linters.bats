@@ -1123,6 +1123,33 @@ EOF
     [ "${status}" -eq 1 ]
 }
 
+@test ".csproj file with a violation sandwiched between two single-line comments on the same line is still rejected" {
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <!-- a --> <LicensePath>$(SolutionDir)\\..\\bad</LicensePath> <!-- b -->\n</Project>\n' > "${T}/Sample.csproj"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
+    [ "${status}" -eq 1 ]
+}
+
+@test ".csproj file with a backslash path only inside a multi-line comment passes" {
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <!--\n    Bad example: $(SolutionDir)\\..\\results\n  -->\n</Project>\n' > "${T}/Sample.csproj"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
+    [ "${status}" -eq 0 ]
+}
+
+@test ".csproj file with a real violation right after a multi-line comment closes on the same line is still rejected" {
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <!--\n    doc text\n  --> <LicensePath>$(SolutionDir)\\..\\bad</LicensePath>\n</Project>\n' > "${T}/Sample.csproj"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
+    [ "${status}" -eq 1 ]
+}
+
 @test "check-msbuild-path-separator's registered files pattern covers .props/.targets/.csproj/.slnx but excludes .sln" {
     local PATTERN
     PATTERN=$(awk '/- id: check-msbuild-path-separator/{f=1} f && /files:/{print $2; exit}' "${REPO_DIR}/src/.pre-commit-config.yaml")
