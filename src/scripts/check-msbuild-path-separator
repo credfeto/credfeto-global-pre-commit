@@ -22,14 +22,30 @@
 # single-backslash literal) never matches, needing no exclusion of its
 # own.
 #
-# A single-line XML comment span is stripped from each line before
-# matching, rather than excluding the whole line, so a real violation
-# sharing a line with a trailing comment is still caught.
+# XML comments, single- or multi-line, are stripped before matching, with
+# the in-comment state tracked across lines so a comment spanning several
+# lines is handled correctly and a real violation sharing a line with a
+# comment is still caught.
 CANDIDATES=$(awk '
+    FNR == 1 { in_comment = 0 }
     {
         line = $0
-        gsub(/<!--.*-->/, "", line)
-        if (line ~ /[A-Za-z0-9_.-]\\|\\[A-Za-z0-9_.-]/) print FILENAME ":" FNR
+        code = ""
+        while (length(line) > 0) {
+            if (in_comment) {
+                end = index(line, "-->")
+                if (end == 0) { line = ""; break }
+                line = substr(line, end + 3)
+                in_comment = 0
+            } else {
+                start = index(line, "<!--")
+                if (start == 0) { code = code line; line = ""; break }
+                code = code substr(line, 1, start - 1)
+                line = substr(line, start + 4)
+                in_comment = 1
+            }
+        }
+        if (code ~ /[A-Za-z0-9_.-]\\|\\[A-Za-z0-9_.-]/) print FILENAME ":" FNR
     }
 ' "$@")
 
