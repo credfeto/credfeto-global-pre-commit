@@ -1115,6 +1115,14 @@ EOF
     [ "${status}" -eq 1 ]
 }
 
+@test ".csproj file with an ordinary mid-path backslash (no leading .. or preceding paren) is rejected" {
+    local T="${BATS_TEST_TMPDIR}/msbuild"
+    mkdir -p "${T}"
+    printf '<Project>\n  <ItemGroup>\n    <Reference Include="Foo">\n      <HintPath>packages\\Foo.1.0.0\\lib\\net45\\Foo.dll</HintPath>\n    </Reference>\n  </ItemGroup>\n</Project>\n' > "${T}/Sample.csproj"
+    run "${REPO_DIR}/src/scripts/check-msbuild-path-separator" "${T}/Sample.csproj"
+    [ "${status}" -eq 1 ]
+}
+
 @test "check-msbuild-path-separator's registered files pattern covers .props/.targets/.csproj/.slnx but excludes .sln" {
     local PATTERN
     PATTERN=$(awk '/- id: check-msbuild-path-separator/{f=1} f && /files:/{print $2; exit}' "${REPO_DIR}/src/.pre-commit-config.yaml")

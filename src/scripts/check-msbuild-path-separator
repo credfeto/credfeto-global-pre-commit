@@ -3,10 +3,10 @@
 # files (*.props/*.targets/*.csproj/*.slnx). Backslash is a legal
 # filename character on Linux, not a separator, so a hand-typed backslash
 # path (e.g. "$(MSBuildThisFileDirectory)..\LICENSE" or
-# "$(SolutionDir)\..\results\...") silently never resolves on Linux
-# self-hosted runners even though it looks correct on Windows. Forward
-# slash is the cross-platform-correct separator for MSBuild/.NET tooling
-# on every OS.
+# "packages\Foo.1.0.0\lib\net45\Foo.dll") silently never resolves on
+# Linux self-hosted runners even though it looks correct on Windows.
+# Forward slash is the cross-platform-correct separator for MSBuild/.NET
+# tooling on every OS.
 #
 # .sln is deliberately out of scope: it is not XML, and both Visual Studio
 # and `dotnet sln add` write backslash-separated relative project paths
@@ -14,19 +14,22 @@
 # directly). That backslash is correct there, not a bug. .slnx, the newer
 # XML solution format, uses forward slashes and remains covered.
 #
+# A backslash is flagged only when it sits next to a path-segment
+# character (letter/digit/dot/underscore/hyphen) on at least one side.
+# This catches an ordinary mid-path backslash (e.g. "packages\Foo") as
+# well as the "..\" and ")\" forms, while a bare backslash between quotes
+# (the NuGet PackagePath="\" root-marker convention, or any other quoted
+# single-backslash literal) never matches, needing no exclusion of its
+# own.
+#
 # A single-line XML comment span is stripped from each line before
 # matching, rather than excluding the whole line, so a real violation
-# sharing a line with a trailing comment is still caught. The legitimate
-# NuGet PackagePath="\" root-marker convention needs no exclusion of its
-# own: a bare backslash between quotes never matches the detection regex
-# below in the first place, and a whole-line exclusion for it would
-# silently swallow a real violation sharing the line with a
-# PackagePath="\" attribute.
+# sharing a line with a trailing comment is still caught.
 CANDIDATES=$(awk '
     {
         line = $0
         gsub(/<!--.*-->/, "", line)
-        if (line ~ /\.\.\\|\\\.\\|\)\\/) print FILENAME ":" FNR
+        if (line ~ /[A-Za-z0-9_.-]\\|\\[A-Za-z0-9_.-]/) print FILENAME ":" FNR
     }
 ' "$@")
 
