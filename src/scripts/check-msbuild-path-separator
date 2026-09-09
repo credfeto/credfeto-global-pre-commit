@@ -1,0 +1,75 @@
+#!/bin/sh
+# Flags a literal backslash used as a path separator in MSBuild project
+# files (*.props/*.targets/*.csproj/*.slnx). Backslash is a legal
+# filename character on Linux, not a separator, so a hand-typed backslash
+# path (e.g. "$(MSBuildThisFileDirectory)..\LICENSE" or
+# "packages\Foo.1.0.0\lib\net45\Foo.dll") silently never resolves on
+# Linux self-hosted runners even though it looks correct on Windows.
+# Forward slash is the cross-platform-correct separator for MSBuild/.NET
+# tooling on every OS.
+#
+# .sln is deliberately out of scope: it is not XML, and both Visual Studio
+# and `dotnet sln add` write backslash-separated relative project paths
+# into it as a matter of convention on every OS, including Linux (verified
+# directly). That backslash is correct there, not a bug. .slnx, the newer
+# XML solution format, uses forward slashes and remains covered.
+#
+# A backslash is flagged when it sits next to a path-segment character
+# (letter/digit/dot/underscore/hyphen) on at least one side, right after
+# a macro's closing ')', or right before a macro's opening '$(' (so a
+# chain of property references like "$(A)\$(B)\$(C)" or a path starting
+# with one, like "\$(SolutionDir)Common.targets", is still caught even
+# though '$' and '(' are not path-segment characters). This catches an
+# ordinary mid-path backslash (e.g. "packages\Foo") as well as the "..\"
+# form, while a bare backslash between quotes (the NuGet PackagePath="\"
+# root-marker convention, or any other quoted single-backslash literal)
+# never matches, needing no exclusion of its own.
+#
+# XML comments, single- or multi-line, are stripped before matching, with
+# the in-comment state tracked across lines so a comment spanning several
+# lines is handled correctly and a real violation sharing a line with a
+# comment is still caught.
+#
+# Known limitations, accepted as out of scope for a grep/awk heuristic
+# (a full XML/MSBuild parser here would be over-engineering relative to
+# every other bundled hook in this repo): a literal "<!--" inside a
+# <![CDATA[...]]> section is misread as a real comment opener; an
+# unclosed "<!--" (the file is not valid XML at that point) silently
+# disables the check for the rest of that file; and a backslash inside
+# genuinely unrelated content next to a path-segment character (e.g. a
+# regex literal in a custom property value) can be flagged. The
+# asymmetric cost favours this trade-off: a false positive here is a
+# blocked commit with a clear fix; a false negative is a silent CI
+# failure on a Linux self-hosted runner.
+CANDIDATES=$(awk '
+    FNR == 1 { in_comment = 0 }
+    {
+        line = $0
+        code = ""
+        while (length(line) > 0) {
+            if (in_comment) {
+                end = index(line, "-->")
+                if (end == 0) { line = ""; break }
+                line = substr(line, end + 3)
+                in_comment = 0
+            } else {
+                start = index(line, "<!--")
+                if (start == 0) { code = code line; line = ""; break }
+                code = code substr(line, 1, start - 1)
+                line = substr(line, start + 4)
+                in_comment = 1
+            }
+        }
+        if (code ~ /[A-Za-z0-9_.)-]\\|\\[A-Za-z0-9_.$-]/) print FILENAME ":" FNR
+    }
+' "$@")
+
+if [ -n "$CANDIDATES" ]; then
+    printf '\n\033[31m✗\033[0m %s\n' "Backslash used as a path separator in MSBuild file(s):" >&2
+    printf '%s\n' "$CANDIDATES" | while IFS=: read -r FILE LINE_NO _; do
+        printf '  %s:%s: literal backslash used as a path separator — use / instead\n' "$FILE" "$LINE_NO" >&2
+    done
+    exit 1
+fi
+
+exit 0

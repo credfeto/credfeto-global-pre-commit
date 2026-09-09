@@ -207,6 +207,19 @@ repos:
         language: system
         files: (^|/)(docker-)?compose(\.[^/]+)?\.ya?ml$
 
+      # ── MSBuild path separators — backslash is a legal filename character
+      # on Linux, not a separator, so a hand-typed backslash path in a
+      # project file silently never resolves on Linux self-hosted runners
+      # even though it looks correct on Windows. Bundled script — no
+      # external tool. .sln is deliberately excluded: it is not XML, and
+      # `dotnet sln add` legitimately writes backslash-separated relative
+      # paths into it on every OS, including Linux.
+      - id: check-msbuild-path-separator
+        name: check-msbuild-path-separator
+        entry: check-msbuild-path-separator
+        language: system
+        files: \.(props|targets|csproj|slnx)$
+
       # ── VALIDATE_GITHUB_ACTIONS — workflows ──────────────────────────────
       # require_serial: true avoids sharding shellcheck invocations (which
       # actionlint shells out to per embedded `run:` script) across concurrent
