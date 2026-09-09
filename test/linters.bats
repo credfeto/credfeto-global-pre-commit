@@ -1190,6 +1190,20 @@ run_msbuild_hook() {
     [ "${status}" -eq 1 ]
 }
 
+@test ".csproj file with a backslash right before a macro reference (no preceding path-segment char) is rejected" {
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/msbuild-backslash-before-macro-test)"
+    printf '%s' "${CHECK_MSBUILD_PATH_SEPARATOR_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    # shellcheck disable=SC2016
+    printf '<Project>\n  <ItemGroup>\n    <Import Project="\\$(SolutionDir)Common.targets" />\n  </ItemGroup>\n</Project>\n' > "${T}/Sample.csproj"
+    git -C "${T}" add .pre-commit-config.yaml Sample.csproj
+    run_msbuild_hook "${T}" Sample.csproj
+    [ "${status}" -eq 1 ]
+}
+
 @test ".csproj file with a violation sandwiched between two single-line comments on the same line is still rejected" {
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
