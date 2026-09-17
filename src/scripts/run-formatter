@@ -1,6 +1,6 @@
 #!/bin/sh
-# Applies formatting using cscleanup (Credfeto.DotNet.Repo.Formatter) on staged .cs and .csproj files,
-# then re-stages any files that were modified.
+# Applies dotnet format to staged .cs files, then cscleanup (Credfeto.DotNet.Repo.Formatter)
+# to staged .cs and .csproj files, re-staging any files modified by either step.
 
 TOOL_CMD="cscleanup"
 TOOL_PKG="Credfeto.DotNet.Repo.Formatter"
@@ -61,6 +61,35 @@ FMT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cs|csp
 if [ -z "$FMT_FILES" ]; then
     info "No staged .cs or .csproj files — skipping formatter"
     exit 0
+fi
+
+# Collect staged .cs files only (dotnet format does not apply to .csproj)
+CS_FILES=$(printf '%s\n' "$FMT_FILES" | grep -E '\.cs$')
+
+if [ -n "$CS_FILES" ]; then
+    SOLUTION=$(find "$REPO_ROOT" -type f -iname "*.slnx" | head -1)
+    [ -z "$SOLUTION" ] && SOLUTION=$(find "$REPO_ROOT" -type f -iname "*.sln" | head -1)
+
+    if [ -z "$SOLUTION" ]; then
+        info "No solution file found — skipping dotnet format"
+    else
+        dotnet format --version > /dev/null 2>&1 \
+            || die "dotnet format is not available in this SDK (missing dotnet-format component) — cannot format staged .cs files"
+
+        set --
+        while IFS= read -r f; do
+            set -- "$@" "${REPO_ROOT}/${f}"
+        done <<EOF
+$CS_FILES
+EOF
+        info "Applying dotnet format to staged .cs files..."
+        dotnet format "$SOLUTION" --include "$@" || die "dotnet format failed"
+
+        # Re-stage all files formatted by dotnet format
+        git add "$@"
+
+        success "dotnet format applied and staged"
+    fi
 fi
 
 # Build full paths as positional parameters for a single cscleanup invocation

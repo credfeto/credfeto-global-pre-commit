@@ -53,8 +53,8 @@ CLEAR="http-cache"
 CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
 [ -z "$CSPROJ" ] && { info "No .csproj files found — skipping"; exit 0; }
 
-SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
-[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
+SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
+[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 [ -z "$SOLUTION" ] && { info "No solution file found — skipping"; exit 0; }
 
 SOURCE_DIR=$(dirname "$SOLUTION")
