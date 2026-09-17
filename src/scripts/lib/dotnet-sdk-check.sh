@@ -21,3 +21,17 @@ $(dotnet --list-sdks 2>&1)
 
 This is a .NET SDK feature-band mismatch between global.json and the environment (not a missing dotnet tool) - the image needs an SDK install matching global.json, or global.json needs updating to a band that is installed."
 }
+
+# Returns true (0) when the current directory's resolved .NET SDK (per
+# global.json and any rollForward policy - not global.json's raw pinned
+# version string, which rollForward can resolve away from) is a pre-release
+# build, i.e. its version has a SemVer pre-release segment such as
+# -rc., -preview., -alpha. or -beta. (e.g. 11.0.100-rc.1.26425.128).
+# Callers should only invoke this after require_compatible_dotnet_sdk has
+# already confirmed `dotnet --version` resolves successfully.
+dotnet_sdk_is_prerelease() {
+    case "$(dotnet --version 2>/dev/null)" in
+        *-*) return 0 ;;
+        *) return 1 ;;
+    esac
+}

@@ -53,8 +53,8 @@ CLEAR="http-cache"
 CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
 [ -z "$CSPROJ" ] && { info "No .csproj files found — skipping"; exit 0; }
 
-SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
-[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
+SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
+[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 [ -z "$SOLUTION" ] && { info "No solution file found — skipping"; exit 0; }
 
 SOURCE_DIR=$(dirname "$SOLUTION")
@@ -172,43 +172,47 @@ else
     "-p:Version=0.0.0.1-test" \
     || die "######## Tests Failed ########"
 
-  info "Determining which benchmarks are affected by staged changes..."
-  AFFECTED_SPEC=$("$BENCH_AFFECTED_SCRIPT" "$SOURCE_DIR") \
-    || die "######## Benchmark Affected Detection Failed ########"
-
-  if [ -z "$AFFECTED_SPEC" ]; then
-    info "No benchmark tests affected by staged changes — skipping benchmark test step"
+  if dotnet_sdk_is_prerelease; then
+    info "Pre-release .NET SDK detected ($(dotnet --version)) — skipping benchmark tests"
   else
-    while IFS= read -r bench_project; do
-        [ -n "$bench_project" ] || continue
+    info "Determining which benchmarks are affected by staged changes..."
+    AFFECTED_SPEC=$("$BENCH_AFFECTED_SCRIPT" "$SOURCE_DIR") \
+      || die "######## Benchmark Affected Detection Failed ########"
 
-        # Multi-targeted benchmark projects are only run on their latest
-        # target framework; older frameworks are assumed to work.
-        set --
-        LATEST_FRAMEWORK=$("$LATEST_FRAMEWORK_SCRIPT" "$bench_project") \
-          || die "######## Latest Target Framework Detection Failed ($bench_project) ########"
-        if [ -n "$LATEST_FRAMEWORK" ]; then
-          info "Multiple target frameworks in $bench_project — testing only $LATEST_FRAMEWORK, assuming older frameworks work"
-          set -- --framework "$LATEST_FRAMEWORK"
-        fi
+    if [ -z "$AFFECTED_SPEC" ]; then
+      info "No benchmark tests affected by staged changes — skipping benchmark test step"
+    else
+      while IFS= read -r bench_project; do
+          [ -n "$bench_project" ] || continue
 
-        info "Running benchmark tests: $bench_project"
-        dotnet test "$bench_project" \
-          --configuration Release \
-          --no-restore \
-          --no-build \
-          --ignore-exit-code 8 \
-          "$@" \
-          "-p:ApiCompatGenerateSuppressionFile=false" \
-          "-p:ContinuousIntegrationBuild=true" \
-          "-p:IsProduction=true" \
-          "-p:Optimize=true" \
-          "-p:SuppressNETCoreSdkPreviewMessage=true" \
-          "-p:Version=0.0.0.1-test" \
-          || die "######## Benchmark Tests Failed ($bench_project) ########"
-    done <<AFFECTED_EOF
+          # Multi-targeted benchmark projects are only run on their latest
+          # target framework; older frameworks are assumed to work.
+          set --
+          LATEST_FRAMEWORK=$("$LATEST_FRAMEWORK_SCRIPT" "$bench_project") \
+            || die "######## Latest Target Framework Detection Failed ($bench_project) ########"
+          if [ -n "$LATEST_FRAMEWORK" ]; then
+            info "Multiple target frameworks in $bench_project — testing only $LATEST_FRAMEWORK, assuming older frameworks work"
+            set -- --framework "$LATEST_FRAMEWORK"
+          fi
+
+          info "Running benchmark tests: $bench_project"
+          dotnet test "$bench_project" \
+            --configuration Release \
+            --no-restore \
+            --no-build \
+            --ignore-exit-code 8 \
+            "$@" \
+            "-p:ApiCompatGenerateSuppressionFile=false" \
+            "-p:ContinuousIntegrationBuild=true" \
+            "-p:IsProduction=true" \
+            "-p:Optimize=true" \
+            "-p:SuppressNETCoreSdkPreviewMessage=true" \
+            "-p:Version=0.0.0.1-test" \
+            || die "######## Benchmark Tests Failed ($bench_project) ########"
+      done <<AFFECTED_EOF
 $AFFECTED_SPEC
 AFFECTED_EOF
+    fi
   fi
 fi
 
