@@ -73,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - ai/global/*.md changes are now whitelisted for cs-template specifically, restoring its ability to author the canonical ai/global instructions it distributes; funfair-server-template and funfair-treasury-reporting, which only ever receive ai/global via the sync, remain blocked (#186)
 - Added check-compose-volumes pre-commit hook to catch invalid docker-compose/compose volume mount modes (e.g. `:r` typo'd for `:ro`)
 - Added check-msbuild-path-separator pre-commit hook to catch backslash used as a path separator in .props/.targets/.csproj/.slnx files, which silently fails to resolve on Linux self-hosted runners (#214)
+- run-formatter now runs dotnet format on staged .cs files before cscleanup, preferring a .slnx solution file over .sln for solution discovery (also applied to buildcheck and buildtest)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
