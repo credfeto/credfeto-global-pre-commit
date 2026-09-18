@@ -3,9 +3,31 @@
 # In `*-template` repositories (e.g. cs-template) also enforces that
 # CHANGELOG.md stays blank — those repos are copied into every new project,
 # so a real entry there would leak into every consumer's history.
+#
+# Usage: check-changelog [--all-files]
+#
+# Default mode only looks at staged CHANGELOG.md files (git diff --cached)
+# and lints them with `--lint` (no --fix): at commit time an unfixed lint
+# failure should block the commit, not be silently auto-corrected and staged
+# behind the developer's back.
+#
+# --all-files mode (invoked by hooks/pre-commit's own --all-files mode) has
+# no commit in progress, so it targets every tracked CHANGELOG.md (git
+# ls-files) and runs `--lint --fix`, staging any file the fix modifies — the
+# whole point of --all-files is a "detect and fix everything" baseline pass.
 
 TOOL_CMD="changelog"
 TOOL_PKG="credfeto.changelog.cmd"
+
+MODE=commit
+case "${1:-}" in
+    "") ;;
+    --all-files) MODE=all-files ;;
+    *)
+        printf '\n\033[31m✗\033[0m %s\n' "unknown argument: $1 (supported: --all-files)" >&2
+        exit 1
+        ;;
+esac
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -51,15 +73,26 @@ require_dotnet_tool() {
 
 require_dotnet_tool "$TOOL_CMD" "$TOOL_PKG"
 
-STAGED_CHANGELOGS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)CHANGELOG\.md$')
+if [ "$MODE" = "all-files" ]; then
+    STAGED_CHANGELOGS=$(git ls-files | grep -E '(^|/)CHANGELOG\.md$')
+else
+    STAGED_CHANGELOGS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)CHANGELOG\.md$')
+fi
 [ -z "$STAGED_CHANGELOGS" ] && exit 0
 
-# Lint each staged CHANGELOG.md.
+# Lint each CHANGELOG.md. In all-files mode, fix what can be fixed and stage
+# the result -- there is no commit in progress to protect, and the whole
+# point of --all-files is a detect-and-fix baseline pass, not just a report.
 FAILED=0
 while IFS= read -r changelog; do
     [ -f "$changelog" ] || continue
     info "Linting ${changelog}..."
-    dotnet changelog --lint -f "$changelog" || FAILED=1
+    if [ "$MODE" = "all-files" ]; then
+        dotnet changelog --lint --fix -f "$changelog" || FAILED=1
+        git diff --name-only -- "$changelog" | grep -q . && git add "$changelog"
+    else
+        dotnet changelog --lint -f "$changelog" || FAILED=1
+    fi
 done <<EOF
 $STAGED_CHANGELOGS
 EOF

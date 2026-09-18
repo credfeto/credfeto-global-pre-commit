@@ -160,3 +160,57 @@ setup_repo() {
     run ! grep -q '^format ' "${LOG}"
     grep -q '^cscleanup ' "${LOG}"
 }
+
+# ── all-files mode ────────────────────────────────────────────────────────────
+
+@test "default mode skips a tracked but unstaged .cs file" {
+    local T
+    T="$(setup_repo)"
+    printf 'class Foo {}\n' > "${T}/src/Foo.cs"
+    git -C "${T}" add src/Foo.cs
+    git -C "${T}" commit --quiet -m seed
+
+    local STUBDIR="${BATS_TEST_TMPDIR}/bin"
+    local LOG="${BATS_TEST_TMPDIR}/dotnet.log"
+    make_dotnet_stub "${STUBDIR}" "${LOG}"
+
+    cd "${T}"
+    PATH="${STUBDIR}:${PATH}" run "${SCRIPT}"
+
+    [ "${status}" -eq 0 ]
+    [ ! -f "${LOG}" ]
+}
+
+@test "all-files mode formats and stages a tracked but unstaged .cs file" {
+    local T
+    T="$(setup_repo)"
+    printf 'class Foo {}\n' > "${T}/src/Foo.cs"
+    git -C "${T}" add src/Foo.cs
+    git -C "${T}" commit --quiet -m seed
+
+    local STUBDIR="${BATS_TEST_TMPDIR}/bin"
+    local LOG="${BATS_TEST_TMPDIR}/dotnet.log"
+    make_dotnet_stub "${STUBDIR}" "${LOG}"
+
+    cd "${T}"
+    PATH="${STUBDIR}:${PATH}" run "${SCRIPT}" --all-files
+
+    [ "${status}" -eq 0 ]
+    grep -q '^cscleanup ' "${LOG}"
+    local _cscleanup_line
+    _cscleanup_line=$(grep '^cscleanup ' "${LOG}")
+    [[ "${_cscleanup_line}" == *"${T}/src/Foo.cs"* ]]
+}
+
+@test "run-formatter rejects an unknown argument" {
+    local T
+    T="$(setup_repo)"
+    local STUBDIR="${BATS_TEST_TMPDIR}/bin"
+    local LOG="${BATS_TEST_TMPDIR}/dotnet.log"
+    make_dotnet_stub "${STUBDIR}" "${LOG}"
+
+    cd "${T}"
+    PATH="${STUBDIR}:${PATH}" run "${SCRIPT}" --bogus
+
+    [ "${status}" -eq 1 ]
+}
