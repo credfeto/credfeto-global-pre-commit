@@ -67,8 +67,8 @@ require_dotnet_tool() {
 
 require_dotnet_tool "$TOOL_CMD" "$TOOL_PKG"
 
-STAGED_CHANGELOGS=$(git_target_files '(^|/)CHANGELOG\.md$')
-[ -z "$STAGED_CHANGELOGS" ] && exit 0
+CHANGELOG_FILES=$(git_target_files '(^|/)CHANGELOG\.md$')
+[ -z "$CHANGELOG_FILES" ] && exit 0
 
 # Lint each CHANGELOG.md. In all-files mode, fix what can be fixed and stage
 # the result -- there is no commit in progress to protect, and the whole
@@ -79,12 +79,12 @@ while IFS= read -r changelog; do
     info "Linting ${changelog}..."
     if [ "$MODE" = "all-files" ]; then
         dotnet changelog --lint --fix -f "$changelog" || FAILED=1
-        git diff --name-only -- "$changelog" | grep -q . && git add "$changelog"
+        git diff --quiet -- "$changelog" || git add "$changelog"
     else
         dotnet changelog --lint -f "$changelog" || FAILED=1
     fi
 done <<EOF
-$STAGED_CHANGELOGS
+$CHANGELOG_FILES
 EOF
 
 [ "$FAILED" -eq 0 ] || die "changelog lint failed"
@@ -137,7 +137,7 @@ case "$_REPO_NAME" in
                 BLANK_FAILED=1
             fi
         done <<EOF
-$STAGED_CHANGELOGS
+$CHANGELOG_FILES
 EOF
         [ "$BLANK_FAILED" -eq 0 ] || die "remove the entries from CHANGELOG.md — *-template repos must not carry changelog entries"
         ;;

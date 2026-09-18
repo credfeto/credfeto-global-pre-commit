@@ -25,10 +25,16 @@ parse_all_files_mode_arg() {
 # MODE's target set: every tracked file in all-files mode, staged
 # non-deleted files only otherwise. Requires MODE to already be set (see
 # parse_all_files_mode_arg above).
+#
+# --diff-filter=d (exclusion-based) rather than an inclusion list like ACM:
+# an inclusion list silently drops any status letter someone forgot to
+# enumerate -- that is exactly how a rename with edited content (status R,
+# not M) was excluded and let rename+edit-only commits skip hooks/pre-commit's
+# own checks (see its STAGED variable, fixed for the identical reason).
 git_target_files() {
     if [ "$MODE" = "all-files" ]; then
         git ls-files | grep -E "$1"
     else
-        git diff --cached --name-only --diff-filter=ACM | grep -E "$1"
+        git diff --cached --name-only --diff-filter=d | grep -E "$1"
     fi
 }
