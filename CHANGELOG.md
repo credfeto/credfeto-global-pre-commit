@@ -74,6 +74,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added check-compose-volumes pre-commit hook to catch invalid docker-compose/compose volume mount modes (e.g. `:r` typo'd for `:ro`)
 - Added check-msbuild-path-separator pre-commit hook to catch backslash used as a path separator in .props/.targets/.csproj/.slnx files, which silently fails to resolve on Linux self-hosted runners (#214)
 - run-formatter now runs dotnet format on staged .cs files before cscleanup, preferring a .slnx solution file over .sln for solution discovery (also applied to buildcheck and buildtest)
+- Added test/mode-arg-convention.bats, a regression test enforcing that scripts under src/scripts/ route git file-list selection through the shared all-files helper instead of re-deriving it directly (#234)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
