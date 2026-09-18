@@ -94,20 +94,21 @@ case "$_REPO_NAME" in
         # than discarded), matching the require_compatible_dotnet_sdk() convention
         # in lib/dotnet-sdk-check.sh, so a failure below can show which call failed
         # and why.
-        OUT_ADD=$(dotnet changelog -f "$REF" -a Added -m "__template_blank_check__" 2>&1)
-        STATUS_ADD=$?
-        OUT_REMOVE=$(dotnet changelog -f "$REF" -r Added -m "__template_blank_check__" 2>&1)
-        STATUS_REMOVE=$?
-        OUT_LINTFIX=$(dotnet changelog -f "$REF" --lint --fix 2>&1)
-        STATUS_LINTFIX=$?
+        run_capture() {
+            _label=$1
+            shift
+            _out=$("$@" 2>&1)
+            _status=$?
+            DETAIL="$DETAIL
+  $_label (exit $_status):
+$(printf '%s\n' "$_out" | sed 's/^/    /')"
+        }
+        DETAIL=""
+        run_capture "-a Added" dotnet changelog -f "$REF" -a Added -m "__template_blank_check__"
+        run_capture "-r Added" dotnet changelog -f "$REF" -r Added -m "__template_blank_check__"
+        run_capture "--lint --fix" dotnet changelog -f "$REF" --lint --fix
         [ -s "$REF" ] || die "could not generate reference blank changelog via dotnet changelog:
-
-  -a Added (exit $STATUS_ADD):
-$(printf '%s\n' "$OUT_ADD" | sed 's/^/    /')
-  -r Added (exit $STATUS_REMOVE):
-$(printf '%s\n' "$OUT_REMOVE" | sed 's/^/    /')
-  --lint --fix (exit $STATUS_LINTFIX):
-$(printf '%s\n' "$OUT_LINTFIX" | sed 's/^/    /')"
+$DETAIL"
 
         BLANK_FAILED=0
         while IFS= read -r changelog; do
