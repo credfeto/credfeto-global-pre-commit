@@ -13,16 +13,6 @@
 TOOL_CMD="cscleanup"
 TOOL_PKG="Credfeto.DotNet.Repo.Formatter"
 
-MODE=commit
-case "${1:-}" in
-    "") ;;
-    --all-files) MODE=all-files ;;
-    *)
-        printf '\n\033[31m✗\033[0m %s\n' "unknown argument: $1 (supported: --all-files)" >&2
-        exit 1
-        ;;
-esac
-
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
@@ -35,6 +25,10 @@ success() {
 info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
+
+# shellcheck source=src/scripts/lib/mode-arg.sh
+. "$(dirname "$(readlink -f "$0")")/lib/mode-arg.sh"
+parse_all_files_mode_arg "$1"
 
 # Returns true (0) when running inside a Claude Code Bash-tool session.
 # Claude Code sets CLAUDECODE=1 in every shell it spawns via the Bash tool;
@@ -75,18 +69,12 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 
 # Collect .cs and .csproj files: every tracked one in all-files mode, staged
 # ones only otherwise.
-if [ "$MODE" = "all-files" ]; then
-    FMT_FILES=$(git ls-files | grep -E '\.(cs|csproj)$')
-else
-    FMT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cs|csproj)$')
-fi
+SCOPE_WORD=staged
+[ "$MODE" = "all-files" ] && SCOPE_WORD=tracked
+FMT_FILES=$(git_target_files '\.(cs|csproj)$')
 
 if [ -z "$FMT_FILES" ]; then
-    if [ "$MODE" = "all-files" ]; then
-        info "No tracked .cs or .csproj files — skipping formatter"
-    else
-        info "No staged .cs or .csproj files — skipping formatter"
-    fi
+    info "No ${SCOPE_WORD} .cs or .csproj files — skipping formatter"
     exit 0
 fi
 
