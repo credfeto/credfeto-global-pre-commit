@@ -128,6 +128,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - pre-commit hook no longer skips all checks for commits consisting solely of renamed files with edited content
 - check-changelog: template blank-check no longer fails with "could not generate reference blank changelog" when mktemp pre-creates an empty reference file (issue #219)
 - check-changelog: template blank-check now surfaces the underlying dotnet changelog error (stderr and exit status) when reference blank changelog generation fails, instead of only a generic message (#221)
+- All-files (baseline) mode now actually lints/fixes CHANGELOG.md, .NET formatting, and package-lock.json registry URLs against the whole tracked tree instead of silently skipping them when nothing is staged (#232)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

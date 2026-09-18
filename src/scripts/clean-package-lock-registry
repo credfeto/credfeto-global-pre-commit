@@ -9,6 +9,24 @@
 # Works for package-lock.json files at any depth in the repository.
 # Modified files are automatically re-staged so the fix is included in
 # the current commit.
+#
+# Usage: clean-package-lock-registry [--all-files]
+#
+# --all-files mode (invoked by hooks/pre-commit's own --all-files mode) has
+# no commit in progress: it targets every tracked package-lock.json (git
+# ls-files) instead of only staged ones, still re-staging anything it
+# modifies -- the whole point of --all-files is a detect-and-fix baseline
+# pass, not just a report.
+
+MODE=commit
+case "${1:-}" in
+    "") ;;
+    --all-files) MODE=all-files ;;
+    *)
+        printf '\n\033[31m✗\033[0m %s\n' "unknown argument: $1 (supported: --all-files)" >&2
+        exit 1
+        ;;
+esac
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -32,8 +50,12 @@ sed_inplace() {
 
 command -v sed > /dev/null 2>&1 || die "sed is not installed."
 
-STAGED=$(git diff --cached --name-only --diff-filter=ACM)
-LOCK_FILES=$(printf '%s\n' "$STAGED" | grep -E '(^|/)package-lock\.json$')
+if [ "$MODE" = "all-files" ]; then
+    LOCK_FILES=$(git ls-files | grep -E '(^|/)package-lock\.json$')
+else
+    STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+    LOCK_FILES=$(printf '%s\n' "$STAGED" | grep -E '(^|/)package-lock\.json$')
+fi
 [ -z "$LOCK_FILES" ] && exit 0
 
 FOUND=0

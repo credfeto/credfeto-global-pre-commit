@@ -279,9 +279,12 @@ a pre-work baseline check before starting a task. Compared to the default
 | `pre-commit run` | Staged files only | `--all-files` |
 | Changelog / .NET / NPM / SQL / CloudFormation category checks | Gated on staged files | Gated on tracked files |
 
-Auto-fixers (`sqlfluff fix`, the .NET formatter, `clean-package-lock-registry`)
-still run and re-stage what they change, exactly as they do in the default
-mode — `--all-files` runs the same checks, just against a wider file list.
+Auto-fixers (`sqlfluff fix`, the .NET formatter, `clean-package-lock-registry`,
+and — in `--all-files` mode only — `check-changelog`'s `--lint --fix`) still
+run and re-stage what they change, against the wider file list rather than
+only what's staged: the point of `--all-files` is to detect *and fix* every
+issue across the tracked tree with no commit in progress, not just to report
+on it.
 
 The protected/linter-config-file guards (blocking staged changes to
 `.shellcheckrc`, `.ai-instructions`, `ai/global/`, etc.) still key off

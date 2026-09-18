@@ -325,6 +325,14 @@ case "${1:-}" in
     *) die "unknown argument: $1 (supported: --all-files)" ;;
 esac
 
+# Passed through to every script below that can itself run in either mode
+# (the `pre-commit` tool itself, and any fixer/checker script that derives
+# its own file list from git) so they select staged-vs-tracked the same way
+# CHECK_FILES does, rather than independently re-deriving `git diff --cached`
+# and silently no-op'ing against an empty stage in all-files mode.
+MODE_ARG=""
+[ "$MODE" = "all-files" ] && MODE_ARG="--all-files"
+
 # Abort immediately if nothing is staged — prevents accidental empty commits.
 # Skipped in all-files mode, which is expected to run against a clean tree,
 # and skipped for a --amend (see is_amend above), which legitimately has
@@ -547,7 +555,8 @@ sh "$SCRIPTS_DIR/check-ignored-files" || die "ignored files found in tracking"
 
 # ── 1. Auto-fixers (normalise content before linting) ────────────────────────
 
-sh "$SCRIPTS_DIR/clean-package-lock-registry" \
+# shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
+sh "$SCRIPTS_DIR/clean-package-lock-registry" $MODE_ARG \
     || die "clean-package-lock-registry"
 
 # ── 2. Linters via pre-commit ─────────────────────────────────────────────────
@@ -555,16 +564,14 @@ sh "$SCRIPTS_DIR/clean-package-lock-registry" \
 # config bundled with these hooks.
 if [ "$HAS_PRECOMMIT" -eq 1 ]; then
     REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-    PRECOMMIT_MODE_ARG=""
-    [ "$MODE" = "all-files" ] && PRECOMMIT_MODE_ARG="--all-files"
     if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
         info "Running project pre-commit hooks..."
-        # shellcheck disable=SC2086  # PRECOMMIT_MODE_ARG is a single flag or empty; word-splitting is intentional.
-        pre-commit run $PRECOMMIT_MODE_ARG || die "pre-commit (project config)"
+        # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
+        pre-commit run $MODE_ARG || die "pre-commit (project config)"
     else
         info "Running global linters (pre-commit)..."
-        # shellcheck disable=SC2086  # PRECOMMIT_MODE_ARG is a single flag or empty; word-splitting is intentional.
-        pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" $PRECOMMIT_MODE_ARG \
+        # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
+        pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" $MODE_ARG \
             || die "pre-commit (global linters)"
     fi
 fi
@@ -573,7 +580,8 @@ fi
 CHANGELOG_CHANGES=$(echo "$CHECK_FILES" | grep -E '(^|/)CHANGELOG\.md$' | head -1)
 if [ -n "$CHANGELOG_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected CHANGELOG.md changes — running changelog lint..."
-    sh "$SCRIPTS_DIR/check-changelog" || die "changelog lint"
+    # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
+    sh "$SCRIPTS_DIR/check-changelog" $MODE_ARG || die "changelog lint"
 fi
 
 # ── 4. .NET: format check + build + test if source/project file changes ──────
@@ -582,7 +590,8 @@ if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
     sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
     info "Detected .NET changes — running formatter fix..."
-    sh "$SCRIPTS_DIR/run-formatter" || die "cscleanup formatter"
+    # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
+    sh "$SCRIPTS_DIR/run-formatter" $MODE_ARG || die "cscleanup formatter"
     info "Detected .NET changes — running buildtest..."
     sh "$SCRIPTS_DIR/buildtest" || die "dotnet buildtest"
 fi
