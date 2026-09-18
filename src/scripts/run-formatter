@@ -26,8 +26,9 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=src/scripts/lib/mode-arg.sh
-. "$(dirname "$(readlink -f "$0")")/lib/mode-arg.sh"
+. "$SCRIPT_DIR/lib/mode-arg.sh"
 parse_all_files_mode_arg "$1"
 
 # Returns true (0) when running inside a Claude Code Bash-tool session.
@@ -74,11 +75,11 @@ SCOPE_WORD=staged
 FMT_FILES=$(git_target_files '\.(cs|csproj)$')
 
 if [ -z "$FMT_FILES" ]; then
-    info "No ${SCOPE_WORD} .cs or .csproj files — skipping formatter"
+    info "No ${SCOPE_WORD} .cs or .csproj files, skipping formatter"
     exit 0
 fi
 
-# Collect staged .cs files only (dotnet format does not apply to .csproj)
+# Collect .cs files only (dotnet format does not apply to .csproj)
 CS_FILES=$(printf '%s\n' "$FMT_FILES" | grep -E '\.cs$')
 
 if [ -n "$CS_FILES" ]; then
@@ -89,7 +90,7 @@ if [ -n "$CS_FILES" ]; then
         info "No solution file found — skipping dotnet format"
     else
         dotnet format --version > /dev/null 2>&1 \
-            || die "dotnet format is not available in this SDK (missing dotnet-format component) — cannot format staged .cs files"
+            || die "dotnet format is not available in this SDK (missing dotnet-format component): cannot format ${SCOPE_WORD} .cs files"
 
         set --
         while IFS= read -r f; do
@@ -97,7 +98,7 @@ if [ -n "$CS_FILES" ]; then
         done <<EOF
 $CS_FILES
 EOF
-        info "Applying dotnet format to staged .cs files..."
+        info "Applying dotnet format to ${SCOPE_WORD} .cs files..."
         dotnet format "$SOLUTION" --include "$@" || die "dotnet format failed"
 
         # Re-stage all files formatted by dotnet format
@@ -115,7 +116,7 @@ done <<EOF
 $FMT_FILES
 EOF
 
-info "Applying cscleanup formatting to staged .cs and .csproj files..."
+info "Applying cscleanup formatting to ${SCOPE_WORD} .cs and .csproj files..."
 dotnet cscleanup "$@" || die "cscleanup format failed"
 
 # Re-stage all formatted files in one git add call

@@ -13,7 +13,7 @@
 #
 # --all-files mode (invoked by hooks/pre-commit's own --all-files mode) has
 # no commit in progress, so it targets every tracked CHANGELOG.md (git
-# ls-files) and runs `--lint --fix`, staging any file the fix modifies — the
+# ls-files) and runs `--lint --fix`, staging any file the fix modifies: the
 # whole point of --all-files is a "detect and fix everything" baseline pass.
 
 TOOL_CMD="changelog"
@@ -28,8 +28,9 @@ info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
 }
 
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=src/scripts/lib/mode-arg.sh
-. "$(dirname "$(readlink -f "$0")")/lib/mode-arg.sh"
+. "$SCRIPT_DIR/lib/mode-arg.sh"
 parse_all_files_mode_arg "$1"
 
 # Returns true (0) when running inside a Claude Code Bash-tool session.
@@ -78,8 +79,11 @@ while IFS= read -r changelog; do
     [ -f "$changelog" ] || continue
     info "Linting ${changelog}..."
     if [ "$MODE" = "all-files" ]; then
-        dotnet changelog --lint --fix -f "$changelog" || FAILED=1
-        git diff --quiet -- "$changelog" || git add "$changelog"
+        if dotnet changelog --lint --fix -f "$changelog"; then
+            git diff --quiet -- "$changelog" || git add "$changelog" || die "failed to stage ${changelog}"
+        else
+            FAILED=1
+        fi
     else
         dotnet changelog --lint -f "$changelog" || FAILED=1
     fi

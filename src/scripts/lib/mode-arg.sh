@@ -31,10 +31,18 @@ parse_all_files_mode_arg() {
 # enumerate -- that is exactly how a rename with edited content (status R,
 # not M) was excluded and let rename+edit-only commits skip hooks/pre-commit's
 # own checks (see its STAGED variable, fixed for the identical reason).
+#
+# Both git calls run with `-C "$(git rev-parse --show-toplevel)"` so their
+# output is always repo-root-relative, regardless of the caller's own cwd:
+# `git ls-files` alone prints paths relative to the *current directory*,
+# while `git diff --name-only` alone prints paths relative to the *repo
+# root* -- an asymmetry that would otherwise make the all-files and commit
+# branches return differently-rooted paths when invoked from a subdirectory.
 git_target_files() {
+    _mode_arg_repo_root=$(git rev-parse --show-toplevel) || return 1
     if [ "$MODE" = "all-files" ]; then
-        git ls-files | grep -E "$1"
+        git -C "$_mode_arg_repo_root" ls-files | grep -E "$1"
     else
-        git diff --cached --name-only --diff-filter=d | grep -E "$1"
+        git -C "$_mode_arg_repo_root" diff --cached --name-only --diff-filter=d | grep -E "$1"
     fi
 }
