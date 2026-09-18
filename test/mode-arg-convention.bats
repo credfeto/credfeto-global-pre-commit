@@ -3,9 +3,9 @@
 # ai/local/scripts.instructions.md's "Purpose of --all-files mode" section:
 # any script under src/scripts/ that derives its own file list from git
 # state must go through src/scripts/lib/mode-arg.sh's git_target_files(),
-# not call `git diff --cached` or `git status` directly, or it silently
-# reverts to a no-op under --all-files mode whenever nothing is staged
-# (the exact bug fixed by issue #232).
+# not call `git diff --cached`/`--staged` or `git status` directly, or it
+# silently reverts to a no-op under --all-files mode whenever nothing is
+# staged (the exact bug fixed by issue #232).
 #
 # Scoped to src/scripts/ only, and enforced here as a bats test rather than
 # a src/.pre-commit-config.yaml hook: that config also serves as the global
@@ -22,14 +22,34 @@
 
 load test_helper
 
-@test "no script under src/scripts (other than lib/mode-arg.sh) calls git diff --cached or git status directly" {
+@test "no script under src/scripts (other than lib/mode-arg.sh) calls git diff --cached/--staged or git status directly" {
+    [ -d "${REPO_DIR}/src/scripts" ] || fail "src/scripts directory not found under REPO_DIR"
+
     local _hits
-    # `|| true` neutralises grep's own exit status: the final grep -v
-    # legitimately exits 1 (its POSIX "no output" convention) whenever
-    # every candidate line is a comment, i.e. exactly the success case the
-    # `[ -z ]` check below needs to see, not an error.
-    _hits=$( { grep -rnE 'git[[:space:]]+(diff[[:space:]]+--cached|status)' "${REPO_DIR}/src/scripts" \
-        | grep -v '/lib/mode-arg\.sh:' \
-        | grep -vE ':[0-9]+:[[:space:]]*#'; } || true)
-    [ -z "${_hits}" ]
+    # A single awk pass: matches a candidate line, excludes lib/mode-arg.sh
+    # by its path field only (not a substring anywhere in the line), and
+    # excludes only a whole-line comment (leading '#', ignoring indentation)
+    # -- never a mid-line grep -v stage, whose "no output" exit status (1)
+    # would otherwise be indistinguishable from a genuine zero-violations
+    # pass. awk always exits 0 when it runs to completion, whether or not
+    # it printed anything, so no `|| true` is needed here.
+    _hits=$(grep -rnE 'git[[:space:]]+.*(diff[[:space:]]+.*--(cached|staged)|status)' "${REPO_DIR}/src/scripts" \
+        | awk -F: '
+            $1 ~ /\/lib\/mode-arg\.sh$/ { next }
+            # benchmark-test-affected deliberately does not take --all-files:
+            # it fails open on an empty stage (runs every benchmark, the
+            # opposite failure mode of the bug fixed in issue #232), an
+            # intentional, reviewed exception rather than an instance of it.
+            $1 ~ /\/benchmark-test-affected$/ { next }
+            {
+                content = $0
+                sub(/^[^:]*:[0-9]+:/, "", content)
+                sub(/^[ \t]+/, "", content)
+                if (content !~ /^#/) print
+            }
+        ')
+    if [ -n "${_hits}" ]; then
+        printf 'Found direct git status/diff --cached usage outside lib/mode-arg.sh:\n%s\n' "${_hits}" >&2
+        return 1
+    fi
 }
