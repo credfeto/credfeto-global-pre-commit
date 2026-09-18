@@ -280,7 +280,7 @@ a pre-work baseline check before starting a task. Compared to the default
 | Changelog / .NET / NPM / SQL / CloudFormation category checks | Gated on staged files | Gated on tracked files |
 
 Auto-fixers (`sqlfluff fix`, the .NET formatter, `clean-package-lock-registry`,
-and — in `--all-files` mode only — `check-changelog`'s `--lint --fix`) still
+and, in `--all-files` mode only, `check-changelog`'s `--lint --fix`) still
 run and re-stage what they change, against the wider file list rather than
 only what's staged: the point of `--all-files` is to detect *and fix* every
 issue across the tracked tree with no commit in progress, not just to report
