@@ -91,14 +91,15 @@ case "$_REPO_NAME" in
         # fresh file (which also lays down the full pristine skeleton), then remove
         # it, then let --lint --fix normalise formatting (e.g. blank-line rules).
         # Each call's combined stdout/stderr and exit status are captured (rather
-        # than discarded), matching the require_compatible_dotnet_sdk() convention
-        # in lib/dotnet-sdk-check.sh, so a failure below can show which call failed
-        # and why.
+        # than discarded) so a failure below can show which call failed and why.
+        # Only failing calls are recorded, so DETAIL isolates the actual failure
+        # instead of being diluted by output from calls that succeeded.
         run_capture() {
             _label=$1
             shift
             _out=$("$@" 2>&1)
             _status=$?
+            [ "$_status" -eq 0 ] && return
             DETAIL="$DETAIL
   $_label (exit $_status):
 $(printf '%s\n' "$_out" | sed 's/^/    /')"
