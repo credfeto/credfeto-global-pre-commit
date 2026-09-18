@@ -13,13 +13,23 @@
 # hooks/pre-commit's `pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml"`),
 # so a hook entry targeting src/scripts/* there would incorrectly fire
 # against any unrelated repo that happens to have a directory of that name.
+#
+# This is a static grep, not a shell parser: it cannot see a call routed
+# through a variable/wrapper/alias, and it only recognises a whole-line
+# comment (not a trailing inline one) as non-executable. Both are accepted,
+# known limitations of a lightweight text-based guard, not something this
+# test tries to fully solve.
 
 load test_helper
 
 @test "no script under src/scripts (other than lib/mode-arg.sh) calls git diff --cached or git status directly" {
     local _hits
-    _hits=$(grep -rnE 'git (diff --cached|status)' "${REPO_DIR}/src/scripts" \
+    # `|| true` neutralises grep's own exit status: the final grep -v
+    # legitimately exits 1 (its POSIX "no output" convention) whenever
+    # every candidate line is a comment, i.e. exactly the success case the
+    # `[ -z ]` check below needs to see, not an error.
+    _hits=$( { grep -rnE 'git[[:space:]]+(diff[[:space:]]+--cached|status)' "${REPO_DIR}/src/scripts" \
         | grep -v '/lib/mode-arg\.sh:' \
-        | awk -F: '{ line=$0; sub(/^[^:]*:[0-9]+:/, "", line); gsub(/^[ \t]+/, "", line); if (line !~ /^#/) print $0 }')
+        | grep -vE ':[0-9]+:[[:space:]]*#'; } || true)
     [ -z "${_hits}" ]
 }
