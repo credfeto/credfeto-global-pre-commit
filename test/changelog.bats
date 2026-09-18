@@ -67,6 +67,7 @@ if [ "$1" = "changelog" ]; then
     FILE=""
     ADD=0
     LINT=0
+    FIX=0
     while [ $# -gt 0 ]; do
         case "$1" in
             -f) FILE="$2"; shift 2 ;;
@@ -74,7 +75,7 @@ if [ "$1" = "changelog" ]; then
             -r) shift 2 ;;
             -m) shift 2 ;;
             --lint) LINT=1; shift ;;
-            --fix) shift ;;
+            --fix) FIX=1; shift ;;
             *) shift ;;
         esac
     done
@@ -91,6 +92,11 @@ if [ "$1" = "changelog" ]; then
         exit 0
     fi
     if [ "$LINT" -eq 1 ]; then
+        # FAKE_DOTNET_FIX_APPENDS lets a test simulate --fix actually
+        # modifying the file, to verify the caller re-stages the result.
+        if [ "$FIX" -eq 1 ] && [ "${FAKE_DOTNET_FIX_APPENDS:-0}" -eq 1 ] && [ -n "$FILE" ]; then
+            printf '\n<!-- fixed-by-fake-dotnet -->\n' >> "$FILE"
+        fi
         printf 'Changelog is valid\n'
         exit 0
     fi
@@ -106,6 +112,15 @@ FAKE_DOTNET_EOF
 run_check_changelog() {
     local _repo="$1" _fake_bin="$2"
     run bash -c 'cd "$1" && env PATH="$2:$3" sh "$4"' \
+        _ "${_repo}" "${_fake_bin}" "${TEST_PATH}" "${CHECK_CHANGELOG}"
+}
+
+# Same as run_check_changelog, but passes --all-files: targets every tracked
+# CHANGELOG.md (git ls-files) instead of only staged ones, and runs
+# --lint --fix, staging any change (see src/scripts/check-changelog).
+run_check_changelog_all_files() {
+    local _repo="$1" _fake_bin="$2"
+    run bash -c 'cd "$1" && env PATH="$2:$3" sh "$4" --all-files' \
         _ "${_repo}" "${_fake_bin}" "${TEST_PATH}" "${CHECK_CHANGELOG}"
 }
 
@@ -232,4 +247,64 @@ CHANGELOG_EOF
     git -C "${T}" add CHANGELOG.md
     run_check_changelog "${T}" "${FAKE_BIN}"
     [ "${status}" -eq 0 ]
+}
+
+# ── all-files mode ────────────────────────────────────────────────────────────
+
+@test "default mode skips a tracked but unstaged CHANGELOG.md (nothing to lint)" {
+    local T
+    T="$(make_repo feature/changelog-allfiles-default-skips-test)"
+    printf '%s\n' "${PRISTINE_CHANGELOG}" > "${T}/CHANGELOG.md"
+    git -C "${T}" add CHANGELOG.md
+    git -C "${T}" commit --quiet --no-verify -m seed
+    run_check_changelog "${T}" "${FAKE_BIN}"
+    [ "${status}" -eq 0 ]
+    [[ "${output}" != *"Linting"* ]]
+}
+
+@test "all-files mode lints a tracked but unstaged CHANGELOG.md" {
+    local T
+    T="$(make_repo feature/changelog-allfiles-lints-test)"
+    printf '%s\n' "${PRISTINE_CHANGELOG}" > "${T}/CHANGELOG.md"
+    git -C "${T}" add CHANGELOG.md
+    git -C "${T}" commit --quiet --no-verify -m seed
+    run_check_changelog_all_files "${T}" "${FAKE_BIN}"
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *"Linting"* ]]
+}
+
+@test "all-files mode fixes and stages a tracked but unstaged CHANGELOG.md" {
+    local T
+    T="$(make_repo feature/changelog-allfiles-fixes-and-stages-test)"
+    printf '%s\n' "${PRISTINE_CHANGELOG}" > "${T}/CHANGELOG.md"
+    git -C "${T}" add CHANGELOG.md
+    git -C "${T}" commit --quiet --no-verify -m seed
+    export FAKE_DOTNET_FIX_APPENDS=1
+    run_check_changelog_all_files "${T}" "${FAKE_BIN}"
+    unset FAKE_DOTNET_FIX_APPENDS
+    [ "${status}" -eq 0 ]
+    run git -C "${T}" diff --cached --name-only
+    [[ "${output}" == *"CHANGELOG.md"* ]]
+}
+
+@test "all-files mode runs the *-template blank-check against an unstaged CHANGELOG.md" {
+    local T
+    T="$(make_repo feature/changelog-allfiles-template-blank-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
+    printf '%s\n' "${PRISTINE_CHANGELOG}" \
+        | sed 's/^### Added$/### Added\n- Add a new feature/' \
+        > "${T}/CHANGELOG.md"
+    git -C "${T}" add CHANGELOG.md
+    git -C "${T}" commit --quiet --no-verify -m seed
+    run_check_changelog_all_files "${T}" "${FAKE_BIN}"
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"must keep CHANGELOG.md blank"* ]]
+}
+
+@test "check-changelog rejects an unknown argument" {
+    local T
+    T="$(make_repo feature/changelog-unknown-arg-test)"
+    run bash -c 'cd "$1" && env PATH="$2:$3" sh "$4" --bogus' \
+        _ "${T}" "${FAKE_BIN}" "${TEST_PATH}" "${CHECK_CHANGELOG}"
+    [ "${status}" -eq 1 ]
 }

@@ -42,6 +42,12 @@ When adding a new `language: system` wrapper that is invoked by bare name (curre
 
 Wrappers invoked only through the hook by full `$SCRIPTS_DIR/<name>` path (e.g. `run-formatter`, `buildcheck`) do **not** need a PATH symlink.
 
+## Purpose of `--all-files` mode (MANDATORY)
+
+`hooks/pre-commit --all-files` (invoked via the `pre-commit-check` wrapper) exists to detect, and wherever a fixer script exists for the problem silently *fix*, every issue across the whole tracked tree, with no commit in progress. It is the supported way to get a trustworthy "everything in the repo is clean" signal, e.g. as the mandatory pre-work baseline check before starting a task (see `ai/global/git.instructions.md`'s "Pre-Work Baseline Check"). A false "all checks passed" result from `--all-files` defeats that purpose for every consumer of this repo's hooks, so this is treated as a correctness bug, not a nice-to-have, whenever it happens.
+
+**Corollary for script authors (MANDATORY):** any script that derives its own file list from git state (`git diff --cached`, `git status`, etc.) instead of taking it from the caller must recognise `--all-files` mode (accept it as `$1`, or otherwise have it threaded through) and switch to `git ls-files`, filtered the same way as its staged-mode list, when it is set. A script that unconditionally re-derives `git diff --cached` internally will silently no-op in `--all-files` mode whenever nothing happens to be staged, even though `hooks/pre-commit` itself correctly decided the category should run. This is not a hypothetical: `check-changelog`, `run-formatter`, and `clean-package-lock-registry` all shipped with exactly this bug, since none of them looked at the mode `hooks/pre-commit` had already resolved into `CHECK_FILES`, so all three silently skipped their real work under `--all-files` with an empty stage. See `hooks/pre-commit`'s `MODE_ARG` for the pattern that threads the mode down to a called script.
+
 ## Fixer scripts: staging and exit-code convention (MANDATORY)
 
 A "fixer" script can modify files to correct a problem (e.g. `run-formatter`, `clean-package-lock-registry`) — distinct from a pure validator that only reports problems and never writes (e.g. `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, none of which pass `--fix`-style flags today).
