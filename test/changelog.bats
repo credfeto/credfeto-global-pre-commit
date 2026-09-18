@@ -46,6 +46,10 @@ Releases that have at least been deployed to staging, BUT NOT necessarily releas
 #     `mktemp` on a bare path) before the first `-a` call.
 #   - `changelog -f FILE -r ... -m ...` and `--lint --fix` are no-ops, since
 #     starting from the pristine skeleton they have nothing to do
+#   - when FAKE_DOTNET_FAIL_ADD=1 is set in the environment, the `-a` call
+#     instead prints a distinctive stderr line and exits 1 without writing
+#     FILE, simulating a real-tool failure (e.g. the #219 root cause) so
+#     tests can assert that check-changelog surfaces it
 fake_dotnet_path() {
     local _bin="$1"
     mkdir -p "${_bin}"
@@ -75,6 +79,10 @@ if [ "$1" = "changelog" ]; then
         esac
     done
     if [ "$ADD" -eq 1 ] && [ -n "$FILE" ]; then
+        if [ "${FAKE_DOTNET_FAIL_ADD:-0}" -eq 1 ]; then
+            echo "ERROR: __FAKE_DOTNET_FAIL_ADD__ Could not find [Unreleased] section of file" >&2
+            exit 1
+        fi
         if [ -e "$FILE" ]; then
             echo "ERROR: Could not find [Unreleased] section of file" >&2
             exit 1
@@ -197,6 +205,21 @@ CHANGELOG_EOF
     run_check_changelog "${T}" "${FAKE_BIN}"
     [ "${status}" -eq 0 ]
     [[ "${output}" != *"could not generate reference blank changelog"* ]]
+}
+
+@test "reference generation failure surfaces the underlying dotnet changelog error (regression guard for #221)" {
+    local T
+    T="$(make_repo feature/changelog-template-reference-failure-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
+    printf '%s\n' "${PRISTINE_CHANGELOG}" > "${T}/CHANGELOG.md"
+    git -C "${T}" add CHANGELOG.md
+    export FAKE_DOTNET_FAIL_ADD=1
+    run_check_changelog "${T}" "${FAKE_BIN}"
+    unset FAKE_DOTNET_FAIL_ADD
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"could not generate reference blank changelog"* ]]
+    [[ "${output}" == *"__FAKE_DOTNET_FAIL_ADD__"* ]]
+    [[ "${output}" == *"exit 1"* ]]
 }
 
 @test "CHANGELOG.md with entries in a non-template repo passes (blank check does not apply)" {
