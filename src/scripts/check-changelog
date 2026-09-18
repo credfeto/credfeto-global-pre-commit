@@ -87,31 +87,27 @@ case "$_REPO_NAME" in
         REF="$REFDIR/reference-changelog.md"
         ACTUAL_NORM="$REFDIR/actual.norm"
         REF_NORM="$REFDIR/reference.norm"
-        LOG_ADD="$REFDIR/add.log"
-        LOG_REMOVE="$REFDIR/remove.log"
-        LOG_LINTFIX="$REFDIR/lintfix.log"
-
         # Ask the tool itself to produce a blank changelog: add a probe entry to a
         # fresh file (which also lays down the full pristine skeleton), then remove
         # it, then let --lint --fix normalise formatting (e.g. blank-line rules).
-        # Each call's stderr/stdout and exit status are captured (rather than
-        # discarded) so a failure below can show which call failed and why.
-        dotnet changelog -f "$REF" -a Added -m "__template_blank_check__" >"$LOG_ADD" 2>&1
+        # Each call's combined stdout/stderr and exit status are captured (rather
+        # than discarded), matching the require_compatible_dotnet_sdk() convention
+        # in lib/dotnet-sdk-check.sh, so a failure below can show which call failed
+        # and why.
+        OUT_ADD=$(dotnet changelog -f "$REF" -a Added -m "__template_blank_check__" 2>&1)
         STATUS_ADD=$?
-        dotnet changelog -f "$REF" -r Added -m "__template_blank_check__" >"$LOG_REMOVE" 2>&1
+        OUT_REMOVE=$(dotnet changelog -f "$REF" -r Added -m "__template_blank_check__" 2>&1)
         STATUS_REMOVE=$?
-        dotnet changelog -f "$REF" --lint --fix >"$LOG_LINTFIX" 2>&1
+        OUT_LINTFIX=$(dotnet changelog -f "$REF" --lint --fix 2>&1)
         STATUS_LINTFIX=$?
-        if [ ! -s "$REF" ]; then
-            printf '\n\033[31m✗\033[0m %s\n' "reference blank changelog generation failed:" >&2
-            printf '  -a Added (exit %s):\n' "$STATUS_ADD" >&2
-            sed 's/^/    /' "$LOG_ADD" >&2
-            printf '  -r Added (exit %s):\n' "$STATUS_REMOVE" >&2
-            sed 's/^/    /' "$LOG_REMOVE" >&2
-            printf '  --lint --fix (exit %s):\n' "$STATUS_LINTFIX" >&2
-            sed 's/^/    /' "$LOG_LINTFIX" >&2
-            die "could not generate reference blank changelog via dotnet changelog"
-        fi
+        [ -s "$REF" ] || die "could not generate reference blank changelog via dotnet changelog:
+
+  -a Added (exit $STATUS_ADD):
+$(printf '%s\n' "$OUT_ADD" | sed 's/^/    /')
+  -r Added (exit $STATUS_REMOVE):
+$(printf '%s\n' "$OUT_REMOVE" | sed 's/^/    /')
+  --lint --fix (exit $STATUS_LINTFIX):
+$(printf '%s\n' "$OUT_LINTFIX" | sed 's/^/    /')"
 
         BLANK_FAILED=0
         while IFS= read -r changelog; do
