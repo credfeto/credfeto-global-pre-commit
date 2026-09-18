@@ -318,12 +318,9 @@ is_maintained_elsewhere() {
 # the full tracked tree (git ls-files) regardless of what is staged, and skips
 # the guards that only make sense mid-commit (empty-stage abort, branch check,
 # identity check, merge-commit guard).
-MODE=commit
-case "${1:-}" in
-    "") ;;
-    --all-files) MODE=all-files ;;
-    *) die "unknown argument: $1 (supported: --all-files)" ;;
-esac
+# shellcheck source=src/scripts/lib/mode-arg.sh
+. "$SCRIPTS_DIR/lib/mode-arg.sh"
+parse_all_files_mode_arg "$1"
 
 # Passed through to every script below that can itself run in either mode
 # (the `pre-commit` tool itself, and any fixer/checker script that derives

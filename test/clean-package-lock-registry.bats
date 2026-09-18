@@ -9,16 +9,6 @@ bats_require_minimum_version 1.5.0
 
 SCRIPT="${REPO_DIR}/src/scripts/clean-package-lock-registry"
 
-# Creates a plain git repo, prints its path.
-setup_repo() {
-    local _t="${BATS_TEST_TMPDIR}/repo"
-    mkdir -p "${_t}"
-    git -C "${_t}" init --quiet
-    git -C "${_t}" config user.email "test@example.com"
-    git -C "${_t}" config user.name "Test User"
-    printf '%s' "${_t}"
-}
-
 PRIVATE_LOCK='{
   "name": "example",
   "resolved": "https://npm.markridgwell.com/example/-/example-1.0.0.tgz"
@@ -27,7 +17,7 @@ PRIVATE_LOCK='{
 
 @test "normalises a staged package-lock.json and re-stages it" {
     local T
-    T="$(setup_repo)"
+    T="$(make_repo feature/clean-lock-staged-test)"
     printf '%s' "${PRIVATE_LOCK}" > "${T}/package-lock.json"
     git -C "${T}" add package-lock.json
 
@@ -43,10 +33,10 @@ PRIVATE_LOCK='{
 
 @test "default mode skips a tracked but unstaged package-lock.json" {
     local T
-    T="$(setup_repo)"
+    T="$(make_repo feature/clean-lock-default-skips-test)"
     printf '%s' "${PRIVATE_LOCK}" > "${T}/package-lock.json"
     git -C "${T}" add package-lock.json
-    git -C "${T}" commit --quiet -m seed
+    git -C "${T}" commit --quiet --no-verify -m seed
 
     cd "${T}"
     run "${SCRIPT}"
@@ -57,10 +47,10 @@ PRIVATE_LOCK='{
 
 @test "all-files mode normalises and stages a tracked but unstaged package-lock.json" {
     local T
-    T="$(setup_repo)"
+    T="$(make_repo feature/clean-lock-allfiles-test)"
     printf '%s' "${PRIVATE_LOCK}" > "${T}/package-lock.json"
     git -C "${T}" add package-lock.json
-    git -C "${T}" commit --quiet -m seed
+    git -C "${T}" commit --quiet --no-verify -m seed
 
     cd "${T}"
     run "${SCRIPT}" --all-files
@@ -74,7 +64,7 @@ PRIVATE_LOCK='{
 
 @test "clean-package-lock-registry rejects an unknown argument" {
     local T
-    T="$(setup_repo)"
+    T="$(make_repo feature/clean-lock-unknown-arg-test)"
     cd "${T}"
     run "${SCRIPT}" --bogus
     [ "${status}" -eq 1 ]
