@@ -213,6 +213,7 @@ is_protected_everywhere_file() {
         .sqlfluff*) return 0 ;;
         .tsqllint*) return 0 ;;
         .ai-instructions) return 0 ;;
+        CONTRIBUTING.md) return 0 ;;
         Directory.Build.props) return 0 ;;
     esac
     return 1
@@ -261,9 +262,13 @@ is_maintained_by_current_repo() {
 # them via the sync, never author them, so they are deliberately not
 # whitelisted here and stay blocked, unlike the old template-only guard's
 # exemption for all three.
+#
+# CONTRIBUTING.md (at any depth) is likewise whitelisted for cs-template only.
+# It is Markdown, so it cannot carry a "# Maintain in repo:" comment.
 is_explicitly_whitelisted() {
     case "$1" in
         ai/global/*.md | .ai-instructions) [ "$CURRENT_REPO_NAME" = "cs-template" ] ;;
+        CONTRIBUTING.md | */CONTRIBUTING.md) [ "$CURRENT_REPO_NAME" = "cs-template" ] ;;
         *) return 1 ;;
     esac
 }

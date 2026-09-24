@@ -416,6 +416,60 @@ load test_helper
     [ "${status}" -eq 0 ]
 }
 
+@test "staging root CONTRIBUTING.md in non-cs-template repo is rejected" {
+    local T
+    T="$(make_repo feature/root-contributing-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# Contributing\n' > "${T}/CONTRIBUTING.md"
+    git -C "${T}" add .pre-commit-config.yaml CONTRIBUTING.md
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging a nested CONTRIBUTING.md in non-cs-template repo is rejected (any depth)" {
+    local T
+    T="$(make_repo feature/nested-contributing-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/.github"
+    printf '# Contributing\n' > "${T}/.github/CONTRIBUTING.md"
+    git -C "${T}" add .pre-commit-config.yaml .github/CONTRIBUTING.md
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging CONTRIBUTING.md in hooks repo is rejected" {
+    local T
+    T="$(make_repo feature/contributing-hooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# Contributing\n' > "${T}/CONTRIBUTING.md"
+    git -C "${T}" add .pre-commit-config.yaml CONTRIBUTING.md
+    run_hook_as_hooks_repo "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging root CONTRIBUTING.md in cs-template passes (whitelisted)" {
+    local T
+    T="$(make_repo feature/root-contributing-cs-template-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '# Contributing\n' > "${T}/CONTRIBUTING.md"
+    git -C "${T}" add .pre-commit-config.yaml CONTRIBUTING.md
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "staging a nested CONTRIBUTING.md in cs-template passes (whitelisted at any depth)" {
+    local T
+    T="$(make_repo feature/nested-contributing-cs-template-test)"
+    git -C "${T}" remote add origin "git@github.com:credfeto/cs-template.git"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/.github"
+    printf '# Contributing\n' > "${T}/.github/CONTRIBUTING.md"
+    git -C "${T}" add .pre-commit-config.yaml .github/CONTRIBUTING.md
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
 @test "staging root .gitignore in cs-template is also rejected (no template exemption; unlike .ai-instructions/ai/global, it has no cs-template-authored canonical copy to protect)" {
     local T
     T="$(make_repo feature/root-gitignore-cs-template-test)"

@@ -158,6 +158,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A file in the always-blocked-everywhere list (.globalconfig, .editorconfig, .ansible-lint, .gitattributes, .gitleaks, .yamllint.yml, root .gitignore, etc.) is now exempted from the block when its already-committed content declares the current repo as its '# Maintain in repo:' owner, restoring the declared owner's ability to maintain its own canonical copy (#186)
 - Run bats test suite in parallel using CPU-count-derived --jobs N in run-bats and acceptance-test (#211)
 - buildtest: skip benchmark tests when the resolved .NET SDK is a pre-release build, since they are expected to fail against one
+- Pre-commit hook: CONTRIBUTING.md (at any depth) can now only be changed in cs-template, like other shared conformance files
 
 ### Deprecated
 ### Removed
