@@ -19,6 +19,21 @@ HOOK="${HOOKS_DIR}/pre-commit"
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_SYSTEM=/dev/null
 
+# ── pre-commit store isolation ────────────────────────────────────────────────
+# pre-commit records every config it runs in a SQLite database in its store
+# (default ~/.cache/pre-commit/db.db). Under bats --jobs, concurrent tests all
+# writing to that one shared database can hit "database is locked", which
+# crashes pre-commit (exit 3) and fails whichever test was running it, and
+# every test run also pollutes the developer's real pre-commit cache. Giving
+# each test its own store removes both problems at no cost, since every hook
+# the tests run is repo: local with language: system, so there is nothing to
+# clone or build into it. The guard leaves PRE_COMMIT_HOME alone outside a
+# test body (setup_file and bats' own preprocessing pass), where
+# BATS_TEST_TMPDIR is not yet set and pre-commit is never run.
+if [ -n "${BATS_TEST_TMPDIR:-}" ]; then
+    export PRE_COMMIT_HOME="${BATS_TEST_TMPDIR}/pre-commit-home"
+fi
+
 # ── PATH sanitisation ─────────────────────────────────────────────────────────
 # The hook enforces that dotnet (if present) must resolve to
 # /usr/share/dotnet/dotnet.  On machines where dotnet lives elsewhere we strip
