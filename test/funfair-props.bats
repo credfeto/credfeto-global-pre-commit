@@ -6,7 +6,8 @@
 #   copy is deleted, failing in both cases; a re-run then passes
 # - under git commit -a, -i and <paths> (a temporary index) a tracked copy is
 #   only deleted, and the message says how to stage the removal; so is a copy
-#   whose addition is staged but not in HEAD (absent from a <paths> index)
+#   whose addition is staged but not in HEAD (absent from a <paths> index);
+#   the advice lists src/FunFair.props among the paths only when HEAD has it
 # - a staged-only copy already deleted from the working tree does not block a
 #   git commit -a or <paths> commit; the next plain commit removes it
 # - only the exact path src/FunFair.props relative to the repo root counts
@@ -293,6 +294,7 @@ props_fully_removed() {
     run_git_commit "${T}" -m change readme.txt
     [ "${status}" -eq 1 ] || fail_test "expected failure, got ${status}: ${output}"
     [[ "${output}" == *"the removal could not be staged"* ]]
+    [[ "${output}" == *"must also list ${PROPS_FILE} among its paths"* ]] || fail_test "expected the advice to list the file, got: ${output}"
     [ ! -e "${T}/${PROPS_FILE}" ]
     is_tracked "${T}" "${PROPS_FILE}"
 
@@ -344,6 +346,30 @@ props_fully_removed() {
 
     git -C "${T}" rm --ignore-unmatch --quiet -- "${PROPS_FILE}"
     run_git_commit "${T}" -m change readme.txt
+    [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
+    props_fully_removed "${T}"
+}
+
+@test "git commit <paths> listing a never-committed src/FunFair.props passes once the advice to leave it out is followed" {
+    local T
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'one\n' > "${T}/readme.txt"
+    commit_without_hooks "${T}" .
+    write_props_file "${T}"
+    git -C "${T}" add -- "${PROPS_FILE}"
+    printf 'two\n' >> "${T}/readme.txt"
+
+    run_git_commit "${T}" -m change -- "${PROPS_FILE}" readme.txt
+    [ "${status}" -eq 1 ] || fail_test "expected failure, got ${status}: ${output}"
+    [[ "${output}" == *"git rm --ignore-unmatch --quiet -- ${PROPS_FILE}"* ]] || fail_test "expected the git rm instruction, got: ${output}"
+    [[ "${output}" == *"must not list ${PROPS_FILE} among its paths"* ]] || fail_test "expected the advice to leave the file out, got: ${output}"
+    [[ "${output}" != *"must also list"* ]]
+
+    # HEAD has never held the file, so once its addition is unstaged git
+    # rejects it as a path ("did not match any file(s) known to git").
+    git -C "${T}" rm --ignore-unmatch --quiet -- "${PROPS_FILE}"
+    run_git_commit "${T}" -m change -- readme.txt
     [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
     props_fully_removed "${T}"
 }

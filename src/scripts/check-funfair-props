@@ -75,7 +75,14 @@ if [ -n "$TRACKED$STAGED_ONLY" ] && uses_temporary_index; then
     # still tracks the file after the user has staged the removal.
     [ -n "$REPO_TRACKED" ] \
         || die "$REASON; its removal is already staged but this commit's paths do not include it. Re-run the commit listing $PROPS_FILE among its paths."
-    die "$REASON; it has been deleted, but this commit uses a temporary index that git discards when a hook fails, so the removal could not be staged. Run 'git rm --ignore-unmatch --quiet -- $PROPS_FILE', then re-run the commit; a git commit <paths> without -i/--include must also list $PROPS_FILE among its paths."
+    # Once its staged addition is removed, a file HEAD has never held is
+    # unknown to git, which then rejects it as a commit path.
+    if git cat-file -e "HEAD:$PROPS_FILE" 2>/dev/null; then
+        PATHS_ADVICE="a git commit <paths> without -i/--include must also list $PROPS_FILE among its paths"
+    else
+        PATHS_ADVICE="a git commit <paths> must not list $PROPS_FILE among its paths, as it has never been committed"
+    fi
+    die "$REASON; it has been deleted, but this commit uses a temporary index that git discards when a hook fails, so the removal could not be staged. Run 'git rm --ignore-unmatch --quiet -- $PROPS_FILE', then re-run the commit; $PATHS_ADVICE."
 fi
 
 if [ -n "$TRACKED" ]; then
