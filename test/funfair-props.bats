@@ -60,10 +60,14 @@ write_props_file() {
 
 # Creates a non-funfair repo with src/FunFair.props and readme.txt committed,
 # then modifies readme.txt so there is a change to commit, and prints its path.
+# The empty project pre-commit config keeps the hook off the bundled global
+# linters, so a commit that should pass is not failed by an unrelated linter or
+# its environment (e.g. ansible-lint on a runner with mismatched versions).
 make_committed_props_repo() {
     local _t
     _t="$(make_props_repo "${OTHER_ORIGIN}")"
     write_props_file "${_t}"
+    printf 'repos: []\n' > "${_t}/.pre-commit-config.yaml"
     printf 'one\n' > "${_t}/readme.txt"
     commit_without_hooks "${_t}" .
     printf 'two\n' >> "${_t}/readme.txt"
