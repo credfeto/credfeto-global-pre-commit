@@ -5,7 +5,9 @@
 # Unlike the fixer scripts, this exits non-zero after removing the file: the
 # removal is staged (or the untracked file deleted) so a re-run passes, but
 # the commit in progress must stop so the removal is noticed rather than
-# silently folded into it.
+# silently folded into it. git commit -a, -i and <paths> run hooks against a
+# temporary index that git discards when a hook fails, so there the file is
+# only deleted from the working tree and the user is told how to stage it.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -24,6 +26,17 @@ remote_owner() {
         | sed 's|/*$||; s|\.git$||; s|[/:][^/:]*$||; s|.*[/:]||; y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
 }
 
+index_path() {
+    git rev-parse --path-format=absolute --git-path index
+}
+
+# GIT_INDEX_FILE names the index the commit in progress is built from; it is
+# the repository's own index only for a plain git commit.
+uses_temporary_index() {
+    [ -n "${GIT_INDEX_FILE:-}" ] || return 1
+    [ "$(index_path)" != "$(unset GIT_INDEX_FILE; index_path)" ]
+}
+
 REPO_ROOT=$(git rev-parse --show-toplevel) || die "unable to locate the repository root"
 cd "$REPO_ROOT" || die "unable to change to the repository root: $REPO_ROOT"
 
@@ -39,6 +52,15 @@ OWNER=$(remote_owner "$ORIGIN_URL")
 [ "$OWNER" = "$FUNFAIR_OWNER" ] && exit 0
 
 REASON="$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER)"
+
+if [ -n "$TRACKED" ] && uses_temporary_index; then
+    rm -f -- "$PROPS_FILE" || die "failed to delete $PROPS_FILE"
+    # Only a git commit <paths> builds its temporary index from HEAD, so it
+    # still tracks the file after the user has staged the removal.
+    [ -n "$(unset GIT_INDEX_FILE; git ls-files -- "$PROPS_FILE")" ] \
+        || die "$REASON; its removal is already staged but this commit's paths do not include it. Re-run the commit listing $PROPS_FILE among its paths."
+    die "$REASON; it has been deleted, but this commit uses a temporary index that git discards when a hook fails, so the removal could not be staged. Run 'git rm --ignore-unmatch --quiet -- $PROPS_FILE', then re-run the commit; a git commit <paths> without -i/--include must also list $PROPS_FILE among its paths."
+fi
 
 if [ -n "$TRACKED" ]; then
     git rm -f --quiet -- "$PROPS_FILE" || die "failed to remove $PROPS_FILE from the index"

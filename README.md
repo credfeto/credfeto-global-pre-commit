@@ -179,7 +179,7 @@ git config --global core.hooksPath
 | --- | --- | --- |
 | No merge commits | `scripts/check-merge-commits` | Blocks if `MERGE_HEAD` is present — rebase instead of merge |
 | No ignored files tracked | `scripts/check-ignored-files` | Fails if a tracked file is matched by `.gitignore` rules |
-| No `src/FunFair.props` outside funfair-tech | `scripts/check-funfair-props` | When the `origin` remote's owner is not `funfair-tech` (case-insensitive; skipped when there is no `origin`), `git rm`s a tracked `src/FunFair.props` (staging the removal) or deletes an untracked one, then fails so the commit can be re-run with the removal included. Also runs in `--all-files` mode |
+| No `src/FunFair.props` outside funfair-tech | `scripts/check-funfair-props` | When the `origin` remote's owner is not `funfair-tech` (case-insensitive; skipped when there is no `origin`), `git rm`s a tracked `src/FunFair.props` (staging the removal) or deletes an untracked one, then fails so the commit can be re-run with the removal included. Under `git commit -a`, `-i` or `<paths>`, git discards index changes made by a failing hook, so the file is only deleted and the message gives the `git rm` command to stage it. Also runs in `--all-files` mode |
 | Secret scanning | `scripts/check-secrets` | Runs `trufflehog --only-verified`; **skipped if not installed** |
 
 **Native pre-commit hooks (via `pre-commit/pre-commit-hooks`):**

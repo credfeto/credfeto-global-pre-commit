@@ -4,6 +4,8 @@
 #   (any URL form, case-insensitive) or when there is no origin remote
 # - otherwise a tracked copy is git rm'd (removal staged) and an untracked
 #   copy is deleted, failing in both cases; a re-run then passes
+# - under git commit -a, -i and <paths> (a temporary index) a tracked copy is
+#   only deleted, and the message says how to stage the removal
 # - only the exact path src/FunFair.props relative to the repo root counts
 
 load test_helper
@@ -54,6 +56,40 @@ write_props_file() {
     local _path="${2:-${PROPS_FILE}}"
     mkdir -p "$(dirname "${_repo}/${_path}")"
     printf '<Project />\n' > "${_repo}/${_path}"
+}
+
+# Creates a non-funfair repo with src/FunFair.props and readme.txt committed,
+# then modifies readme.txt so there is a change to commit, and prints its path.
+make_committed_props_repo() {
+    local _t
+    _t="$(make_props_repo "${OTHER_ORIGIN}")"
+    write_props_file "${_t}"
+    printf 'one\n' > "${_t}/readme.txt"
+    commit_without_hooks "${_t}" .
+    printf 'two\n' >> "${_t}/readme.txt"
+    printf '%s' "${_t}"
+}
+
+# Runs a real `git commit --quiet <args>` in repo "$1", so the hook runs with
+# the GIT_INDEX_FILE git chooses for that form of commit, in the same
+# environment run_hook gives the hook. Sets $status and $output via bats run.
+run_git_commit() {
+    local _repo="$1"
+    shift
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        _path="$2"
+        shift 2
+        env PATH="${_path}" git commit --quiet "$@"
+    ' _ "${_repo}" "${TEST_PATH}" "$@"
+}
+
+# Succeeds when HEAD's commit records the deletion of src/FunFair.props.
+head_deletes_props() {
+    [[ "$(git -C "$1" show --name-status --format= HEAD)" == *"D	${PROPS_FILE}"* ]]
 }
 
 @test "funfair-tech origin in any URL form and case keeps a tracked src/FunFair.props" {
@@ -180,4 +216,77 @@ write_props_file() {
     [ "${status}" -eq 1 ]
     [[ "${output}" == *"src/FunFair.props is not permitted outside funfair-tech repositories"* ]]
     is_untracked "${T}" "${PROPS_FILE}"
+}
+
+# git commit -a, -i and <paths> run the hook against a temporary index that
+# git discards when the hook fails, so the removal can only be staged by a
+# plain git commit; the tests below drive each form through the real hook.
+
+@test "plain git commit stages the removal and the re-run commits the deletion" {
+    local T
+    T="$(make_committed_props_repo)"
+    git -C "${T}" add -- readme.txt
+
+    run_git_commit "${T}" -m change
+    [ "${status}" -eq 1 ] || fail_test "expected failure, got ${status}: ${output}"
+    [[ "${output}" == *"its removal has been staged"* ]]
+    run git -C "${T}" diff --cached --name-status -- "${PROPS_FILE}"
+    [ "${output}" = "D	${PROPS_FILE}" ]
+
+    run_git_commit "${T}" -m change
+    [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
+    head_deletes_props "${T}"
+}
+
+@test "git commit -a deletes the file without claiming it is staged and the re-run commits the deletion" {
+    local T
+    T="$(make_committed_props_repo)"
+
+    run_git_commit "${T}" -a -m change
+    [ "${status}" -eq 1 ] || fail_test "expected failure, got ${status}: ${output}"
+    [[ "${output}" == *"the removal could not be staged"* ]]
+    [[ "${output}" != *"its removal has been staged"* ]]
+    [ ! -e "${T}/${PROPS_FILE}" ]
+    is_tracked "${T}" "${PROPS_FILE}"
+
+    run_git_commit "${T}" -a -m change
+    [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
+    head_deletes_props "${T}"
+}
+
+@test "git commit <paths> passes once the deletion is staged and src/FunFair.props is listed" {
+    local T
+    T="$(make_committed_props_repo)"
+
+    run_git_commit "${T}" -m change readme.txt
+    [ "${status}" -eq 1 ] || fail_test "expected failure, got ${status}: ${output}"
+    [[ "${output}" == *"the removal could not be staged"* ]]
+    [ ! -e "${T}/${PROPS_FILE}" ]
+    is_tracked "${T}" "${PROPS_FILE}"
+
+    git -C "${T}" rm --ignore-unmatch --quiet -- "${PROPS_FILE}"
+    # The temporary index is rebuilt from HEAD for the listed paths only, so
+    # the staged deletion is not seen unless src/FunFair.props is listed too.
+    run_git_commit "${T}" -m change readme.txt
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"its removal is already staged but this commit's paths do not include it"* ]]
+
+    run_git_commit "${T}" -m change readme.txt "${PROPS_FILE}"
+    [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
+    head_deletes_props "${T}"
+}
+
+@test "git commit -i <paths> passes once the deletion is staged" {
+    local T
+    T="$(make_committed_props_repo)"
+
+    run_git_commit "${T}" -i -m change readme.txt
+    [ "${status}" -eq 1 ] || fail_test "expected failure, got ${status}: ${output}"
+    [[ "${output}" == *"the removal could not be staged"* ]]
+    is_tracked "${T}" "${PROPS_FILE}"
+
+    git -C "${T}" rm --ignore-unmatch --quiet -- "${PROPS_FILE}"
+    run_git_commit "${T}" -i -m change readme.txt
+    [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
+    head_deletes_props "${T}"
 }
