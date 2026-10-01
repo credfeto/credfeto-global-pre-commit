@@ -7,6 +7,8 @@
 # - under git commit -a, -i and <paths> (a temporary index) a tracked copy is
 #   only deleted, and the message says how to stage the removal; so is a copy
 #   whose addition is staged but not in HEAD (absent from a <paths> index)
+# - a staged-only copy already deleted from the working tree does not block a
+#   git commit -a or <paths> commit; the next plain commit removes it
 # - only the exact path src/FunFair.props relative to the repo root counts
 
 load test_helper
@@ -95,6 +97,31 @@ run_git_commit() {
 # Succeeds when HEAD's commit records the deletion of src/FunFair.props.
 head_deletes_props() {
     [[ "$(git -C "$1" show --name-status --format= HEAD)" == *"D	${PROPS_FILE}"* ]]
+}
+
+# Creates a non-funfair repo with readme.txt committed and modified, and
+# src/FunFair.props added to the index but never committed, then deleted from
+# the working tree, and prints its path.
+make_staged_then_deleted_props_repo() {
+    local _t
+    _t="$(make_props_repo "${OTHER_ORIGIN}")"
+    printf 'repos: []\n' > "${_t}/.pre-commit-config.yaml"
+    printf 'one\n' > "${_t}/readme.txt"
+    commit_without_hooks "${_t}" .
+    write_props_file "${_t}"
+    git -C "${_t}" add -- "${PROPS_FILE}"
+    rm -- "${_t}/${PROPS_FILE}"
+    printf 'two\n' >> "${_t}/readme.txt"
+    printf '%s' "${_t}"
+}
+
+# Succeeds when src/FunFair.props is in neither HEAD, the index nor the
+# working tree of the given repo.
+props_fully_removed() {
+    ! git -C "$1" cat-file -e "HEAD:${PROPS_FILE}" 2>/dev/null \
+        && is_untracked "$1" "${PROPS_FILE}" \
+        && [ ! -e "$1/${PROPS_FILE}" ] \
+        && [ -z "$(git -C "$1" status --porcelain -- "${PROPS_FILE}")" ]
 }
 
 @test "funfair-tech origin in any URL form and case keeps a tracked src/FunFair.props" {
@@ -315,15 +342,50 @@ head_deletes_props() {
     [ ! -e "${T}/${PROPS_FILE}" ]
     is_tracked "${T}" "${PROPS_FILE}"
 
-    # The addition is still staged, so a re-run without the git rm must not pass.
-    run_git_commit "${T}" -m change readme.txt
-    [ "${status}" -eq 1 ] || fail_test "expected re-run without git rm to fail, got ${status}: ${output}"
-    [[ "${output}" == *"git rm --ignore-unmatch --quiet -- ${PROPS_FILE}"* ]] || fail_test "expected the git rm instruction, got: ${output}"
-
     git -C "${T}" rm --ignore-unmatch --quiet -- "${PROPS_FILE}"
     run_git_commit "${T}" -m change readme.txt
     [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
-    is_untracked "${T}" "${PROPS_FILE}"
-    run git -C "${T}" status --porcelain -- "${PROPS_FILE}"
-    [ -z "${output}" ]
+    props_fully_removed "${T}"
+}
+
+@test "a staged-only src/FunFair.props left in the index by git commit <paths> is removed by the next plain git commit" {
+    local T
+    T="$(make_staged_then_deleted_props_repo)"
+
+    # The file is gone from the working tree, so the paths commit cannot add
+    # it to HEAD and passes, leaving the stale addition in the index.
+    run_git_commit "${T}" -m change readme.txt
+    [ "${status}" -eq 0 ] || fail_test "expected pass, got ${status}: ${output}"
+    run git -C "${T}" cat-file -e "HEAD:${PROPS_FILE}"
+    [ "${status}" -ne 0 ]
+    is_tracked "${T}" "${PROPS_FILE}"
+
+    printf 'three\n' >> "${T}/readme.txt"
+    git -C "${T}" add -- readme.txt
+    run_git_commit "${T}" -m change
+    [ "${status}" -eq 1 ] || fail_test "expected failure, got ${status}: ${output}"
+    [[ "${output}" == *"its removal has been staged"* ]] || fail_test "expected the staged removal message, got: ${output}"
+    props_fully_removed "${T}"
+
+    run_git_commit "${T}" -m change
+    [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
+    props_fully_removed "${T}"
+}
+
+@test "git commit -a passes when it removes a staged-only src/FunFair.props already deleted from the working tree" {
+    local T
+    T="$(make_staged_then_deleted_props_repo)"
+
+    run_git_commit "${T}" -a -m change
+    [ "${status}" -eq 0 ] || fail_test "expected pass, got ${status}: ${output}"
+    props_fully_removed "${T}"
+}
+
+@test "git commit <paths> listing a staged-only src/FunFair.props already deleted from the working tree passes" {
+    local T
+    T="$(make_staged_then_deleted_props_repo)"
+
+    run_git_commit "${T}" -m change "${PROPS_FILE}" readme.txt
+    [ "${status}" -eq 0 ] || fail_test "expected pass, got ${status}: ${output}"
+    props_fully_removed "${T}"
 }

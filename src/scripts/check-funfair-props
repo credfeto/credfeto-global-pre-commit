@@ -8,8 +8,8 @@
 # silently folded into it. git commit -a, -i and <paths> run hooks against a
 # temporary index that git discards when a hook fails, so there the file is
 # only deleted from the working tree and the user is told how to stage it; the
-# same applies to an addition staged but not yet committed, which a git
-# commit <paths> cannot see in its temporary index.
+# same applies to an addition staged but not yet committed and still in the
+# working tree, which a git commit <paths> cannot see in its temporary index.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -49,9 +49,13 @@ REPO_TRACKED=$(unset GIT_INDEX_FILE; git ls-files -- "$PROPS_FILE")
 # A git commit <paths> builds its temporary index from HEAD, so an addition
 # staged but never committed is only in the repository's own index, where it
 # outlives the commit. Missing from HEAD tells it apart from a git commit -a
-# that is itself recording the deletion.
+# that is itself recording the deletion. Only while the file is still in the
+# working tree, though: once it is gone, a git commit -a or one listing it is
+# removing the staged addition, and a commit that leaves it in the index
+# cannot add it to HEAD; the next plain commit sees it as tracked instead.
 STAGED_ONLY=""
-[ -z "$TRACKED" ] && [ -n "$REPO_TRACKED" ] && ! git cat-file -e "HEAD:$PROPS_FILE" 2>/dev/null \
+[ -z "$TRACKED" ] && [ -n "$REPO_TRACKED" ] && [ -e "$PROPS_FILE" ] \
+    && ! git cat-file -e "HEAD:$PROPS_FILE" 2>/dev/null \
     && STAGED_ONLY="$REPO_TRACKED"
 [ -n "$TRACKED$STAGED_ONLY" ] || [ -e "$PROPS_FILE" ] || exit 0
 
