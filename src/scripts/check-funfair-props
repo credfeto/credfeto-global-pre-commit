@@ -7,7 +7,9 @@
 # the commit in progress must stop so the removal is noticed rather than
 # silently folded into it. git commit -a, -i and <paths> run hooks against a
 # temporary index that git discards when a hook fails, so there the file is
-# only deleted from the working tree and the user is told how to stage it.
+# only deleted from the working tree and the user is told how to stage it; the
+# same applies to an addition staged but not yet committed, which a git
+# commit <paths> cannot see in its temporary index.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -43,7 +45,15 @@ cd "$REPO_ROOT" || die "unable to change to the repository root: $REPO_ROOT"
 # The file is absent in almost every repository, so check for it before the
 # comparatively expensive origin lookup.
 TRACKED=$(git ls-files -- "$PROPS_FILE")
-[ -n "$TRACKED" ] || [ -e "$PROPS_FILE" ] || exit 0
+REPO_TRACKED=$(unset GIT_INDEX_FILE; git ls-files -- "$PROPS_FILE")
+# A git commit <paths> builds its temporary index from HEAD, so an addition
+# staged but never committed is only in the repository's own index, where it
+# outlives the commit. Missing from HEAD tells it apart from a git commit -a
+# that is itself recording the deletion.
+STAGED_ONLY=""
+[ -z "$TRACKED" ] && [ -n "$REPO_TRACKED" ] && ! git cat-file -e "HEAD:$PROPS_FILE" 2>/dev/null \
+    && STAGED_ONLY="$REPO_TRACKED"
+[ -n "$TRACKED$STAGED_ONLY" ] || [ -e "$PROPS_FILE" ] || exit 0
 
 ORIGIN_URL=$(git remote get-url origin 2>/dev/null) || exit 0
 [ -n "$ORIGIN_URL" ] || exit 0
@@ -53,11 +63,13 @@ OWNER=$(remote_owner "$ORIGIN_URL")
 
 REASON="$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER)"
 
-if [ -n "$TRACKED" ] && uses_temporary_index; then
+if [ -n "$TRACKED$STAGED_ONLY" ] && uses_temporary_index; then
     rm -f -- "$PROPS_FILE" || die "failed to delete $PROPS_FILE"
+    [ -z "$STAGED_ONLY" ] \
+        || die "$REASON; it has been deleted, but its addition is still staged and this commit uses a temporary index that git discards when a hook fails, so the removal could not be staged. Run 'git rm --ignore-unmatch --quiet -- $PROPS_FILE', then re-run the commit."
     # Only a git commit <paths> builds its temporary index from HEAD, so it
     # still tracks the file after the user has staged the removal.
-    [ -n "$(unset GIT_INDEX_FILE; git ls-files -- "$PROPS_FILE")" ] \
+    [ -n "$REPO_TRACKED" ] \
         || die "$REASON; its removal is already staged but this commit's paths do not include it. Re-run the commit listing $PROPS_FILE among its paths."
     die "$REASON; it has been deleted, but this commit uses a temporary index that git discards when a hook fails, so the removal could not be staged. Run 'git rm --ignore-unmatch --quiet -- $PROPS_FILE', then re-run the commit; a git commit <paths> without -i/--include must also list $PROPS_FILE among its paths."
 fi

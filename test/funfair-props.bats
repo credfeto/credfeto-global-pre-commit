@@ -5,7 +5,8 @@
 # - otherwise a tracked copy is git rm'd (removal staged) and an untracked
 #   copy is deleted, failing in both cases; a re-run then passes
 # - under git commit -a, -i and <paths> (a temporary index) a tracked copy is
-#   only deleted, and the message says how to stage the removal
+#   only deleted, and the message says how to stage the removal; so is a copy
+#   whose addition is staged but not in HEAD (absent from a <paths> index)
 # - only the exact path src/FunFair.props relative to the repo root counts
 
 load test_helper
@@ -293,4 +294,36 @@ head_deletes_props() {
     run_git_commit "${T}" -i -m change readme.txt
     [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
     head_deletes_props "${T}"
+}
+
+@test "git commit <paths> gives the git rm instruction for a src/FunFair.props only staged in the repository index" {
+    local T
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf 'one\n' > "${T}/readme.txt"
+    commit_without_hooks "${T}" .
+    write_props_file "${T}"
+    git -C "${T}" add -- "${PROPS_FILE}"
+    printf 'two\n' >> "${T}/readme.txt"
+
+    # The temporary index is built from HEAD, which has never held the file,
+    # so only the repository's own index shows the staged addition.
+    run_git_commit "${T}" -m change readme.txt
+    [ "${status}" -eq 1 ] || fail_test "expected failure, got ${status}: ${output}"
+    [[ "${output}" == *"git rm --ignore-unmatch --quiet -- ${PROPS_FILE}"* ]] || fail_test "expected the git rm instruction, got: ${output}"
+    [[ "${output}" != *"the untracked file has been deleted"* ]]
+    [ ! -e "${T}/${PROPS_FILE}" ]
+    is_tracked "${T}" "${PROPS_FILE}"
+
+    # The addition is still staged, so a re-run without the git rm must not pass.
+    run_git_commit "${T}" -m change readme.txt
+    [ "${status}" -eq 1 ] || fail_test "expected re-run without git rm to fail, got ${status}: ${output}"
+    [[ "${output}" == *"git rm --ignore-unmatch --quiet -- ${PROPS_FILE}"* ]] || fail_test "expected the git rm instruction, got: ${output}"
+
+    git -C "${T}" rm --ignore-unmatch --quiet -- "${PROPS_FILE}"
+    run_git_commit "${T}" -m change readme.txt
+    [ "${status}" -eq 0 ] || fail_test "expected re-run to pass, got ${status}: ${output}"
+    is_untracked "${T}" "${PROPS_FILE}"
+    run git -C "${T}" status --porcelain -- "${PROPS_FILE}"
+    [ -z "${output}" ]
 }
