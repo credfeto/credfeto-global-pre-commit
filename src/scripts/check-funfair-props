@@ -1,0 +1,52 @@
+#!/bin/sh
+# Removes src/FunFair.props from any repository whose origin remote is not
+# owned by funfair-tech. Repositories with no origin remote are skipped.
+#
+# Unlike the fixer scripts, this exits non-zero after removing the file: the
+# removal is staged (or the untracked file deleted) so a re-run passes, but
+# the commit in progress must stop so the removal is noticed rather than
+# silently folded into it.
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+info() {
+    printf '\n\033[32m→\033[0m %s\n' "$*"
+}
+
+FUNFAIR_OWNER="funfair-tech"
+PROPS_FILE="src/FunFair.props"
+
+# Accepts scp-like (git@host:owner/repo.git), https://host/owner/repo(.git)
+# and ssh://user@host[:port]/owner/repo forms: strips any trailing slash and
+# .git suffix, drops the repo name, then keeps the segment before it.
+remote_owner() {
+    printf '%s\n' "$1" \
+        | sed 's|/*$||; s|\.git$||; s|[/:][^/:]*$||; s|.*[/:]||' \
+        | tr '[:upper:]' '[:lower:]'
+}
+
+ORIGIN_URL=$(git remote get-url origin 2>/dev/null) || exit 0
+[ -z "$ORIGIN_URL" ] && exit 0
+
+OWNER=$(remote_owner "$ORIGIN_URL")
+[ "$OWNER" = "$FUNFAIR_OWNER" ] && exit 0
+
+REPO_ROOT=$(git rev-parse --show-toplevel) || die "unable to locate the repository root"
+cd "$REPO_ROOT" || die "unable to change to the repository root: $REPO_ROOT"
+
+if [ -n "$(git ls-files -- "$PROPS_FILE")" ]; then
+    git rm -f --quiet -- "$PROPS_FILE" || die "failed to remove $PROPS_FILE from the index"
+    info "$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER); its removal has been staged."
+    die "$PROPS_FILE removed: re-run the commit to include the removal"
+fi
+
+if [ -e "$PROPS_FILE" ]; then
+    rm -f -- "$PROPS_FILE" || die "failed to delete $PROPS_FILE"
+    info "$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER); the untracked file has been deleted."
+    die "$PROPS_FILE deleted: re-run the commit"
+fi
+
+exit 0

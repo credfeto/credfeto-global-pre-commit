@@ -155,6 +155,13 @@ ensure_other_test_gpg_key() {
     OTHER_TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${OTHER_TEST_GIT_EMAIL}" "${GNUPGHOME}/.other-keyid")"
 }
 
+# Fails the current test with a message on stderr. bats-assert's `fail` is not
+# loaded by this suite, so tests that need a descriptive failure use this.
+fail_test() {
+    printf '%s\n' "$*" >&2
+    return 1
+}
+
 # Creates an isolated git repository in BATS_TEST_TMPDIR on the given branch
 # (default: feature/acceptance-test) and prints its path. Configured with a
 # valid identity and GPG signing key so check-identity passes by default —
