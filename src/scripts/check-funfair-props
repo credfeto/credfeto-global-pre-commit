@@ -21,32 +21,36 @@ PROPS_FILE="src/FunFair.props"
 
 # Accepts scp-like (git@host:owner/repo.git), https://host/owner/repo(.git)
 # and ssh://user@host[:port]/owner/repo forms: strips any trailing slash and
-# .git suffix, drops the repo name, then keeps the segment before it.
+# .git suffix, drops the repo name, keeps the segment before it, then
+# lowercases it (ASCII is enough: GitHub owner names are ASCII).
 remote_owner() {
     printf '%s\n' "$1" \
-        | sed 's|/*$||; s|\.git$||; s|[/:][^/:]*$||; s|.*[/:]||' \
-        | tr '[:upper:]' '[:lower:]'
+        | sed 's|/*$||; s|\.git$||; s|[/:][^/:]*$||; s|.*[/:]||; y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
 }
-
-ORIGIN_URL=$(git remote get-url origin 2>/dev/null) || exit 0
-[ -z "$ORIGIN_URL" ] && exit 0
-
-OWNER=$(remote_owner "$ORIGIN_URL")
-[ "$OWNER" = "$FUNFAIR_OWNER" ] && exit 0
 
 REPO_ROOT=$(git rev-parse --show-toplevel) || die "unable to locate the repository root"
 cd "$REPO_ROOT" || die "unable to change to the repository root: $REPO_ROOT"
 
-if [ -n "$(git ls-files -- "$PROPS_FILE")" ]; then
+# The file is absent in almost every repository, so check for it before the
+# comparatively expensive origin lookup.
+TRACKED=$(git ls-files -- "$PROPS_FILE")
+[ -n "$TRACKED" ] || [ -e "$PROPS_FILE" ] || exit 0
+
+ORIGIN_URL=$(git remote get-url origin 2>/dev/null) || exit 0
+[ -n "$ORIGIN_URL" ] || exit 0
+
+OWNER=$(remote_owner "$ORIGIN_URL")
+[ "$OWNER" = "$FUNFAIR_OWNER" ] && exit 0
+
+if [ -n "$TRACKED" ]; then
     git rm -f --quiet -- "$PROPS_FILE" || die "failed to remove $PROPS_FILE from the index"
-    info "$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER); its removal has been staged."
-    die "$PROPS_FILE removed: re-run the commit to include the removal"
-fi
-
-if [ -e "$PROPS_FILE" ]; then
+    OUTCOME="its removal has been staged"
+    NEXT_STEP="removed: re-run the commit to include the removal"
+else
     rm -f -- "$PROPS_FILE" || die "failed to delete $PROPS_FILE"
-    info "$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER); the untracked file has been deleted."
-    die "$PROPS_FILE deleted: re-run the commit"
+    OUTCOME="the untracked file has been deleted"
+    NEXT_STEP="deleted: re-run the commit"
 fi
 
-exit 0
+info "$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER); $OUTCOME."
+die "$PROPS_FILE $NEXT_STEP"

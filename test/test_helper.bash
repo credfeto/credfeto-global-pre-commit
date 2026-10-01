@@ -181,6 +181,31 @@ make_repo() {
     printf '%s' "${_t}"
 }
 
+# Commits the given path through a no-op hooksPath, so the file is tracked in
+# HEAD without the hook under test running during setup, then points
+# core.hooksPath back at HOOKS_DIR as make_repo configured it.
+commit_without_hooks() {
+    local _repo="$1"
+    local _path="$2"
+    mkdir -p "${_repo}/.no-hooks"
+    git -C "${_repo}" config core.hooksPath "${_repo}/.no-hooks"
+    git -C "${_repo}" add -- "${_path}"
+    git -C "${_repo}" commit --quiet -m baseline
+    git -C "${_repo}" config core.hooksPath "${HOOKS_DIR}"
+}
+
+# Succeeds when the given path is in the given repo's index.
+is_tracked() {
+    [ -n "$(git -C "$1" ls-files -- "$2")" ]
+}
+
+# Succeeds when the given path is not in the given repo's index. A bare
+# `! is_tracked` never fails a bats test (bash's errexit ignores negated
+# commands), so negative index checks need their own predicate.
+is_untracked() {
+    [ -z "$(git -C "$1" ls-files -- "$2")" ]
+}
+
 # Runs the hook in the given repo directory using TEST_PATH (dotnet stripped
 # when not at the expected location).  Sets $status and $output via bats run.
 # bats 1.10.x (Ubuntu 24.04) does not export bats_readlinkf from its wrapper

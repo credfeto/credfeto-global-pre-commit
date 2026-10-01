@@ -10,6 +10,7 @@ load test_helper
 
 CHECK_FUNFAIR_PROPS="${REPO_DIR}/src/scripts/check-funfair-props"
 PROPS_FILE="src/FunFair.props"
+OTHER_ORIGIN="git@github.com:credfeto/widget.git"
 
 FUNFAIR_REMOTES=(
     "git@github.com:funfair-tech/funfair-server-template.git"
@@ -39,10 +40,9 @@ run_check_funfair_props() {
 
 # Creates a repo with the given origin URL (none when empty) and prints its path.
 make_props_repo() {
-    local _branch="$1"
-    local _origin="$2"
+    local _origin="$1"
     local _t
-    _t="$(make_repo "${_branch}")"
+    _t="$(make_repo)"
     if [ -n "${_origin}" ]; then
         git -C "${_t}" remote add origin "${_origin}"
     fi
@@ -56,31 +56,9 @@ write_props_file() {
     printf '<Project />\n' > "${_repo}/${_path}"
 }
 
-# Commits the given path through a no-op hooksPath, so the file is tracked in
-# HEAD without the hook under test running during setup.
-commit_without_hooks() {
-    local _repo="$1"
-    local _path="$2"
-    mkdir -p "${_repo}/.no-hooks"
-    git -C "${_repo}" config core.hooksPath "${_repo}/.no-hooks"
-    git -C "${_repo}" add -- "${_path}"
-    git -C "${_repo}" commit --quiet -m baseline
-    git -C "${_repo}" config core.hooksPath "${HOOKS_DIR}"
-}
-
-is_tracked() {
-    [ -n "$(git -C "$1" ls-files -- "$2")" ]
-}
-
-# A bare `! cmd` never fails a bats test (bash's errexit ignores negated
-# commands), so negative index checks need their own predicate.
-is_untracked() {
-    [ -z "$(git -C "$1" ls-files -- "$2")" ]
-}
-
 @test "funfair-tech origin in any URL form and case keeps a tracked src/FunFair.props" {
     local T _remote
-    T="$(make_props_repo feature/funfair-owner-test "${FUNFAIR_REMOTES[0]}")"
+    T="$(make_props_repo "${FUNFAIR_REMOTES[0]}")"
     write_props_file "${T}"
     git -C "${T}" add -- "${PROPS_FILE}"
     for _remote in "${FUNFAIR_REMOTES[@]}"; do
@@ -93,13 +71,10 @@ is_untracked() {
 }
 
 @test "non-funfair origin in any URL form fails and stages removal of a tracked src/FunFair.props" {
-    local _remote _i=0 T
+    local T _remote
+    T="$(make_props_repo "${OTHER_REMOTES[0]}")"
     for _remote in "${OTHER_REMOTES[@]}"; do
-        _i=$((_i + 1))
-        T="${BATS_TEST_TMPDIR}/other-${_i}"
-        mkdir -p "${T}"
-        git -C "${T}" init --quiet
-        git -C "${T}" remote add origin "${_remote}"
+        git -C "${T}" remote set-url origin "${_remote}"
         write_props_file "${T}"
         git -C "${T}" add -- "${PROPS_FILE}"
         run_check_funfair_props "${T}"
@@ -112,7 +87,7 @@ is_untracked() {
 
 @test "removal of a committed src/FunFair.props is staged as a deletion and a re-run passes" {
     local T
-    T="$(make_props_repo feature/funfair-rerun-test "git@github.com:credfeto/widget.git")"
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
     write_props_file "${T}"
     commit_without_hooks "${T}" "${PROPS_FILE}"
 
@@ -127,7 +102,7 @@ is_untracked() {
 
 @test "non-funfair origin fails and deletes an untracked src/FunFair.props" {
     local T
-    T="$(make_props_repo feature/funfair-untracked-test "git@github.com:credfeto/widget.git")"
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
     write_props_file "${T}"
 
     run_check_funfair_props "${T}"
@@ -141,15 +116,15 @@ is_untracked() {
 
 @test "non-funfair origin with no src/FunFair.props passes" {
     local T
-    T="$(make_props_repo feature/funfair-absent-test "git@github.com:credfeto/widget.git")"
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
     run_check_funfair_props "${T}"
     [ "${status}" -eq 0 ]
 }
 
 @test "no origin remote keeps a tracked src/FunFair.props" {
     local T
-    T="$(make_props_repo feature/funfair-no-origin-test "")"
-    git -C "${T}" remote add upstream "git@github.com:credfeto/widget.git"
+    T="$(make_props_repo "")"
+    git -C "${T}" remote add upstream "${OTHER_ORIGIN}"
     write_props_file "${T}"
     git -C "${T}" add -- "${PROPS_FILE}"
     run_check_funfair_props "${T}"
@@ -161,7 +136,7 @@ is_untracked() {
 @test "FunFair.props at any path other than src/FunFair.props is ignored" {
     local T _path
     local -a _paths=(FunFair.props other/src/FunFair.props src/nested/FunFair.props src/funfair.props)
-    T="$(make_props_repo feature/funfair-other-path-test "git@github.com:credfeto/widget.git")"
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
     for _path in "${_paths[@]}"; do
         write_props_file "${T}" "${_path}"
         git -C "${T}" add -- "${_path}"
@@ -176,7 +151,7 @@ is_untracked() {
 
 @test "src/FunFair.props is resolved from the repo root when run in a subdirectory" {
     local T
-    T="$(make_props_repo feature/funfair-subdir-test "git@github.com:credfeto/widget.git")"
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
     write_props_file "${T}"
     git -C "${T}" add -- "${PROPS_FILE}"
     mkdir -p "${T}/docs"
@@ -187,7 +162,7 @@ is_untracked() {
 
 @test "pre-commit hook fails and stages the removal when check-funfair-props fails" {
     local T
-    T="$(make_props_repo feature/funfair-hook-test "git@github.com:credfeto/widget.git")"
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
     write_props_file "${T}"
     git -C "${T}" add -- "${PROPS_FILE}"
     run_hook "${T}"
@@ -198,7 +173,7 @@ is_untracked() {
 
 @test "pre-commit hook --all-files fails and deletes the file when check-funfair-props fails" {
     local T
-    T="$(make_props_repo feature/funfair-hook-all-files-test "git@github.com:credfeto/widget.git")"
+    T="$(make_props_repo "${OTHER_ORIGIN}")"
     write_props_file "${T}"
     commit_without_hooks "${T}" "${PROPS_FILE}"
     run_hook_all_files "${T}"
