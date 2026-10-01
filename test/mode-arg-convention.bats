@@ -23,7 +23,7 @@
 load test_helper
 
 @test "no script under src/scripts (other than lib/mode-arg.sh) calls git diff --cached/--staged or git status directly" {
-    [ -d "${REPO_DIR}/src/scripts" ] || fail "src/scripts directory not found under REPO_DIR"
+    [ -d "${REPO_DIR}/src/scripts" ] || fail_test "src/scripts directory not found under REPO_DIR (${REPO_DIR})"
 
     local _hits
     # A single awk pass: matches a candidate line, excludes lib/mode-arg.sh
