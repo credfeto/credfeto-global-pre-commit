@@ -12,10 +12,6 @@ die() {
     exit 1
 }
 
-info() {
-    printf '\n\033[32m→\033[0m %s\n' "$*"
-}
-
 FUNFAIR_OWNER="funfair-tech"
 PROPS_FILE="src/FunFair.props"
 
@@ -42,15 +38,12 @@ ORIGIN_URL=$(git remote get-url origin 2>/dev/null) || exit 0
 OWNER=$(remote_owner "$ORIGIN_URL")
 [ "$OWNER" = "$FUNFAIR_OWNER" ] && exit 0
 
+REASON="$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER)"
+
 if [ -n "$TRACKED" ]; then
     git rm -f --quiet -- "$PROPS_FILE" || die "failed to remove $PROPS_FILE from the index"
-    OUTCOME="its removal has been staged"
-    NEXT_STEP="removed: re-run the commit to include the removal"
-else
-    rm -f -- "$PROPS_FILE" || die "failed to delete $PROPS_FILE"
-    OUTCOME="the untracked file has been deleted"
-    NEXT_STEP="deleted: re-run the commit"
+    die "$REASON; its removal has been staged, re-run the commit to include it."
 fi
 
-info "$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER); $OUTCOME."
-die "$PROPS_FILE $NEXT_STEP"
+rm -f -- "$PROPS_FILE" || die "failed to delete $PROPS_FILE"
+die "$REASON; the untracked file has been deleted, re-run the commit."
