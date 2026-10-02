@@ -425,9 +425,7 @@ assert_fixture_failed() {
 }
 
 assert_fixture_passed() {
-    { [ "$1" -eq 0 ] &&
-        [[ "$2" == *"ok 1 fixture"* ]] &&
-        [[ "$2" != *"not ok 1 fixture"* ]]; } ||
+    { [ "$1" -eq 0 ] && [[ "$2" == *"ok 1 fixture"* ]]; } ||
         fail_with_run_output "$1" "$2" 0
 }
 

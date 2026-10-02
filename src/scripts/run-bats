@@ -39,13 +39,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 # A file qualifies when it is a shell script shellcheck supports (by
 # extension, shebang or first-line `# shellcheck shell=` directive; the
 # shared test/test_helper.bash qualifies by its extension) or this repo's own
-# pre-commit config. $1 is the path as
-# named (for extension/path matching); $2 is where to read it from.
-# Extension and path are checked first so the first line is read only when
-# they do not already decide it.
+# pre-commit config. Extension and path are checked first so the first line
+# is read only when they do not already decide it.
 _bats_file_qualifies() {
-    local name="$1" path="$2" first=""
-    case "$name" in
+    local path="$1" first=""
+    case "$path" in
         src/.pre-commit-config.yaml) return 0 ;;
         *.sh | *.bash | *.bats | *.ksh | *.dash) return 0 ;;
     esac
@@ -63,12 +61,11 @@ _bats_file_qualifies() {
 }
 
 if [ "$#" -gt 0 ]; then
-    _bats_read_prefix=""
     if [ "$1" = "--all-files" ]; then
-        # git -C prints repo-root-relative paths, so read them from REPO_ROOT
-        # whatever the caller's cwd.
-        mapfile -t _bats_candidates < <(git -C "$REPO_ROOT" ls-files)
-        _bats_read_prefix="$REPO_ROOT/"
+        # git ls-files prints repo-root-relative paths, so read them from
+        # REPO_ROOT whatever the caller's cwd.
+        cd "$REPO_ROOT" || exit 1
+        mapfile -t _bats_candidates < <(git ls-files)
     else
         _bats_candidates=("$@")
     fi
@@ -76,7 +73,7 @@ if [ "$#" -gt 0 ]; then
     _bats_any_qualifies() {
         local file
         for file in "${_bats_candidates[@]}"; do
-            _bats_file_qualifies "$file" "$_bats_read_prefix$file" && return 0
+            _bats_file_qualifies "$file" && return 0
         done
         return 1
     }
