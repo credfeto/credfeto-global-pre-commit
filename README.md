@@ -238,7 +238,7 @@ installs nothing itself and each tool must be on `PATH`:
 | `VALIDATE_TYPESCRIPT_ES` | `eslint` (via `run-eslint`) | `*.ts/tsx/js/jsx` (skips if no eslint config) |
 | `VALIDATE_XML` (full) | `xmllint` | `*.xml` |
 | `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` (via `run-psscriptanalyzer`) | `*.ps1/psm1/psd1` |
-| `VALIDATE_BATS` | `bats` (via `run-bats`, runs the whole `test/` suite) | Any staged shell script, `test/test_helper.bash` or `src/.pre-commit-config.yaml`, when `test/` holds a `*.bats` file (see `_bats_file_qualifies` in `src/scripts/run-bats` for the full rule) |
+| `VALIDATE_BATS` | `bats` (via `run-bats`, runs the whole `test/` suite) | Any staged shell script (including `test/test_helper.bash`) or `src/.pre-commit-config.yaml`, when `test/` holds a `*.bats` file (see `_bats_file_qualifies` in `src/scripts/run-bats` for the full rule) |
 | `VALIDATE_SQLFLUFF` | — | Handled by dedicated SQL check |
 | `VALIDATE_CLOUDFORMATION` | — | Handled by dedicated CFN check |
 
@@ -342,7 +342,7 @@ system package manager rather than `pre-commit autoupdate`.
 | `scripts/run-stylelint` | Wrapper for stylelint — skips silently if no `package.json` |
 | `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer — runs per-file via pwsh |
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
-| `scripts/run-bats` | Wrapper for bats, runs the complete `test/` suite when any staged file is a shell script, `test/test_helper.bash` or `src/.pre-commit-config.yaml`; exits 0 without running when `test/` holds no `*.bats` file |
+| `scripts/run-bats` | Wrapper for bats, runs the complete `test/` suite when any staged file is a shell script (including `test/test_helper.bash`) or `src/.pre-commit-config.yaml`; exits 0 without running when `test/` holds no `*.bats` file |
 | `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |
 | `scripts/run-formatter` | Applies `dotnet format` to staged `.cs` files and then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) to staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what it changes |
 

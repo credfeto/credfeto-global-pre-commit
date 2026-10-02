@@ -386,23 +386,17 @@ run_isolated() {
     ' _ "$@"
 }
 
-# run_bats_hook <repo> [path]
-# Runs only the bats hook through pre-commit against the repo's staged files,
-# bypassing the always-on stages of src/hooks/pre-commit that these tests do
-# not need. --verbose shows the hook's output even when it passes, so a test
-# can tell a suite that ran and passed from one that never ran.
-run_bats_hook() {
-    run_isolated "$1" "${2:-${TEST_PATH}}" pre-commit run bats --verbose
-}
-
 # stage_and_run_bats_hook <repo> <relative path> <content> [path]
-# Writes <content> to <repo>/<relative path>, stages it and runs the bats
-# hook as run_bats_hook does.
+# Writes <content> to <repo>/<relative path>, stages it and runs only the bats
+# hook through pre-commit against the repo's staged files, bypassing the
+# always-on stages of src/hooks/pre-commit that these tests do not need.
+# --verbose shows the hook's output even when it passes, so a test can tell a
+# suite that ran and passed from one that never ran.
 stage_and_run_bats_hook() {
     mkdir -p "$(dirname "$1/$2")"
     printf '%s' "$3" > "$1/$2"
     git -C "$1" add -- "$2"
-    run_bats_hook "$1" "${4:-${TEST_PATH}}"
+    run_isolated "$1" "${4:-${TEST_PATH}}" pre-commit run bats --verbose
 }
 
 # The assertion helpers below take the last run's status and output as
@@ -566,7 +560,7 @@ skip_unless_installed() {
 # argument is only reachable by calling run-bats directly.
 
 # run_bats_all_files <cwd> [path]
-# Runs run-bats --all-files from <cwd>, isolated as for run_bats_hook.
+# Runs run-bats --all-files from <cwd>, isolated as for stage_and_run_bats_hook.
 run_bats_all_files() {
     run_isolated "$1" "${2:-${TEST_PATH}}" "${REPO_DIR}/src/scripts/run-bats" --all-files
 }

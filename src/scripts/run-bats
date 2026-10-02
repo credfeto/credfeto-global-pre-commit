@@ -37,22 +37,24 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 [ -n "$(find "$REPO_ROOT/test" -name '*.bats' -print -quit 2>/dev/null)" ] || exit 0
 
 # A file qualifies when it is a shell script shellcheck supports (by
-# extension, shebang or first-line `# shellcheck shell=` directive), the
-# shared bats helper, or this repo's own pre-commit config. $1 is the path as
+# extension, shebang or first-line `# shellcheck shell=` directive; the
+# shared test/test_helper.bash qualifies by its extension) or this repo's own
+# pre-commit config. $1 is the path as
 # named (for extension/path matching); $2 is where to read it from.
 # Extension and path are checked first so the first line is read only when
 # they do not already decide it.
 _bats_file_qualifies() {
     local name="$1" path="$2" first=""
     case "$name" in
-        test/test_helper.bash | src/.pre-commit-config.yaml) return 0 ;;
+        src/.pre-commit-config.yaml) return 0 ;;
         *.sh | *.bash | *.bats | *.ksh | *.dash) return 0 ;;
     esac
     [ -f "$path" ] || return 1
     # Bounded read: a shebang or directive fits well within 256 characters,
     # and an unbounded read would pull in the whole first line of a
     # single-line file such as minified JS or JSON.
-    IFS= read -r -n 256 first < "$path" || [ -n "$first" ] || return 1
+    # A failed read leaves $first empty, so both patterns below fail.
+    IFS= read -r -n 256 first < "$path"
     # Shebang: an interpreter in /bin, /usr/bin or /usr/local/bin, directly or
     # via `env` / `env -S`, naming sh, bash, dash, ksh or `busybox sh`.
     [[ "$first" =~ ^#![[:space:]]*(/usr(/local)?)?/bin/(env[[:space:]]+(-S[[:space:]]*)?)?(sh|bash|dash|ksh|busybox[[:space:]]+sh)([[:space:]]|$) ]] && return 0
