@@ -1,6 +1,13 @@
 #!/bin/bash
-# Wrapper for bats — runs the full bats test suite when .bats files are staged.
-# Ignores filename arguments; always runs the complete test directory.
+# Wrapper for bats: runs the complete bats suite under test/ when a change
+# could affect it. Usage:
+#   run-bats <file>...     run if any file qualifies (see _bats_file_qualifies)
+#   run-bats --all-files   run if any tracked file qualifies
+#   run-bats               run unconditionally (for callers that filter files
+#                          themselves, e.g. a pass_filenames: false hook)
+# Filenames only decide whether to run; the whole suite always runs, never
+# just the named files. Exits 0 without running when test/ holds no *.bats
+# file, so the hook is a cheap no-op in repos without a bats suite.
 # Must be bash (not sh) so that export -f can propagate bats_readlinkf to the
 # inner bats process (needed on platforms where the bats wrapper does not export it).
 
@@ -26,12 +33,56 @@ unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
-# Sweep stale bats-run dirs from /tmp unconditionally — removes litter left by
-# hard-killed runs that predate the repo-scoped XDG_RUNTIME_DIR path, and
-# from the /tmp fallback path used on hosts without XDG_RUNTIME_DIR.
-find /tmp -maxdepth 1 -name 'bats-run-*' -mmin +60 -exec rm -rf {} + 2>/dev/null
+# No bats suite in this repo: nothing to run.
+[ -n "$(find "$REPO_ROOT/test" -name '*.bats' -print -quit 2>/dev/null)" ] || exit 0
 
-[ -d "$REPO_ROOT/test" ] || exit 0
+# A file qualifies when it is a shell script shellcheck supports (by
+# extension, shebang or first-line `# shellcheck shell=` directive), the
+# shared bats helper, or this repo's own pre-commit config. $1 is the path as
+# named (for extension/path matching); $2 is where to read it from.
+# Extension and path are checked first so the first line is read only when
+# they do not already decide it.
+_bats_file_qualifies() {
+    local name="$1" path="$2" first=""
+    case "$name" in
+        test/test_helper.bash | src/.pre-commit-config.yaml) return 0 ;;
+        *.sh | *.bash | *.bats | *.ksh | *.dash) return 0 ;;
+    esac
+    [ -f "$path" ] || return 1
+    IFS= read -r first < "$path" || [ -n "$first" ] || return 1
+    # Shebang: an interpreter in /bin, /usr/bin or /usr/local/bin, directly or
+    # via `env` / `env -S`, naming sh, bash, dash, ksh or `busybox sh`.
+    [[ "$first" =~ ^#![[:space:]]*(/usr(/local)?)?/bin/(env[[:space:]]+(-S[[:space:]]*)?)?(sh|bash|dash|ksh|busybox[[:space:]]+sh)([[:space:]]|$) ]] && return 0
+    [[ "$first" =~ ^#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?shell=(sh|bash|dash|ksh|busybox)([[:space:]]|$) ]] && return 0
+    return 1
+}
+
+if [ "$#" -gt 0 ]; then
+    _bats_read_prefix=""
+    if [ "$1" = "--all-files" ]; then
+        # git -C prints repo-root-relative paths, so read them from REPO_ROOT
+        # whatever the caller's cwd.
+        mapfile -t _bats_candidates < <(git -C "$REPO_ROOT" ls-files)
+        _bats_read_prefix="$REPO_ROOT/"
+    else
+        _bats_candidates=("$@")
+    fi
+
+    _bats_should_run=0
+    for _bats_file in "${_bats_candidates[@]}"; do
+        if _bats_file_qualifies "$_bats_file" "$_bats_read_prefix$_bats_file"; then
+            _bats_should_run=1
+            break
+        fi
+    done
+    [ "$_bats_should_run" -eq 1 ] || exit 0
+fi
+
+# Sweep stale bats-run dirs from /tmp — removes litter left by hard-killed
+# runs that predate the repo-scoped XDG_RUNTIME_DIR path, and from the /tmp
+# fallback path used on hosts without XDG_RUNTIME_DIR. Done only once the
+# suite is going to run, so no-op invocations stay cheap.
+find /tmp -maxdepth 1 -name 'bats-run-*' -mmin +60 -exec rm -rf {} + 2>/dev/null
 
 # bats reads TMPDIR at startup to derive BATS_TMPDIR; TMPDIR is the only lever
 # that works — pre-setting BATS_TMPDIR here would be overwritten by bats itself.

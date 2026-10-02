@@ -251,6 +251,10 @@ load test_helper
 
     local T
     T="$(make_repo feature/sweep-test)"
+    # The sweep runs only once run-bats is going to run the suite, so the
+    # fixture needs a bats suite for run-bats to get that far.
+    mkdir -p "${T}/test"
+    printf '#!/usr/bin/env bats\n@test "always passes" {\n  true\n}\n' > "${T}/test/pass.bats"
     run bash -c 'cd "$1" && "$2"' _ "${T}" "${REPO_DIR}/src/scripts/run-bats"
 
     [ ! -d "${_stale}" ]
