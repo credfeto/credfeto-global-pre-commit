@@ -71,14 +71,14 @@ if [ "$#" -gt 0 ]; then
         _bats_candidates=("$@")
     fi
 
-    _bats_should_run=0
-    for _bats_file in "${_bats_candidates[@]}"; do
-        if _bats_file_qualifies "$_bats_file" "$_bats_read_prefix$_bats_file"; then
-            _bats_should_run=1
-            break
-        fi
-    done
-    [ "$_bats_should_run" -eq 1 ] || exit 0
+    _bats_any_qualifies() {
+        local file
+        for file in "${_bats_candidates[@]}"; do
+            _bats_file_qualifies "$file" "$_bats_read_prefix$file" && return 0
+        done
+        return 1
+    }
+    _bats_any_qualifies || exit 0
 fi
 
 # Sweep stale bats-run dirs from /tmp: removes litter left by hard-killed

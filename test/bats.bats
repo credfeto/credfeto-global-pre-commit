@@ -241,23 +241,21 @@ load test_helper
 }
 
 @test "run-bats sweeps bats-run-* dirs under /tmp older than 60 minutes, leaving fresh ones alone" {
-    if ! command -v bats > /dev/null 2>&1; then
-        skip "bats not installed"
-    fi
     local _stale="/tmp/bats-run-staletest-$$"
     local _fresh="/tmp/bats-run-freshtest-$$"
     mkdir -p "${_stale}" "${_fresh}"
     touch -d "2 hours ago" "${_stale}"
 
-    local T
+    local T _shim_dir
     T="$(make_repo feature/sweep-test)"
     # The sweep runs only once run-bats is going to run the suite, so the
-    # fixture needs a bats suite for run-bats to get that far.
-    mkdir -p "${T}/test"
-    printf '#!/usr/bin/env bats\n@test "always passes" {\n  true\n}\n' > "${T}/test/pass.bats"
-    # Isolated so the inner suite runs under its own /tmp/bats-run-XXXXXX
-    # rather than wiping the XDG_RUNTIME_DIR path concurrent tests share.
-    run_isolated "${T}" "${TEST_PATH}" "${REPO_DIR}/src/scripts/run-bats"
+    # fixture needs a bats suite for run-bats to get that far. A passing shim
+    # stands in for bats: only the sweep is under test, not the suite run.
+    write_fixture_suite "${T}" true
+    _shim_dir="$(make_recording_bats_shim 0)"
+    # Isolated so run-bats falls back to /tmp rather than wiping the
+    # XDG_RUNTIME_DIR path concurrent tests share.
+    run_isolated "${T}" "${_shim_dir}:${TEST_PATH}" "${REPO_DIR}/src/scripts/run-bats"
 
     [ ! -d "${_stale}" ]
     [ -d "${_fresh}" ]
@@ -348,16 +346,23 @@ BATS_TRIGGER_CONFIG="repos:
         require_serial: true
 "
 
-# make_trigger_repo <branch> <suite result: true|false>
-# Creates a fixture repo with BATS_TRIGGER_CONFIG and a one-test suite that
-# passes or fails, both committed so that neither is a staged file: a staged
-# .bats file qualifies on its own and would make every trigger test vacuous.
+# write_fixture_suite <repo> <suite result: true|false>
+# Writes <repo>/test/fixture.bats, a one-test suite named "fixture" (the name
+# the assert_fixture_* helpers below look for) that passes or fails.
+write_fixture_suite() {
+    mkdir -p "$1/test"
+    printf '#!/usr/bin/env bats\n@test "fixture" {\n  %s\n}\n' "$2" > "$1/test/fixture.bats"
+}
+
+# make_trigger_repo <suite result: true|false>
+# Creates a fixture repo with BATS_TRIGGER_CONFIG and a fixture suite, both
+# committed so that neither is a staged file: a staged .bats file qualifies on
+# its own and would make every trigger test vacuous.
 make_trigger_repo() {
     local _t
-    _t="$(make_repo "$1")"
+    _t="$(make_repo feature/bats-trigger)"
     printf '%s' "${BATS_TRIGGER_CONFIG}" > "${_t}/.pre-commit-config.yaml"
-    mkdir -p "${_t}/test"
-    printf '#!/usr/bin/env bats\n@test "fixture" {\n  %s\n}\n' "$2" > "${_t}/test/fixture.bats"
+    write_fixture_suite "${_t}" "$1"
     commit_without_hooks "${_t}" . > /dev/null
     printf '%s' "${_t}"
 }
@@ -388,6 +393,16 @@ run_isolated() {
 # can tell a suite that ran and passed from one that never ran.
 run_bats_hook() {
     run_isolated "$1" "${2:-${TEST_PATH}}" pre-commit run bats --verbose
+}
+
+# stage_and_run_bats_hook <repo> <relative path> <content> [path]
+# Writes <content> to <repo>/<relative path>, stages it and runs the bats
+# hook as run_bats_hook does.
+stage_and_run_bats_hook() {
+    mkdir -p "$(dirname "$1/$2")"
+    printf '%s' "$3" > "$1/$2"
+    git -C "$1" add -- "$2"
+    run_bats_hook "$1" "${4:-${TEST_PATH}}"
 }
 
 # The assertion helpers below take the last run's status and output as
@@ -427,15 +442,16 @@ assert_fixture_not_run() {
         fail_with_run_output "$1" "$2" 0
 }
 
-# make_recording_bats_shim
+# make_recording_bats_shim [exit status]
 # Creates a bats shim that records being called (in $BATS_TEST_TMPDIR/
-# bats-was-run) and fails, and prints the directory holding it. Put first on
-# PATH, it proves run-bats never invokes bats: a call would show as both the
-# marker file and exit 1.
+# bats-was-run) and exits with [exit status] (default 1), and prints the
+# directory holding it. Put first on PATH with the default, it proves
+# run-bats never invokes bats: a call would show as both the marker file and
+# exit 1.
 make_recording_bats_shim() {
     local _shim_dir="${BATS_TEST_TMPDIR}/shim"
     mkdir -p "${_shim_dir}"
-    printf '#!/bin/sh\ntouch "%s"\nexit 1\n' "${BATS_TEST_TMPDIR}/bats-was-run" > "${_shim_dir}/bats"
+    printf '#!/bin/sh\ntouch "%s"\nexit %s\n' "${BATS_TEST_TMPDIR}/bats-was-run" "${1:-1}" > "${_shim_dir}/bats"
     chmod +x "${_shim_dir}/bats"
     printf '%s' "${_shim_dir}"
 }
@@ -446,103 +462,83 @@ assert_bats_not_invoked() {
         fail_with_run_output "$1" "$2" 0
 }
 
-skip_unless_bats_and_pre_commit() {
-    if ! command -v bats > /dev/null 2>&1; then
-        skip "bats not installed"
-    fi
-    if ! command -v pre-commit > /dev/null 2>&1; then
-        skip "pre-commit not installed"
-    fi
+# skip_unless_installed <command>...
+skip_unless_installed() {
+    local _command
+    for _command in "$@"; do
+        command -v "${_command}" > /dev/null 2>&1 || skip "${_command} not installed"
+    done
 }
 
 @test "staged shell script with no .bats file runs a failing suite and blocks the commit" {
-    skip_unless_bats_and_pre_commit
+    skip_unless_installed bats pre-commit
     local T
-    T="$(make_trigger_repo feature/trigger-script-fails false)"
-    printf '#!/bin/sh\necho hello\n' > "${T}/script.sh"
-    git -C "${T}" add script.sh
-    run_bats_hook "${T}"
+    T="$(make_trigger_repo false)"
+    stage_and_run_bats_hook "${T}" script.sh $'#!/bin/sh\necho hello\n'
     assert_fixture_failed "${status}" "${output}"
 }
 
 @test "staged shell script with no .bats file runs a passing suite and allows the commit" {
-    skip_unless_bats_and_pre_commit
+    skip_unless_installed bats pre-commit
     local T
-    T="$(make_trigger_repo feature/trigger-script-passes true)"
-    printf '#!/bin/sh\necho hello\n' > "${T}/script.sh"
-    git -C "${T}" add script.sh
-    run_bats_hook "${T}"
+    T="$(make_trigger_repo true)"
+    stage_and_run_bats_hook "${T}" script.sh $'#!/bin/sh\necho hello\n'
     assert_fixture_passed "${status}" "${output}"
 }
 
 @test "staged README.md alone does not run a failing suite" {
-    skip_unless_bats_and_pre_commit
+    skip_unless_installed bats pre-commit
     local T
-    T="$(make_trigger_repo feature/trigger-readme false)"
-    printf '# Title\n' > "${T}/README.md"
-    git -C "${T}" add README.md
-    run_bats_hook "${T}"
+    T="$(make_trigger_repo false)"
+    stage_and_run_bats_hook "${T}" README.md $'# Title\n'
     assert_fixture_not_run "${status}" "${output}"
 }
 
 @test "staged test/test_helper.bash runs the suite" {
-    skip_unless_bats_and_pre_commit
+    skip_unless_installed bats pre-commit
     local T
-    T="$(make_trigger_repo feature/trigger-test-helper false)"
-    printf 'helper() { true; }\n' > "${T}/test/test_helper.bash"
-    git -C "${T}" add test/test_helper.bash
-    run_bats_hook "${T}"
+    T="$(make_trigger_repo false)"
+    stage_and_run_bats_hook "${T}" test/test_helper.bash $'helper() { true; }\n'
     assert_fixture_failed "${status}" "${output}"
 }
 
 @test "staged src/.pre-commit-config.yaml runs the suite" {
-    skip_unless_bats_and_pre_commit
+    skip_unless_installed bats pre-commit
     local T
-    T="$(make_trigger_repo feature/trigger-src-pre-commit-config false)"
-    mkdir -p "${T}/src"
-    printf 'repos: []\n' > "${T}/src/.pre-commit-config.yaml"
-    git -C "${T}" add src/.pre-commit-config.yaml
-    run_bats_hook "${T}"
+    T="$(make_trigger_repo false)"
+    stage_and_run_bats_hook "${T}" src/.pre-commit-config.yaml $'repos: []\n'
     assert_fixture_failed "${status}" "${output}"
 }
 
 @test "staged extensionless file with a shellcheck shell=bash first line runs the suite" {
-    skip_unless_bats_and_pre_commit
+    skip_unless_installed bats pre-commit
     local T
-    T="$(make_trigger_repo feature/trigger-shellcheck-directive false)"
-    printf '# shellcheck shell=bash\nhelper() { true; }\n' > "${T}/library"
-    git -C "${T}" add library
-    run_bats_hook "${T}"
+    T="$(make_trigger_repo false)"
+    stage_and_run_bats_hook "${T}" library $'# shellcheck shell=bash\nhelper() { true; }\n'
     assert_fixture_failed "${status}" "${output}"
 }
 
 @test "staged extensionless files with env -S bash and /usr/local/bin/bash shebangs each run the suite" {
-    skip_unless_bats_and_pre_commit
+    skip_unless_installed bats pre-commit
     local T shebang
-    T="$(make_trigger_repo feature/trigger-shebangs false)"
+    T="$(make_trigger_repo false)"
     for shebang in '#!/usr/bin/env -S bash' '#!/usr/local/bin/bash'; do
-        printf '%s\necho hello\n' "${shebang}" > "${T}/tool"
-        git -C "${T}" add tool
-        run_bats_hook "${T}"
+        stage_and_run_bats_hook "${T}" tool "${shebang}"$'\necho hello\n'
         assert_fixture_failed "${status}" "${output}" || { printf '# shebang: %s\n' "${shebang}" >&3; return 1; }
         git -C "${T}" rm --cached --quiet tool
     done
 }
 
 @test "staged extensionless file with an env python3 shebang does not run a failing suite" {
-    skip_unless_bats_and_pre_commit
+    skip_unless_installed bats pre-commit
     local T
-    T="$(make_trigger_repo feature/trigger-python-shebang false)"
-    printf '#!/usr/bin/env python3\nprint("hello")\n' > "${T}/tool"
-    git -C "${T}" add tool
-    run_bats_hook "${T}"
+    T="$(make_trigger_repo false)"
+    stage_and_run_bats_hook "${T}" tool $'#!/usr/bin/env python3\nprint("hello")\n'
     assert_fixture_not_run "${status}" "${output}"
 }
 
 @test "staged shell script with a test directory holding no .bats file exits 0 without running bats" {
-    if ! command -v pre-commit > /dev/null 2>&1; then
-        skip "pre-commit not installed"
-    fi
+    skip_unless_installed pre-commit
     local T _shim_dir
     T="$(make_repo feature/trigger-no-bats-files)"
     printf '%s' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
@@ -550,9 +546,7 @@ skip_unless_bats_and_pre_commit() {
     printf 'not a bats suite\n' > "${T}/test/notes.txt"
     commit_without_hooks "${T}" . > /dev/null
     _shim_dir="$(make_recording_bats_shim)"
-    printf '#!/bin/sh\necho hello\n' > "${T}/script.sh"
-    git -C "${T}" add script.sh
-    run_bats_hook "${T}" "${_shim_dir}:${TEST_PATH}"
+    stage_and_run_bats_hook "${T}" script.sh $'#!/bin/sh\necho hello\n' "${_shim_dir}:${TEST_PATH}"
     assert_bats_not_invoked "${status}" "${output}"
 }
 
@@ -582,13 +576,11 @@ run_bats_all_files() {
 # negative one impossible.
 
 @test "run-bats --all-files from a subdirectory runs the suite when a tracked extensionless shell script qualifies" {
-    if ! command -v bats > /dev/null 2>&1; then
-        skip "bats not installed"
-    fi
+    skip_unless_installed bats
     local T
     T="$(make_repo feature/all-files-qualifies)"
-    mkdir -p "${T}/test" "${T}/docs"
-    printf '#!/usr/bin/env bats\n@test "fixture" {\n  false\n}\n' > "${T}/test/fixture.bats"
+    mkdir -p "${T}/docs"
+    write_fixture_suite "${T}" false
     printf '#!/bin/sh\necho hello\n' > "${T}/tool"
     printf '# Docs\n' > "${T}/docs/index.md"
     commit_without_hooks "${T}" tool > /dev/null
@@ -600,8 +592,7 @@ run_bats_all_files() {
 @test "run-bats --all-files exits 0 without running bats when no tracked file qualifies" {
     local T _shim_dir
     T="$(make_repo feature/all-files-no-qualifier)"
-    mkdir -p "${T}/test"
-    printf '#!/usr/bin/env bats\n@test "fixture" {\n  false\n}\n' > "${T}/test/fixture.bats"
+    write_fixture_suite "${T}" false
     printf '# Title\n' > "${T}/README.md"
     commit_without_hooks "${T}" README.md > /dev/null
     _shim_dir="$(make_recording_bats_shim)"
