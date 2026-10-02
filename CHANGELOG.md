@@ -133,6 +133,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - All-files (baseline) mode now actually lints/fixes CHANGELOG.md, .NET formatting, and package-lock.json registry URLs against the whole tracked tree instead of silently skipping them when nothing is staged (#232)
 - bats tests now use per-test PRE_COMMIT_HOME so parallel runs no longer crash on locked pre-commit SQLite store (#240)
 - test/mode-arg-convention.bats reported a missing src/scripts directory as "fail: command not found"; it now uses a shared fail_test helper
+- TBD - to be finalized after review
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
