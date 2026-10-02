@@ -146,6 +146,8 @@ repos:
       # entry point that sources them; --source-path=SCRIPTDIR resolves relative
       # `source` paths from the script's own directory, since pre-commit runs
       # from the repo root rather than the script's directory.
+      # Sourced files outside the repo are linted too; opt one out with
+      # `# shellcheck source=/dev/null` on the line above its `source`.
       - id: shellcheck
         name: shellcheck
         entry: shellcheck

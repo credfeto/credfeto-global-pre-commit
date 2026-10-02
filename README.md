@@ -242,6 +242,13 @@ installs nothing itself and each tool must be on `PATH`:
 | `VALIDATE_SQLFLUFF` | — | Handled by dedicated SQL check |
 | `VALIDATE_CLOUDFORMATION` | — | Handled by dedicated CFN check |
 
+Both shellcheck hooks follow every `source` they can resolve and lint the
+sourced file as well, including files outside the repository such as
+`/etc/profile`, so results can differ between machines. A script that sources
+a system or third-party file it cannot fix should put
+`# shellcheck source=/dev/null` on the line above that `source` to opt the file
+out; `# shellcheck disable=SC1091` does not.
+
 **Additional security checks** — not part of the Super-linter `VALIDATE_*` set, added independently; tool must be on PATH:
 
 | Check | Tool | File trigger |
