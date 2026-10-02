@@ -1,7 +1,6 @@
 #!/bin/sh
-# Wrapper for shellcheck on shell libraries that identify cannot tag as shell:
-# extensionless files with no shebang whose first line is a
-# `# shellcheck shell=...` directive. Every other file passed in is ignored.
+# Lints shebang-less shell libraries, which identify cannot tag as shell, by
+# their first-line `# shellcheck shell=...` directive.
 # Keep the shellcheck flags in sync with the shellcheck hook in
 # src/.pre-commit-config.yaml.
 

@@ -155,8 +155,7 @@ repos:
 
       # identify cannot tag an extensionless, shebang-less library as shell, so
       # the hook above never selects one; run-shellcheck-libraries lints those
-      # whose first line is a `# shellcheck shell=...` directive. files: limits
-      # the candidates to extensionless files.
+      # whose first line is a `# shellcheck shell=...` directive.
       - id: shellcheck-libraries
         name: shellcheck (shell libraries)
         entry: run-shellcheck-libraries
