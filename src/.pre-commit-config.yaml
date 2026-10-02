@@ -304,20 +304,18 @@ repos:
 
       # ── VALIDATE_BATS — run bats test suite ──────────────────────────────
       # run-bats executes bats --recursive test/ from the repo root.
-      # No files: filter: the staged text files are passed in and run-bats
-      # decides whether to run, so a change to a script or test_helper.bash
-      # runs the suite as well as a change to a .bats file. It runs the whole
-      # suite (never just the named files) when any file is a shell script
-      # (.sh/.bash/.bats/.ksh/.dash, an sh/bash/dash/ksh/busybox sh shebang,
-      # or a `# shellcheck shell=` first line), test/test_helper.bash or
-      # src/.pre-commit-config.yaml. Safe as the machine-wide config: run-bats
-      # exits 0 at once when test/ holds no *.bats file (the hook shows
-      # Passed rather than Skipped there) and reads only first lines to
-      # decide. A missing bats fails every commit, deliberately, as bats is
-      # a required tool. require_serial: true stops pre-commit splitting the
+      # _bats_file_qualifies in src/scripts/run-bats is the single definition
+      # of which files trigger the suite. No files: filter: the staged text
+      # files are passed in and run-bats decides, so a change to a script or
+      # test helper runs the suite, not only a change to a .bats file.
+      # Safe as the machine-wide config: run-bats exits 0 at once when test/
+      # holds no *.bats file (the hook shows Passed rather than Skipped).
+      # A missing bats fails every commit, deliberately, as bats is a
+      # required tool. require_serial: true stops pre-commit splitting the
       # file list across parallel workers, so a normal commit gets one suite
-      # run (a very large --all-files list may still be chunked by
-      # argument-length limits).
+      # run. pre-commit still chunks a very long file list by argument
+      # length, so a very large --all-files run can run the suite once per
+      # chunk that holds a qualifying file.
       - id: bats
         name: run bats tests
         entry: run-bats

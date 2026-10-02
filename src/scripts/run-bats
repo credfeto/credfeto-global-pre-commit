@@ -49,7 +49,10 @@ _bats_file_qualifies() {
         *.sh | *.bash | *.bats | *.ksh | *.dash) return 0 ;;
     esac
     [ -f "$path" ] || return 1
-    IFS= read -r first < "$path" || [ -n "$first" ] || return 1
+    # Bounded read: a shebang or directive fits well within 256 characters,
+    # and an unbounded read would pull in the whole first line of a
+    # single-line file such as minified JS or JSON.
+    IFS= read -r -n 256 first < "$path" || [ -n "$first" ] || return 1
     # Shebang: an interpreter in /bin, /usr/bin or /usr/local/bin, directly or
     # via `env` / `env -S`, naming sh, bash, dash, ksh or `busybox sh`.
     [[ "$first" =~ ^#![[:space:]]*(/usr(/local)?)?/bin/(env[[:space:]]+(-S[[:space:]]*)?)?(sh|bash|dash|ksh|busybox[[:space:]]+sh)([[:space:]]|$) ]] && return 0
@@ -78,7 +81,7 @@ if [ "$#" -gt 0 ]; then
     [ "$_bats_should_run" -eq 1 ] || exit 0
 fi
 
-# Sweep stale bats-run dirs from /tmp — removes litter left by hard-killed
+# Sweep stale bats-run dirs from /tmp: removes litter left by hard-killed
 # runs that predate the repo-scoped XDG_RUNTIME_DIR path, and from the /tmp
 # fallback path used on hosts without XDG_RUNTIME_DIR. Done only once the
 # suite is going to run, so no-op invocations stay cheap.
