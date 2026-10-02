@@ -642,9 +642,10 @@ if check_files_match '\.sql$'; then
         # NUL-separated end to end (git -z, grep -z, xargs -0), for the reason
         # given above ALL_STAGED; the list is only ever handed to git add, so
         # it never needs converting to lines.
-        if git diff --name-only -z | grep -qzE '\.sql$'; then
+        SQL_FILE_RE='\.sql$'
+        if git diff --name-only -z | grep -qzE "$SQL_FILE_RE"; then
             info "Staging files modified by sqlfluff fix..."
-            git diff --name-only -z | grep -zE '\.sql$' | xargs -0 git add --
+            git diff --name-only -z | grep -zE "$SQL_FILE_RE" | xargs -0 git add --
         fi
         info "Detected SQL changes — running sqlfluff lint..."
         sqlfluff lint . || die "sqlfluff lint"
