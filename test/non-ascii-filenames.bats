@@ -40,6 +40,17 @@ make_npm_repo() {
     printf '%s' "${_t}"
 }
 
+# make_empty_config_repo <branch>
+# Creates a repo on <branch> with an empty pre-commit config committed as a
+# baseline, so only the hook's own category checks react to what is staged.
+make_empty_config_repo() {
+    local _t
+    _t="$(make_repo "$1")"
+    printf 'repos: []\n' > "${_t}/.pre-commit-config.yaml"
+    commit_without_hooks "${_t}" .pre-commit-config.yaml > /dev/null
+    printf '%s' "${_t}"
+}
+
 # assert_shim_called <name> <expected args> <status> <output>
 assert_shim_called() {
     { [ "$3" -eq 0 ] && grep -qxF -e "$2" "${BATS_TEST_TMPDIR}/$1-calls" 2> /dev/null; } || {
@@ -89,9 +100,7 @@ assert_shim_called() {
 
 @test "hook blocks a staged protected linter config under a non-ASCII directory" {
     local T
-    T="$(make_repo feature/non-ascii-protected-config)"
-    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
-    commit_without_hooks "${T}" .pre-commit-config.yaml > /dev/null
+    T="$(make_empty_config_repo feature/non-ascii-protected-config)"
     mkdir -p "${T}/dócs"
     printf 'root = true\n' > "${T}/dócs/.editorconfig"
     git -C "${T}" add -- dócs/.editorconfig
@@ -132,17 +141,6 @@ assert_shim_called() {
     [ "$(git -C "${T}" show ":qüery.sql")" = "$(printf 'SELECT 20;\n-- fixed')" ]
 }
 
-# make_cfn_repo
-# Creates a repo with an empty pre-commit config committed as a baseline, so
-# staging a CloudFormation template makes the hook run only cfn-lint.
-make_cfn_repo() {
-    local _t
-    _t="$(make_repo feature/non-ascii-cfn)"
-    printf 'repos: []\n' > "${_t}/.pre-commit-config.yaml"
-    commit_without_hooks "${_t}" .pre-commit-config.yaml > /dev/null
-    printf '%s' "${_t}"
-}
-
 # write_cfn_template <path>
 # Writes a minimal template carrying the AWSTemplateFormatVersion marker the
 # hook's CloudFormation detection looks for.
@@ -152,7 +150,7 @@ write_cfn_template() {
 
 @test "hook runs cfn-lint on a staged CloudFormation template with a non-ASCII name" {
     local T _shim_dir
-    T="$(make_cfn_repo)"
+    T="$(make_empty_config_repo feature/non-ascii-cfn)"
     _shim_dir="$(make_shim cfn-lint)"
     write_cfn_template "${T}/stöck.yaml"
     git -C "${T}" add -- stöck.yaml
@@ -164,7 +162,7 @@ write_cfn_template() {
 # and hide stack.yaml from the CloudFormation detection.
 @test "hook runs cfn-lint on a staged CloudFormation template listed after a staged name containing a backslash" {
     local T _shim_dir
-    T="$(make_cfn_repo)"
+    T="$(make_empty_config_repo feature/non-ascii-cfn)"
     _shim_dir="$(make_shim cfn-lint)"
     printf 'notes\n' > "${T}/a\\c.txt"
     write_cfn_template "${T}/stack.yaml"

@@ -10,10 +10,11 @@ die() {
 # The file list is read, filtered and checked NUL-separated end to end (git
 # -z, grep -z), so a tracked name holding a non-ASCII byte, a double quote, a
 # backslash or a control character is reported by its real name rather than
-# the C-quoted form line-separated git output gives it ("f\303\263o.log", quotes included). check-ignore's
-# NUL-separated output goes to a temp file, not straight into tr, so that its
-# own exit status is the one tested below. A name containing a newline is
-# reported as two lines; such names are not supported.
+# the C-quoted form line-separated git output gives it ("f\303\263o.log",
+# quotes included). check-ignore's NUL-separated output goes to a temp file,
+# not straight into tr, so that its own exit status is the one tested below.
+# A name containing a newline is reported as two lines; such names are not
+# supported.
 IGNORED_FILE=$(mktemp "${TMPDIR:-/tmp}/check-ignored-files.XXXXXXXXXX") || die "mktemp failed"
 trap 'rm -f "$IGNORED_FILE"' EXIT
 
