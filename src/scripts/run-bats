@@ -173,4 +173,4 @@ if command -v parallel > /dev/null 2>&1; then
     [ "$CPU_COUNT" -gt 1 ] && BATS_JOBS_ARGS=(--jobs "$CPU_COUNT")
 fi
 
-exec bats "${BATS_JOBS_ARGS[@]}" --recursive "$REPO_ROOT/test"
+exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure --recursive "$REPO_ROOT/test"

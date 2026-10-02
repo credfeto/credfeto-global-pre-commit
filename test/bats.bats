@@ -71,6 +71,27 @@ BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
 }
 
+@test "failing bats test shows the output captured by run" {
+    if ! command -v bats > /dev/null 2>&1; then
+        skip "bats not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/print-output-on-failure)"
+    printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/test"
+    # Output captured by `run` goes to $output, not stdout, so bats shows it
+    # only when invoked with --print-output-on-failure; a bare printf would be
+    # echoed regardless and could not tell the two apart.
+    printf '#!/usr/bin/env bats\n@test "captured output" {\n  run printf RUN-BATS-243-MARKER\n  false\n}\n' > "${T}/test/captured.bats"
+    git -C "${T}" add .pre-commit-config.yaml test/captured.bats
+    run_isolated "${T}" "${TEST_PATH}" sh "${HOOK}"
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"RUN-BATS-243-MARKER"* ]] || fail_with_run_output "${status}" "${output}" 1
+}
+
 @test "run-bats pins its tmpdir under /tmp regardless of ambient TMPDIR" {
     if ! command -v bats > /dev/null 2>&1; then
         skip "bats not installed"
