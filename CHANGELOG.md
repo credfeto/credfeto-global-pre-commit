@@ -134,7 +134,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - bats tests now use per-test PRE_COMMIT_HOME so parallel runs no longer crash on locked pre-commit SQLite store (#240)
 - test/mode-arg-convention.bats reported a missing src/scripts directory as "fail: command not found"; it now uses a shared fail_test helper
 - shellcheck hook now reports findings in sourced shell libraries, including files outside the repository (opt-out via # shellcheck source=/dev/null); new shellcheck-libraries hook lints extensionless shell libraries with # shellcheck shell= directive
-- bats hook now runs the suite when any shell script (by extension, shebang or # shellcheck shell= directive), test/test_helper.bash, or the pre-commit config changes, not only .bats files; exits 0 in repos without bats tests
+- bats hook now runs the suite when any shell script (by extension, shebang or # shellcheck shell= directive), test/test_helper.bash or the pre-commit config changes, not only .bats files; it is a no-op in repos without bats tests, but bats must be installed
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
