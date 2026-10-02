@@ -1,0 +1,16 @@
+#!/bin/sh
+# Lints shebang-less shell libraries, which identify cannot tag as shell, by
+# their first-line `# shellcheck shell=...` directive.
+# Keep the shellcheck flags in sync with the shellcheck hook in
+# src/.pre-commit-config.yaml.
+
+for file do
+    shift
+    if head -n 1 "$file" | grep -Eq '^#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?shell='; then
+        set -- "$@" "$file"
+    fi
+done
+
+[ "$#" -gt 0 ] || exit 0
+
+exec shellcheck -x --check-sourced --source-path=SCRIPTDIR "$@"

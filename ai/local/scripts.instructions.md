@@ -28,19 +28,17 @@ Root-level executables (e.g. `acceptance-test`) use `$REPO_DIR/<name>` in the ch
 
 Before committing any change that adds, removes, or renames a script, verify the `chmod +x` list is consistent with the actual contents of `src/scripts/`.
 
-## `language: system` wrappers must be exposed on PATH (MANDATORY)
+## `language: system` wrappers invoked by bare name need no PATH symlink
 
-Wrapper scripts referenced by a `language: system` hook in `src/.pre-commit-config.yaml` **by bare command name** (e.g. `entry: run-eslint`) are resolved by pre-commit through `PATH` — **not** through `$SCRIPTS_DIR`. The hook (`src/hooks/pre-commit`) calls its own scripts by full `$SCRIPTS_DIR/<name>` path, but it does **not** add `$SCRIPTS_DIR` to `PATH`, so a bare-name wrapper resolves only if its directory is already on `PATH`.
+Wrapper scripts referenced by a `language: system` hook in `src/.pre-commit-config.yaml` by bare command name (e.g. `entry: run-eslint`) are resolved by pre-commit through `PATH`. `src/hooks/pre-commit` prepends `$SCRIPTS_DIR` to `PATH` and exports it before anything else runs, and every supported run (a commit, and `pre-commit-check`, which calls the hook with `--all-files`) goes through that hook. Every bare-name wrapper therefore resolves to the copy shipped alongside the hook without any symlink.
 
-`install` bridges this in the `# ── Symlink system-hook wrappers onto PATH` block, which symlinks each such wrapper into `$HOME/.local/bin`.
+When adding a new `language: system` wrapper that is invoked by bare name (MANDATORY):
 
-When adding a new `language: system` wrapper that is invoked by bare name (currently `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, `run-bats`):
+1. Add it to the `chmod +x` block in `install` (see *When adding a new script*), because pre-commit can only run it if it is executable.
+2. Do not add a symlink line for it to `install`, because the hook already puts it on `PATH`.
+3. Optionally add it to the consuming container images' (e.g. `credfeto-orchestrator`'s `development-full` / `development-agent`) build-time wrapper check. That check only confirms that the wrappers it names resolve; a wrapper it does not name is still reachable through `src/scripts/` on `PATH` and does not fail the image build.
 
-1. Add it to the `chmod +x` block in `install` (see *When adding a new script*).
-2. **Also** add a symlink line for it to the *Symlink system-hook wrappers onto PATH* block in `install`.
-3. Consuming container images (e.g. `credfeto-orchestrator`'s `development-full` / `development-agent`) put `src/scripts/` on `PATH` and verify each wrapper resolves **at build time** — a wrapper added here is not reachable in those images until their build-time check list is updated. Those images are designed to fail the build rather than surface a missing wrapper as an `Executable <name> not found` hook failure at commit time.
-
-Wrappers invoked only through the hook by full `$SCRIPTS_DIR/<name>` path (e.g. `run-formatter`, `buildcheck`) do **not** need a PATH symlink.
+The `$HOME/.local/bin` links in the *Symlink system-hook wrappers onto PATH* block of `install` are legacy and not required for the hook; leave them as they are.
 
 ## Purpose of `--all-files` mode (MANDATORY)
 

@@ -65,6 +65,7 @@ chmod +x \
     "$SCRIPTS_DIR/run-psscriptanalyzer" \
     "$SCRIPTS_DIR/run-bats" \
     "$SCRIPTS_DIR/run-pylint" \
+    "$SCRIPTS_DIR/run-shellcheck-libraries" \
     "$REPO_DIR/check-setup" \
     "$REPO_DIR/acceptance-test" \
     "$REPO_DIR/install-deps-arch" \
