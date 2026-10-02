@@ -75,6 +75,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added check-msbuild-path-separator pre-commit hook to catch backslash used as a path separator in .props/.targets/.csproj/.slnx files, which silently fails to resolve on Linux self-hosted runners (#214)
 - run-formatter now runs dotnet format on staged .cs files before cscleanup, preferring a .slnx solution file over .sln for solution discovery (also applied to buildcheck and buildtest)
 - Added test/mode-arg-convention.bats, a regression test enforcing that scripts under src/scripts/ route git file-list selection through the shared all-files helper instead of re-deriving it directly (#234)
+- check-funfair-props pre-commit check that removes src/FunFair.props (git rm if tracked, or delete if untracked) and fails the commit when origin remote's owner is not funfair-tech (#240)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
@@ -130,6 +131,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - check-changelog: template blank-check no longer fails with "could not generate reference blank changelog" when mktemp pre-creates an empty reference file (issue #219)
 - check-changelog: template blank-check now surfaces the underlying dotnet changelog error (stderr and exit status) when reference blank changelog generation fails, instead of only a generic message (#221)
 - All-files (baseline) mode now actually lints/fixes CHANGELOG.md, .NET formatting, and package-lock.json registry URLs against the whole tracked tree instead of silently skipping them when nothing is staged (#232)
+- bats tests now use per-test PRE_COMMIT_HOME so parallel runs no longer crash on locked pre-commit SQLite store (#240)
+- test/mode-arg-convention.bats reported a missing src/scripts directory as "fail: command not found"; it now uses a shared fail_test helper
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks

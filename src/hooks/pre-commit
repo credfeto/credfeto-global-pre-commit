@@ -555,6 +555,9 @@ fi
 info "Checking for ignored files..."
 sh "$SCRIPTS_DIR/check-ignored-files" || die "ignored files found in tracking"
 
+info "Checking for src/FunFair.props outside funfair-tech..."
+sh "$SCRIPTS_DIR/check-funfair-props" || die "src/FunFair.props is not permitted outside funfair-tech repositories"
+
 # ── 1. Auto-fixers (normalise content before linting) ────────────────────────
 
 # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.

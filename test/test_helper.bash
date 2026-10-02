@@ -19,6 +19,21 @@ HOOK="${HOOKS_DIR}/pre-commit"
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_SYSTEM=/dev/null
 
+# ── pre-commit store isolation ────────────────────────────────────────────────
+# pre-commit records every config it runs in a SQLite database in its store
+# (default ~/.cache/pre-commit/db.db). Under bats --jobs, concurrent tests all
+# writing to that one shared database can hit "database is locked", which
+# crashes pre-commit (exit 3) and fails whichever test was running it, and
+# every test run also pollutes the developer's real pre-commit cache. Giving
+# each test its own store removes both problems at no cost, since every hook
+# the tests run is repo: local with language: system, so there is nothing to
+# clone or build into it. The guard leaves PRE_COMMIT_HOME alone outside a
+# test body (setup_file and bats' own preprocessing pass), where
+# BATS_TEST_TMPDIR is not yet set and pre-commit is never run.
+if [ -n "${BATS_TEST_TMPDIR:-}" ]; then
+    export PRE_COMMIT_HOME="${BATS_TEST_TMPDIR}/pre-commit-home"
+fi
+
 # ── PATH sanitisation ─────────────────────────────────────────────────────────
 # The hook enforces that dotnet (if present) must resolve to
 # /usr/share/dotnet/dotnet.  On machines where dotnet lives elsewhere we strip
@@ -140,6 +155,13 @@ ensure_other_test_gpg_key() {
     OTHER_TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${OTHER_TEST_GIT_EMAIL}" "${GNUPGHOME}/.other-keyid")"
 }
 
+# Fails the current test with a message on stderr. bats-assert's `fail` is not
+# loaded by this suite, so tests that need a descriptive failure use this.
+fail_test() {
+    printf '%s\n' "$*" >&2
+    return 1
+}
+
 # Creates an isolated git repository in BATS_TEST_TMPDIR on the given branch
 # (default: feature/acceptance-test) and prints its path. Configured with a
 # valid identity and GPG signing key so check-identity passes by default —
@@ -157,6 +179,31 @@ make_repo() {
     git -C "${_t}" config user.signingkey "${TEST_GIT_SIGNINGKEY}"
     git -C "${_t}" config core.hooksPath "${HOOKS_DIR}"
     printf '%s' "${_t}"
+}
+
+# Commits the given path through a no-op hooksPath, so the file is tracked in
+# HEAD without the hook under test running during setup, then points
+# core.hooksPath back at HOOKS_DIR as make_repo configured it.
+commit_without_hooks() {
+    local _repo="$1"
+    local _path="$2"
+    mkdir -p "${_repo}/.no-hooks"
+    git -C "${_repo}" config core.hooksPath "${_repo}/.no-hooks"
+    git -C "${_repo}" add -- "${_path}"
+    git -C "${_repo}" commit --quiet -m baseline
+    git -C "${_repo}" config core.hooksPath "${HOOKS_DIR}"
+}
+
+# Succeeds when the given path is in the given repo's index.
+is_tracked() {
+    [ -n "$(git -C "$1" ls-files -- "$2")" ]
+}
+
+# Succeeds when the given path is not in the given repo's index. A bare
+# `! is_tracked` never fails a bats test (bash's errexit ignores negated
+# commands), so negative index checks need their own predicate.
+is_untracked() {
+    [ -z "$(git -C "$1" ls-files -- "$2")" ]
 }
 
 # Runs the hook in the given repo directory using TEST_PATH (dotnet stripped

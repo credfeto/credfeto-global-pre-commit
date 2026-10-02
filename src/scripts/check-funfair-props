@@ -1,0 +1,94 @@
+#!/bin/sh
+# Removes src/FunFair.props from any repository whose origin remote is not
+# owned by funfair-tech. Repositories with no origin remote are skipped.
+#
+# Unlike the fixer scripts, this exits non-zero after removing the file: the
+# removal is staged (or the untracked file deleted) so a re-run passes, but
+# the commit in progress must stop so the removal is noticed rather than
+# silently folded into it. git commit -a, -i and <paths> run hooks against a
+# temporary index that git discards when a hook fails, so there the file is
+# only deleted from the working tree and the user is told how to stage it; the
+# same applies to an addition staged but not yet committed and still in the
+# working tree, which a git commit <paths> cannot see in its temporary index.
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+FUNFAIR_OWNER="funfair-tech"
+PROPS_FILE="src/FunFair.props"
+
+# Accepts scp-like (git@host:owner/repo.git), https://host/owner/repo(.git)
+# and ssh://user@host[:port]/owner/repo forms: strips any trailing slash and
+# .git suffix, drops the repo name, keeps the segment before it, then
+# lowercases it (ASCII is enough: GitHub owner names are ASCII).
+remote_owner() {
+    printf '%s\n' "$1" \
+        | sed 's|/*$||; s|\.git$||; s|[/:][^/:]*$||; s|.*[/:]||; y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
+}
+
+index_path() {
+    git rev-parse --path-format=absolute --git-path index
+}
+
+# GIT_INDEX_FILE names the index the commit in progress is built from; it is
+# the repository's own index only for a plain git commit.
+uses_temporary_index() {
+    [ -n "${GIT_INDEX_FILE:-}" ] || return 1
+    [ "$(index_path)" != "$(unset GIT_INDEX_FILE; index_path)" ]
+}
+
+REPO_ROOT=$(git rev-parse --show-toplevel) || die "unable to locate the repository root"
+cd "$REPO_ROOT" || die "unable to change to the repository root: $REPO_ROOT"
+
+# The file is absent in almost every repository, so check for it before the
+# comparatively expensive origin lookup.
+TRACKED=$(git ls-files -- "$PROPS_FILE")
+REPO_TRACKED=$(unset GIT_INDEX_FILE; git ls-files -- "$PROPS_FILE")
+# A git commit <paths> builds its temporary index from HEAD, so an addition
+# staged but never committed is only in the repository's own index, where it
+# outlives the commit. Missing from HEAD tells it apart from a git commit -a
+# that is itself recording the deletion. Only while the file is still in the
+# working tree, though: once it is gone, a git commit -a or one listing it is
+# removing the staged addition, and a commit that leaves it in the index
+# cannot add it to HEAD; the next plain commit sees it as tracked instead.
+STAGED_ONLY=""
+[ -z "$TRACKED" ] && [ -n "$REPO_TRACKED" ] && [ -e "$PROPS_FILE" ] \
+    && ! git cat-file -e "HEAD:$PROPS_FILE" 2>/dev/null \
+    && STAGED_ONLY="$REPO_TRACKED"
+[ -n "$TRACKED$STAGED_ONLY" ] || [ -e "$PROPS_FILE" ] || exit 0
+
+ORIGIN_URL=$(git remote get-url origin 2>/dev/null) || exit 0
+[ -n "$ORIGIN_URL" ] || exit 0
+
+OWNER=$(remote_owner "$ORIGIN_URL")
+[ "$OWNER" = "$FUNFAIR_OWNER" ] && exit 0
+
+REASON="$PROPS_FILE is only permitted in $FUNFAIR_OWNER repositories (origin owner: $OWNER)"
+
+if [ -n "$TRACKED$STAGED_ONLY" ] && uses_temporary_index; then
+    rm -f -- "$PROPS_FILE" || die "failed to delete $PROPS_FILE"
+    [ -z "$STAGED_ONLY" ] \
+        || die "$REASON; it has been deleted, but its addition is still staged and this commit uses a temporary index that git discards when a hook fails, so the removal could not be staged. Run 'git rm --ignore-unmatch --quiet -- $PROPS_FILE', then re-run the commit."
+    # Only a git commit <paths> builds its temporary index from HEAD, so it
+    # still tracks the file after the user has staged the removal.
+    [ -n "$REPO_TRACKED" ] \
+        || die "$REASON; its removal is already staged but this commit's paths do not include it. Re-run the commit listing $PROPS_FILE among its paths."
+    # Once its staged addition is removed, a file HEAD has never held is
+    # unknown to git, which then rejects it as a commit path.
+    if git cat-file -e "HEAD:$PROPS_FILE" 2>/dev/null; then
+        PATHS_ADVICE="a git commit <paths> without -i/--include must also list $PROPS_FILE among its paths"
+    else
+        PATHS_ADVICE="a git commit <paths> must not list $PROPS_FILE among its paths, as it has never been committed"
+    fi
+    die "$REASON; it has been deleted, but this commit uses a temporary index that git discards when a hook fails, so the removal could not be staged. Run 'git rm --ignore-unmatch --quiet -- $PROPS_FILE', then re-run the commit; $PATHS_ADVICE."
+fi
+
+if [ -n "$TRACKED" ]; then
+    git rm -f --quiet -- "$PROPS_FILE" || die "failed to remove $PROPS_FILE from the index"
+    die "$REASON; its removal has been staged, re-run the commit to include it."
+fi
+
+rm -f -- "$PROPS_FILE" || die "failed to delete $PROPS_FILE"
+die "$REASON; the untracked file has been deleted, re-run the commit."

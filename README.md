@@ -179,6 +179,7 @@ git config --global core.hooksPath
 | --- | --- | --- |
 | No merge commits | `scripts/check-merge-commits` | Blocks if `MERGE_HEAD` is present — rebase instead of merge |
 | No ignored files tracked | `scripts/check-ignored-files` | Fails if a tracked file is matched by `.gitignore` rules |
+| No `src/FunFair.props` outside funfair-tech | `scripts/check-funfair-props` | When the `origin` remote's owner is not `funfair-tech` (case-insensitive; skipped when there is no `origin`), `git rm`s a tracked `src/FunFair.props` (staging the removal) or deletes an untracked one, then fails so the commit can be re-run with the removal included. Under `git commit -a`, `-i` or `<paths>`, git discards index changes made by a failing hook, so the file is only deleted and the message gives the `git rm` command to stage it. Also runs in `--all-files` mode |
 | Secret scanning | `scripts/check-secrets` | Runs `trufflehog --only-verified`; **skipped if not installed** |
 
 **Native pre-commit hooks (via `pre-commit/pre-commit-hooks`):**
@@ -275,7 +276,7 @@ a pre-work baseline check before starting a task. Compared to the default
 | Branch guard (`main`/`master`) | Blocks | Skipped |
 | Git identity/GPG check | Runs | Skipped |
 | Merge-commit guard | Runs | Skipped |
-| Ignored-file / dotnet-tools.json / install-location / freshness guards | Runs | Runs (unchanged) |
+| Ignored-file / `src/FunFair.props` / dotnet-tools.json / install-location / freshness guards | Runs | Runs (unchanged) |
 | `pre-commit run` | Staged files only | `--all-files` |
 | Changelog / .NET / NPM / SQL / CloudFormation category checks | Gated on staged files | Gated on tracked files |
 
@@ -322,6 +323,7 @@ Run `pre-commit autoupdate --config ~/.global-hooks/src/.pre-commit-config.yaml`
 | `scripts/latest-target-framework` | Local addition, prints a multi-targeted `.csproj`'s latest target framework moniker so `buildtest`'s benchmark test step can restrict itself to it (older frameworks are assumed to work); prints nothing for a single-targeted project (no `dotnet` required) |
 | `scripts/buildcheck` | Vendored from [credfeto/scripts — buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
+| `scripts/check-funfair-props` | Local addition, removes `src/FunFair.props` from repositories whose `origin` remote is not owned by `funfair-tech` |
 | `scripts/check-merge-commits` | Port of [check-no-merge-commits](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-commits/action.yml) |
 | `scripts/run-eslint` | Wrapper for eslint — skips silently if no `package.json` or eslint config |
 | `scripts/run-stylelint` | Wrapper for stylelint — skips silently if no `package.json` |

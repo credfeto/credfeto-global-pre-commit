@@ -56,6 +56,7 @@ chmod +x \
     "$SCRIPTS_DIR/check-changelog" \
     "$SCRIPTS_DIR/check-identity" \
     "$SCRIPTS_DIR/check-ignored-files" \
+    "$SCRIPTS_DIR/check-funfair-props" \
     "$SCRIPTS_DIR/check-merge-commits" \
     "$SCRIPTS_DIR/clean-package-lock-registry" \
     "$SCRIPTS_DIR/check-msbuild-path-separator" \
