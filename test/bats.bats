@@ -68,12 +68,7 @@ BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
     printf '#!/usr/bin/env bats\n@test "always passes" {\n  true\n}\n' > "${T}/test/pass.bats"
     git -C "${T}" add .pre-commit-config.yaml test/pass.bats
     run_isolated "${T}" "${TEST_PATH}" sh "${HOOK}"
-    if [ "${status}" -ne 0 ]; then
-        printf '# hook exit status: %s\n' "${status}" >&3
-        printf '# hook output:\n' >&3
-        printf '%s\n' "${output}" | sed 's/^/# /' >&3
-    fi
-    [ "${status}" -eq 0 ]
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
 }
 
 @test "run-bats pins its tmpdir under /tmp regardless of ambient TMPDIR" {
@@ -250,12 +245,7 @@ BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
     printf '#!/usr/bin/env bats\n@test "always passes" {\n  true\n}\n' > "${T}/test/pass.bats"
     git -C "${T}" add .pre-commit-config.yaml test/pass.bats
     run_isolated "${T}" "${_stripped_path}" env XDG_CACHE_HOME="${BATS_TEST_TMPDIR}/xdg-cache" sh "${HOOK}"
-    if [ "${status}" -ne 0 ]; then
-        printf '# hook exit status: %s\n' "${status}" >&3
-        printf '# hook output:\n' >&3
-        printf '%s\n' "${output}" | sed 's/^/# /' >&3
-    fi
-    [ "${status}" -eq 0 ]
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "${output}" != *"not found"* ]]
 }
 
