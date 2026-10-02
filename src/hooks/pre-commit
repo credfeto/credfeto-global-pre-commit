@@ -339,7 +339,16 @@ MODE_ARG=""
 # Skipped in all-files mode, which is expected to run against a clean tree,
 # and skipped for a --amend (see is_amend above), which legitimately has
 # nothing staged when only the commit message is being changed (issue #195).
-ALL_STAGED=$(git diff --cached --name-only)
+#
+# Every git file list in this hook is read NUL-separated (-z) and only then
+# turned into the newline-separated list its consumers loop over, because sh
+# has no arrays to hold a NUL-separated list. Line-separated git output
+# C-quotes any name holding a double quote, a backslash or a control
+# character, and by default (core.quotePath) any non-ASCII byte too, and an
+# extension or basename match against the quoted form ("t\303\251st.js",
+# quotes included) silently misses the file. A name containing a newline
+# still splits into two entries here; such names are not supported.
+ALL_STAGED=$(git diff --cached --name-only -z | tr '\000' '\n')
 if [ "$MODE" = "commit" ] && ! is_amend; then
     [ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
 fi
@@ -397,7 +406,8 @@ fi
 # exactly how a rename with edited content (status R, not M) was excluded and
 # let rename+edit-only commits skip every check below.
 # Skipped in all-files mode — an empty stage does not mean "nothing to check".
-STAGED=$(git diff --cached --name-only --diff-filter=d)
+# Read NUL-separated for the reason given above ALL_STAGED.
+STAGED=$(git diff --cached --name-only --diff-filter=d -z | tr '\000' '\n')
 if [ "$MODE" = "commit" ]; then
     [ -z "$STAGED" ] && exit 0
 fi
@@ -405,12 +415,22 @@ fi
 cd "$REPO_ROOT" || die "cannot cd to repo root"
 
 # CHECK_FILES is the file-list category checks below key off: staged files in
-# commit mode (unchanged), or every tracked file in all-files mode.
+# commit mode (unchanged), or every tracked file in all-files mode, read
+# NUL-separated for the reason given above ALL_STAGED.
 if [ "$MODE" = "all-files" ]; then
-    CHECK_FILES=$(git ls-files)
+    CHECK_FILES=$(git ls-files -z | tr '\000' '\n')
 else
     CHECK_FILES="$STAGED"
 fi
+
+# check_files_match <ERE>
+# Succeeds when any name in CHECK_FILES matches <ERE>. CHECK_FILES holds names
+# unquoted (see ALL_STAGED above), so it is printed with printf, not echo:
+# dash's echo interprets backslashes, and the \c in a name like a\c.txt would
+# cut the list short.
+check_files_match() {
+    printf '%s\n' "$CHECK_FILES" | grep -qE "$1"
+}
 
 # ── dotnet-tools.json sanity ─────────────────────────────────────────────────
 # A dotnet-tools.json anywhere in the repo pins local tool versions and
@@ -582,16 +602,14 @@ if [ "$HAS_PRECOMMIT" -eq 1 ]; then
 fi
 
 # ── 3. Changelog: lint CHANGELOG.md if changed ───────────────────────────────
-CHANGELOG_CHANGES=$(echo "$CHECK_FILES" | grep -E '(^|/)CHANGELOG\.md$' | head -1)
-if [ -n "$CHANGELOG_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
+if check_files_match '(^|/)CHANGELOG\.md$' && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected CHANGELOG.md changes — running changelog lint..."
     # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
     sh "$SCRIPTS_DIR/check-changelog" $MODE_ARG || die "changelog lint"
 fi
 
 # ── 4. .NET: format check + build + test if source/project file changes ──────
-DOTNET_CHANGES=$(echo "$CHECK_FILES" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
-if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
+if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
     sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
     info "Detected .NET changes — running formatter fix..."
@@ -602,8 +620,7 @@ if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
 fi
 
 # ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────
-TS_CHANGES=$(echo "$CHECK_FILES" | grep -E '\.(ts|tsx|js|jsx)$' | head -1)
-if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
+if check_files_match '\.(ts|tsx|js|jsx)$' && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
     info "Detected TypeScript/JS changes — running npm tests..."
     if grep -q '"test:noe2e"' "$REPO_ROOT/package.json"; then
         npm run test:noe2e || die "npm run test:noe2e"
@@ -613,8 +630,7 @@ if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 
 fi
 
 # ── 6. SQL: tsqllint + sqlfluff if .sql changes ──────────────────────────────
-SQL_CHANGES=$(echo "$CHECK_FILES" | grep -E '\.sql$' | head -1)
-if [ -n "$SQL_CHANGES" ]; then
+if check_files_match '\.sql$'; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
         dotnet_tool_installed tsqllint TSQLLint || die_blocked "tsqllint dotnet tool is not installed"
         info "Detected SQL changes — running dotnet tsqllint..."
@@ -623,10 +639,13 @@ if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_SQLFLUFF" -eq 1 ] && [ "${SQLFLUFF_EXECUTED:-0}" != "1" ]; then
         info "Detected SQL changes — running sqlfluff fix..."
         sqlfluff fix . || die "sqlfluff fix"
-        SQLFLUFF_FIXED=$(git diff --name-only | grep -E '\.sql$' || true)
-        if [ -n "$SQLFLUFF_FIXED" ]; then
+        # NUL-separated end to end (git -z, grep -z, xargs -0), for the reason
+        # given above ALL_STAGED; the list is only ever handed to git add, so
+        # it never needs converting to lines.
+        SQL_FILE_RE='\.sql$'
+        if git diff --name-only -z | grep -qzE "$SQL_FILE_RE"; then
             info "Staging files modified by sqlfluff fix..."
-            echo "$SQLFLUFF_FIXED" | xargs git add --
+            git diff --name-only -z | grep -zE "$SQL_FILE_RE" | xargs -0 git add --
         fi
         info "Detected SQL changes — running sqlfluff lint..."
         sqlfluff lint . || die "sqlfluff lint"
@@ -636,9 +655,10 @@ fi
 
 # ── 7. CloudFormation: cfn-lint on changed templates ─────────────────────────
 if [ "$HAS_CFNLINT" -eq 1 ]; then
-    CFN_FILES=$(echo "$CHECK_FILES" | grep -E '\.(yaml|yml|json|template)$' \
+    # printf, not echo, for the reason given above check_files_match.
+    CFN_FILES=$(printf '%s\n' "$CHECK_FILES" | grep -E '\.(yaml|yml|json|template)$' \
         | while read -r f; do
-            grep -q "AWSTemplateFormatVersion" "$f" 2>/dev/null && echo "$f"
+            grep -q "AWSTemplateFormatVersion" "$f" 2>/dev/null && printf '%s\n' "$f"
           done)
     if [ -n "$CFN_FILES" ]; then
         info "Detected CloudFormation changes — running cfn-lint..."

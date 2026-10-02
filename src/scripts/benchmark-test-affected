@@ -55,8 +55,13 @@ REPO_ROOT=$(git -C "$SOLUTION_DIR" rev-parse --show-toplevel 2>/dev/null)
 [ -n "$REPO_ROOT" ] || { print_all; exit 0; }
 
 # Only staged changes count -- a manual run with nothing staged runs every benchmark.
-CHANGED_RELATIVE=$(git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACM 2>/dev/null \
-    | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$')
+# Read and filtered NUL-separated (git -z, grep -z), then printed one per line,
+# since sh has no arrays: line-separated git output C-quotes a non-ASCII name
+# ("Foo/\303\234nits.cs", quotes included), which no longer ends in .cs and
+# would be missed. A name containing a newline is not supported.
+CHANGED_RELATIVE=$(git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACM -z 2>/dev/null \
+    | grep -zE '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' \
+    | tr '\000' '\n')
 [ -n "$CHANGED_RELATIVE" ] || { print_all; exit 0; }
 
 CHANGED_ABS=""

@@ -134,10 +134,13 @@ dotnet build \
 # Fail if the build generated or modified any ApiCompatSuppressions.xml files —
 # these indicate newly suppressed API compatibility breaks that must be reviewed,
 # staged and committed intentionally rather than silently auto-included.
+# Both git lists are read NUL-separated and converted once, after the loop, to
+# one path per line, so a path under a directory with a non-ASCII name is
+# reported by its real name rather than git's C-quoted form.
 COMPAT_CHANGED=$(find "$SOURCE_DIR" -name "ApiCompatSuppressions.xml" 2>/dev/null | while IFS= read -r f; do
-    git diff --name-only -- "$f" 2>/dev/null
-    git ls-files --others --exclude-standard -- "$f" 2>/dev/null
-done)
+    git diff --name-only -z -- "$f" 2>/dev/null
+    git ls-files --others --exclude-standard -z -- "$f" 2>/dev/null
+done | tr '\000' '\n')
 if [ -n "$COMPAT_CHANGED" ]; then
     die "ApiCompatSuppressions.xml was created or modified by the build — review, stage and commit it explicitly:$(printf '\n  %s' "$COMPAT_CHANGED")"
 fi

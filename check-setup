@@ -242,9 +242,9 @@ else
 fi
 
 if has bats; then
-    skip  "VALIDATE_BATS — bats tests       (*.bats)" "$(bats --version 2>/dev/null)"
+    skip  "VALIDATE_BATS: bats tests        (system)" "$(bats --version 2>/dev/null)"
 else
-    cross "VALIDATE_BATS — bats tests       (*.bats)" "not installed"
+    cross "VALIDATE_BATS: bats tests        (system)" "not installed"
 fi
 
 if has parallel; then
