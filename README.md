@@ -342,7 +342,7 @@ system package manager rather than `pre-commit autoupdate`.
 | `scripts/run-stylelint` | Wrapper for stylelint — skips silently if no `package.json` |
 | `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer — runs per-file via pwsh |
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
-| `scripts/run-bats` | Wrapper for bats, runs the complete `test/` suite when any staged file is a shell script (including `test/test_helper.bash`) or `src/.pre-commit-config.yaml`; exits 0 without running when `test/` holds no `*.bats` file |
+| `scripts/run-bats` | Wrapper for bats, runs the complete `test/` suite when a staged file qualifies (see `VALIDATE_BATS` above) |
 | `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |
 | `scripts/run-formatter` | Applies `dotnet format` to staged `.cs` files and then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) to staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what it changes |
 
