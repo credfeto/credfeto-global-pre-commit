@@ -153,13 +153,10 @@ repos:
         language: system
         types: [shell]
 
-      # identify cannot tag an extensionless library with no shebang as shell,
-      # so `types: [shell]` above never selects one even when its first line is
-      # a `# shellcheck shell=...` directive. This hook offers every other
-      # extensionless text file to run-shellcheck-libraries, which lints only
-      # those carrying that directive with the same flags as the hook above.
-      # The files: filter keeps --all-files runs from forking the wrapper's
-      # first-line check for every text file in a large repo.
+      # identify cannot tag an extensionless, shebang-less library as shell, so
+      # the hook above never selects one; run-shellcheck-libraries lints those
+      # whose first line is a `# shellcheck shell=...` directive. files: limits
+      # the candidates to extensionless files.
       - id: shellcheck-libraries
         name: shellcheck (shell libraries)
         entry: run-shellcheck-libraries

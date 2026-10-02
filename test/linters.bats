@@ -52,6 +52,29 @@ SHELLCHECK_LIBRARIES_CONFIG="repos:
         exclude_types: [shell]
 "
 
+# shellcheck disable=SC2016
+BROKEN_SHELL_LIBRARY='# shellcheck shell=bash
+greet() {
+    local now=$(date)
+    echo "$now"
+}
+'
+
+# shellcheck disable=SC2016
+CLEAN_SHELL_LIBRARY='# shellcheck shell=bash
+greet() {
+    local now
+    now=$(date)
+    echo "$now"
+}
+'
+
+# shellcheck disable=SC2016
+SOURCING_SCRIPT='#!/bin/bash
+source "$(dirname "$0")/lib/common"
+greet
+'
+
 DOTENV_CONFIG='repos:
   - repo: local
     hooks:
@@ -385,10 +408,8 @@ END_OF_FILE_FIXER_CONFIG='repos:
     T="$(make_repo feature/sourced-broken-lib-test)"
     printf '%s' "${SHELLCHECK_SOURCED_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/lib"
-    # shellcheck disable=SC2016
-    printf '# shellcheck shell=bash\ngreet() {\n    local now=$(date)\n    echo "$now"\n}\n' > "${T}/lib/common"
-    # shellcheck disable=SC2016
-    printf '#!/bin/bash\nsource "$(dirname "$0")/lib/common"\ngreet\n' > "${T}/main.sh"
+    printf '%s' "${BROKEN_SHELL_LIBRARY}" > "${T}/lib/common"
+    printf '%s' "${SOURCING_SCRIPT}" > "${T}/main.sh"
     git -C "${T}" add .pre-commit-config.yaml lib/common main.sh
     run_hook "${T}"
     [ "${status}" -eq 1 ]
@@ -406,10 +427,8 @@ END_OF_FILE_FIXER_CONFIG='repos:
     T="$(make_repo feature/sourced-clean-lib-test)"
     printf '%s' "${SHELLCHECK_SOURCED_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/lib"
-    # shellcheck disable=SC2016
-    printf '# shellcheck shell=bash\ngreet() {\n    local now\n    now=$(date)\n    echo "$now"\n}\n' > "${T}/lib/common"
-    # shellcheck disable=SC2016
-    printf '#!/bin/bash\nsource "$(dirname "$0")/lib/common"\ngreet\n' > "${T}/main.sh"
+    printf '%s' "${CLEAN_SHELL_LIBRARY}" > "${T}/lib/common"
+    printf '%s' "${SOURCING_SCRIPT}" > "${T}/main.sh"
     git -C "${T}" add .pre-commit-config.yaml lib/common main.sh
     run_hook "${T}"
     [ "${status}" -eq 0 ]
@@ -426,8 +445,7 @@ END_OF_FILE_FIXER_CONFIG='repos:
     T="$(make_repo feature/standalone-broken-lib-test)"
     printf '%s' "${SHELLCHECK_LIBRARIES_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/lib"
-    # shellcheck disable=SC2016
-    printf '# shellcheck shell=bash\ngreet() {\n    local now=$(date)\n    echo "$now"\n}\n' > "${T}/lib/common"
+    printf '%s' "${BROKEN_SHELL_LIBRARY}" > "${T}/lib/common"
     git -C "${T}" add .pre-commit-config.yaml lib/common
     run_hook "${T}"
     [ "${status}" -eq 1 ]
@@ -448,8 +466,7 @@ END_OF_FILE_FIXER_CONFIG='repos:
     T="$(make_repo feature/standalone-clean-lib-test)"
     printf '%s' "${SHELLCHECK_LIBRARIES_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/lib"
-    # shellcheck disable=SC2016
-    printf '# shellcheck shell=bash\ngreet() {\n    local now\n    now=$(date)\n    echo "$now"\n}\n' > "${T}/lib/common"
+    printf '%s' "${CLEAN_SHELL_LIBRARY}" > "${T}/lib/common"
     # shellcheck disable=SC2016
     printf 'echo $unquoted\n' > "${T}/notes"
     git -C "${T}" add .pre-commit-config.yaml lib/common notes
@@ -457,6 +474,7 @@ END_OF_FILE_FIXER_CONFIG='repos:
     [ "${status}" -eq 0 ]
 }
 
+# Covers the wrapper's no-qualifying-files exit: no staged file carries a directive.
 @test "text files without a shellcheck directive are skipped by the library hook" {
     if ! command -v shellcheck > /dev/null 2>&1; then
         skip "shellcheck not installed"
