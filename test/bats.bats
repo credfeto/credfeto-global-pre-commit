@@ -6,6 +6,33 @@ load test_helper
 
 # ── bats ─────────────────────────────────────────────────────────────────────
 
+# bats_hook_config <entry>
+# Prints a pre-commit config holding only a bats hook that mirrors the
+# production one in src/.pre-commit-config.yaml (no files: filter; run-bats
+# decides from the staged filenames whether to run), with the given entry.
+bats_hook_config() {
+    printf 'repos:
+  - repo: local
+    hooks:
+      - id: bats
+        name: run bats tests
+        entry: %s
+        language: system
+        types: [text]
+        pass_filenames: true
+        require_serial: true
+' "$1"
+}
+
+# The production bats hook with a full-path entry, so it does not depend on
+# PATH.
+BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
+
+# Every test below that reaches an inner bats suite does so through
+# run_isolated, so that run gets its own tmpdir (see run_isolated in
+# test_helper.bash). The XDG_RUNTIME_DIR tests are the exception: each sets a
+# private mktemp XDG_RUNTIME_DIR of its own, which isolates it just the same.
+
 @test "failing bats test blocks commit" {
     if ! command -v bats > /dev/null 2>&1; then
         skip "bats not installed"
@@ -13,24 +40,17 @@ load test_helper
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T BATS_HOOK_CONFIG
+    local T
     T="$(make_repo feature/failing-bats-test)"
-    BATS_HOOK_CONFIG="repos:
-  - repo: local
-    hooks:
-      - id: bats
-        name: run bats tests
-        entry: ${REPO_DIR}/src/scripts/run-bats
-        language: system
-        pass_filenames: false
-        files: \\.bats\$
-"
-    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
     printf '#!/usr/bin/env bats\n@test "always fails" {\n  false\n}\n' > "${T}/test/fail.bats"
     git -C "${T}" add .pre-commit-config.yaml test/fail.bats
-    run_hook "${T}"
+    run_isolated "${T}" "${TEST_PATH}" sh "${HOOK}"
     [ "${status}" -eq 1 ]
+    # The suite's own TAP line proves the commit was blocked by the inner
+    # suite failing, not by some other stage of the hook.
+    [[ "${output}" == *"not ok 1 always fails"* ]]
 }
 
 @test "passing bats tests allow commit" {
@@ -40,23 +60,13 @@ load test_helper
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T BATS_HOOK_CONFIG
+    local T
     T="$(make_repo feature/passing-bats-test)"
-    BATS_HOOK_CONFIG="repos:
-  - repo: local
-    hooks:
-      - id: bats
-        name: run bats tests
-        entry: ${REPO_DIR}/src/scripts/run-bats
-        language: system
-        pass_filenames: false
-        files: \\.bats\$
-"
-    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
     printf '#!/usr/bin/env bats\n@test "always passes" {\n  true\n}\n' > "${T}/test/pass.bats"
     git -C "${T}" add .pre-commit-config.yaml test/pass.bats
-    run_hook "${T}"
+    run_isolated "${T}" "${TEST_PATH}" sh "${HOOK}"
     if [ "${status}" -ne 0 ]; then
         printf '# hook exit status: %s\n' "${status}" >&3
         printf '# hook output:\n' >&3
@@ -72,19 +82,9 @@ load test_helper
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T BATS_HOOK_CONFIG
+    local T
     T="$(make_repo feature/tmpdir-location)"
-    BATS_HOOK_CONFIG="repos:
-  - repo: local
-    hooks:
-      - id: bats
-        name: run bats tests
-        entry: ${REPO_DIR}/src/scripts/run-bats
-        language: system
-        pass_filenames: false
-        files: \\.bats\$
-"
-    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
     # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
     # into the generated bats file below and only expands when that file runs.
@@ -93,13 +93,7 @@ load test_helper
 
     local _fake_tmpdir="${BATS_TEST_TMPDIR}/not-tmp"
     mkdir -p "${_fake_tmpdir}"
-    run bash -c '
-        cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR XDG_RUNTIME_DIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        env PATH="$2" TMPDIR="$3" sh "$4"
-    ' _ "${T}" "${TEST_PATH}" "${_fake_tmpdir}" "${HOOK}"
+    run_isolated "${T}" "${TEST_PATH}" env TMPDIR="${_fake_tmpdir}" sh "${HOOK}"
 
     [ "${status}" -eq 1 ]
     run cat "${T}/tmpdir-used.txt"
@@ -269,22 +263,14 @@ load test_helper
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T BATS_HOOK_CONFIG
+    local T
     T="$(make_repo feature/no-test-dir-bats)"
-    BATS_HOOK_CONFIG="repos:
-  - repo: local
-    hooks:
-      - id: bats
-        name: run bats tests
-        entry: ${REPO_DIR}/src/scripts/run-bats
-        language: system
-        pass_filenames: false
-        files: \\.bats\$
-"
-    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    # The staged stub.bats qualifies by its extension, so run-bats gets past
+    # the trigger check and the pass comes from it finding no test directory.
     printf '#!/usr/bin/env bats\n@test "stub" {\n  true\n}\n' > "${T}/stub.bats"
     git -C "${T}" add .pre-commit-config.yaml stub.bats
-    run_hook "${T}"
+    run_isolated "${T}" "${TEST_PATH}" sh "${HOOK}"
     [ "${status}" -eq 0 ]
 }
 
@@ -295,7 +281,7 @@ load test_helper
     if ! command -v pre-commit > /dev/null 2>&1; then
         skip "pre-commit not installed"
     fi
-    local T BATS_HOOK_CONFIG _stripped_path
+    local T _stripped_path
     T="$(make_repo feature/bare-name-path-test)"
     # Reproduces #173: entry is a bare command name (as in the real
     # src/.pre-commit-config.yaml), and PATH is stripped of every directory
@@ -306,21 +292,11 @@ load test_helper
         | grep -Fxv "${REPO_DIR}/src/scripts" \
         | grep -Fxv "${HOME}/.local/bin" \
         | tr '\n' ':' | sed 's/:$//')"
-    BATS_HOOK_CONFIG="repos:
-  - repo: local
-    hooks:
-      - id: bats
-        name: run bats tests
-        entry: run-bats
-        language: system
-        pass_filenames: false
-        files: \\.bats\$
-"
-    printf '%s' "${BATS_HOOK_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    bats_hook_config run-bats > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
     printf '#!/usr/bin/env bats\n@test "always passes" {\n  true\n}\n' > "${T}/test/pass.bats"
     git -C "${T}" add .pre-commit-config.yaml test/pass.bats
-    run_hook_env "${T}" "${_stripped_path}" "${BATS_TEST_TMPDIR}/xdg-cache"
+    run_isolated "${T}" "${_stripped_path}" env XDG_CACHE_HOME="${BATS_TEST_TMPDIR}/xdg-cache" sh "${HOOK}"
     if [ "${status}" -ne 0 ]; then
         printf '# hook exit status: %s\n' "${status}" >&3
         printf '# hook output:\n' >&3
@@ -331,20 +307,6 @@ load test_helper
 }
 
 # ── run-bats trigger ─────────────────────────────────────────────────────────
-# Mirrors the production bats hook (no files: filter; run-bats decides from
-# the staged filenames whether to run), with a full-path entry so it does not
-# depend on PATH.
-BATS_TRIGGER_CONFIG="repos:
-  - repo: local
-    hooks:
-      - id: bats
-        name: run bats tests
-        entry: ${REPO_DIR}/src/scripts/run-bats
-        language: system
-        types: [text]
-        pass_filenames: true
-        require_serial: true
-"
 
 # write_fixture_suite <repo> <suite result: true|false>
 # Writes <repo>/test/fixture.bats, a one-test suite named "fixture" (the name
@@ -361,29 +323,10 @@ write_fixture_suite() {
 make_trigger_repo() {
     local _t
     _t="$(make_repo feature/bats-trigger)"
-    printf '%s' "${BATS_TRIGGER_CONFIG}" > "${_t}/.pre-commit-config.yaml"
+    printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${_t}/.pre-commit-config.yaml"
     write_fixture_suite "${_t}" "$1"
     commit_without_hooks "${_t}" . > /dev/null
     printf '%s' "${_t}"
-}
-
-# run_isolated <cwd> <path> <command>...
-# Runs <command> from <cwd> with PATH set to <path>, outside this bats run's
-# own environment. XDG_RUNTIME_DIR is unset because every fixture repo
-# resolves to the same $XDG_RUNTIME_DIR/_local/repo/bats, which run-bats
-# wipes before each run; under bats --jobs that would delete a concurrent
-# test's tmpdir, while the /tmp fallback gives each run its own
-# bats-run-XXXXXX.
-run_isolated() {
-    run bash -c '
-        cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR XDG_RUNTIME_DIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        _path="$2"
-        shift 2
-        env PATH="${_path}" "$@"
-    ' _ "$@"
 }
 
 # stage_and_run_bats_hook <repo> <relative path> <content> [path]
@@ -533,7 +476,7 @@ skip_unless_installed() {
     skip_unless_installed pre-commit
     local T _shim_dir
     T="$(make_repo feature/trigger-no-bats-files)"
-    printf '%s' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
     printf 'not a bats suite\n' > "${T}/test/notes.txt"
     commit_without_hooks "${T}" . > /dev/null
@@ -556,12 +499,6 @@ skip_unless_installed() {
 # ── run-bats --all-files ─────────────────────────────────────────────────────
 # pre-commit passes filenames even in --all-files mode, so the --all-files
 # argument is only reachable by calling run-bats directly.
-
-# run_bats_all_files <cwd> [path]
-# Runs run-bats --all-files from <cwd>, isolated as for stage_and_run_bats_hook.
-run_bats_all_files() {
-    run_isolated "$1" "${2:-${TEST_PATH}}" "${REPO_DIR}/src/scripts/run-bats" --all-files
-}
 
 # The suite is left untracked in both tests: a tracked .bats file qualifies on
 # its own, so tracking it would make the positive test vacuous and the

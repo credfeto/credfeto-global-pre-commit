@@ -306,3 +306,31 @@ run_hook_env_as_agent() {
         env CLAUDECODE=1 PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
     ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
 }
+
+# run_isolated <cwd> <path> <command>...
+# Runs <command> from <cwd> with PATH set to <path>, outside this bats run's
+# own environment. Use it for every run that can reach an inner bats suite
+# (the full hook, or run-bats directly). XDG_RUNTIME_DIR is unset because
+# every fixture repo resolves to the same $XDG_RUNTIME_DIR/_local/repo/bats,
+# which run-bats wipes before each run; under bats --jobs that would delete a
+# concurrent test's tmpdir, while the /tmp fallback gives each run its own
+# bats-run-XXXXXX. It is unset only here, not in run_hook, because gpg and
+# other tools the remaining tests reach rely on it.
+run_isolated() {
+    run bash -c '
+        cd "$1"
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR XDG_RUNTIME_DIR
+        bats_readlinkf() { readlink -f "$1"; }
+        export -f bats_readlinkf
+        _path="$2"
+        shift 2
+        env PATH="${_path}" "$@"
+    ' _ "$@"
+}
+
+# run_bats_all_files <cwd> [path]
+# Runs run-bats --all-files from <cwd> through run_isolated, with PATH set to
+# [path] (default TEST_PATH).
+run_bats_all_files() {
+    run_isolated "$1" "${2:-${TEST_PATH}}" "${REPO_DIR}/src/scripts/run-bats" --all-files
+}
