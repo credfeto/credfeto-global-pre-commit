@@ -27,6 +27,31 @@ SHELLCHECK_CONFIG='repos:
         types: [shell]
 '
 
+# Mirrors the production shellcheck hooks' flags (no shell or severity
+# override) so the sourced-library tests below exercise the real hook shape.
+SHELLCHECK_SOURCED_CONFIG='repos:
+  - repo: local
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        args: [-x, --check-sourced, --source-path=SCRIPTDIR]
+        language: system
+        types: [shell]
+'
+
+SHELLCHECK_LIBRARIES_CONFIG="repos:
+  - repo: local
+    hooks:
+      - id: shellcheck-libraries
+        name: shellcheck (shell libraries)
+        entry: ${REPO_DIR}/src/scripts/run-shellcheck-libraries
+        language: system
+        files: (^|/)[^/.]+\$
+        types: [text]
+        exclude_types: [shell]
+"
+
 DOTENV_CONFIG='repos:
   - repo: local
     hooks:
@@ -343,6 +368,108 @@ END_OF_FILE_FIXER_CONFIG='repos:
     # shellcheck disable=SC2016
     printf '#!/bin/sh\nvar=hello\nif [ "$var" = "x" ]; then\n    echo "match"\nfi\n' > "${T}/test.sh"
     git -C "${T}" add .pre-commit-config.yaml test.sh
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+# The library is extensionless with no shebang, so the shell-typed hook never
+# selects it directly: its finding can only surface through --check-sourced.
+@test "shell script sourcing a broken library is rejected" {
+    if ! command -v shellcheck > /dev/null 2>&1; then
+        skip "shellcheck not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/sourced-broken-lib-test)"
+    printf '%s' "${SHELLCHECK_SOURCED_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/lib"
+    # shellcheck disable=SC2016
+    printf '# shellcheck shell=bash\ngreet() {\n    local now=$(date)\n    echo "$now"\n}\n' > "${T}/lib/common"
+    # shellcheck disable=SC2016
+    printf '#!/bin/bash\nsource "$(dirname "$0")/lib/common"\ngreet\n' > "${T}/main.sh"
+    git -C "${T}" add .pre-commit-config.yaml lib/common main.sh
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"lib/common"* ]]
+}
+
+@test "shell script sourcing a clean library passes" {
+    if ! command -v shellcheck > /dev/null 2>&1; then
+        skip "shellcheck not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/sourced-clean-lib-test)"
+    printf '%s' "${SHELLCHECK_SOURCED_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/lib"
+    # shellcheck disable=SC2016
+    printf '# shellcheck shell=bash\ngreet() {\n    local now\n    now=$(date)\n    echo "$now"\n}\n' > "${T}/lib/common"
+    # shellcheck disable=SC2016
+    printf '#!/bin/bash\nsource "$(dirname "$0")/lib/common"\ngreet\n' > "${T}/main.sh"
+    git -C "${T}" add .pre-commit-config.yaml lib/common main.sh
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "standalone shell library with a shellcheck directive and a finding is rejected" {
+    if ! command -v shellcheck > /dev/null 2>&1; then
+        skip "shellcheck not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/standalone-broken-lib-test)"
+    printf '%s' "${SHELLCHECK_LIBRARIES_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/lib"
+    # shellcheck disable=SC2016
+    printf '# shellcheck shell=bash\ngreet() {\n    local now=$(date)\n    echo "$now"\n}\n' > "${T}/lib/common"
+    git -C "${T}" add .pre-commit-config.yaml lib/common
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"lib/common"* ]]
+}
+
+# notes is extensionless so the hook's files: filter offers it to the wrapper;
+# it would fail shellcheck (no shebang or directive) if the wrapper linted every
+# offered file instead of only directive-carrying libraries.
+@test "standalone clean shell library with a shellcheck directive passes" {
+    if ! command -v shellcheck > /dev/null 2>&1; then
+        skip "shellcheck not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/standalone-clean-lib-test)"
+    printf '%s' "${SHELLCHECK_LIBRARIES_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/lib"
+    # shellcheck disable=SC2016
+    printf '# shellcheck shell=bash\ngreet() {\n    local now\n    now=$(date)\n    echo "$now"\n}\n' > "${T}/lib/common"
+    # shellcheck disable=SC2016
+    printf 'echo $unquoted\n' > "${T}/notes"
+    git -C "${T}" add .pre-commit-config.yaml lib/common notes
+    run_hook "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "text files without a shellcheck directive are skipped by the library hook" {
+    if ! command -v shellcheck > /dev/null 2>&1; then
+        skip "shellcheck not installed"
+    fi
+    if ! command -v pre-commit > /dev/null 2>&1; then
+        skip "pre-commit not installed"
+    fi
+    local T
+    T="$(make_repo feature/no-directive-lib-test)"
+    printf '%s' "${SHELLCHECK_LIBRARIES_CONFIG}" > "${T}/.pre-commit-config.yaml"
+    # shellcheck disable=SC2016
+    printf 'echo $unquoted\n' > "${T}/notes"
+    git -C "${T}" add .pre-commit-config.yaml notes
     run_hook "${T}"
     [ "${status}" -eq 0 ]
 }

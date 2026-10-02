@@ -1,0 +1,17 @@
+#!/bin/sh
+# Wrapper for shellcheck on shell libraries that identify cannot tag as shell:
+# extensionless files with no shebang whose first line is a
+# `# shellcheck shell=...` directive. Every other file passed in is ignored.
+# Keep the shellcheck flags in sync with the shellcheck hook in
+# src/.pre-commit-config.yaml.
+
+for file do
+    shift
+    if head -n 1 "$file" | grep -Eq '^#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?shell='; then
+        set -- "$@" "$file"
+    fi
+done
+
+[ "$#" -gt 0 ] || exit 0
+
+exec shellcheck -x --check-sourced --source-path=SCRIPTDIR "$@"

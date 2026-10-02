@@ -142,11 +142,31 @@ repos:
         args: [--allow-multiple-documents]
 
       # ── VALIDATE_BASH ──────────────────────────────────────────────────────
+      # -x/--check-sourced report findings inside sourced libraries against the
+      # entry point that sources them; --source-path=SCRIPTDIR resolves relative
+      # `source` paths from the script's own directory, since pre-commit runs
+      # from the repo root rather than the script's directory.
       - id: shellcheck
         name: shellcheck
         entry: shellcheck
+        args: [-x, --check-sourced, --source-path=SCRIPTDIR]
         language: system
         types: [shell]
+
+      # identify cannot tag an extensionless library with no shebang as shell,
+      # so `types: [shell]` above never selects one even when its first line is
+      # a `# shellcheck shell=...` directive. This hook offers every other
+      # extensionless text file to run-shellcheck-libraries, which lints only
+      # those carrying that directive with the same flags as the hook above.
+      # The files: filter keeps --all-files runs from forking the wrapper's
+      # first-line check for every text file in a large repo.
+      - id: shellcheck-libraries
+        name: shellcheck (shell libraries)
+        entry: run-shellcheck-libraries
+        language: system
+        files: (^|/)[^/.]+$
+        types: [text]
+        exclude_types: [shell]
 
       # ── VALIDATE_YAML — full style lint ───────────────────────────────────
       - id: yamllint

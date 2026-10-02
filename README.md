@@ -97,7 +97,7 @@ cd ~/.global-hooks
 1. Make all hook and script files executable
 2. Auto-detect the platform and run `install-deps-arch` or `install-deps-debian`
 3. Run `git config --global core.hooksPath <hooks-dir>`
-4. Symlink the `run-eslint`, `run-stylelint`, and `run-psscriptanalyzer` wrapper scripts to `~/.local/bin`
+4. Symlink the `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, and `run-shellcheck-libraries` wrapper scripts to `~/.local/bin`
 5. Validate the `.pre-commit-config.yaml` schema (no managed environments to install — every hook is `language: system`)
 6. Print a status table of every check showing which are active and which need a system tool installed
 
@@ -240,6 +240,7 @@ staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
 | `VALIDATE_TYPESCRIPT_ES` | `eslint` (via `run-eslint`) | `*.ts/tsx/js/jsx` (skips if no eslint config) |
 | `VALIDATE_XML` (full) | `xmllint` | `*.xml` |
 | `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` (via `run-psscriptanalyzer`) | `*.ps1/psm1/psd1` |
+| `VALIDATE_BASH` (shell libraries) | `shellcheck` (via `run-shellcheck-libraries`) | Extensionless text files whose first line is a `# shellcheck shell=...` directive |
 | `VALIDATE_SQLFLUFF` | — | Handled by dedicated SQL check |
 | `VALIDATE_CLOUDFORMATION` | — | Handled by dedicated CFN check |
 
@@ -328,6 +329,7 @@ Run `pre-commit autoupdate --config ~/.global-hooks/src/.pre-commit-config.yaml`
 | `scripts/run-eslint` | Wrapper for eslint — skips silently if no `package.json` or eslint config |
 | `scripts/run-stylelint` | Wrapper for stylelint — skips silently if no `package.json` |
 | `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer — runs per-file via pwsh |
+| `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
 
 ---
 

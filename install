@@ -65,6 +65,7 @@ chmod +x \
     "$SCRIPTS_DIR/run-psscriptanalyzer" \
     "$SCRIPTS_DIR/run-bats" \
     "$SCRIPTS_DIR/run-pylint" \
+    "$SCRIPTS_DIR/run-shellcheck-libraries" \
     "$REPO_DIR/check-setup" \
     "$REPO_DIR/acceptance-test" \
     "$REPO_DIR/install-deps-arch" \
@@ -112,6 +113,7 @@ ln -sf "$SCRIPTS_DIR/run-stylelint"        "$HOME/.local/bin/run-stylelint"
 ln -sf "$SCRIPTS_DIR/run-psscriptanalyzer" "$HOME/.local/bin/run-psscriptanalyzer"
 ln -sf "$SCRIPTS_DIR/run-bats"             "$HOME/.local/bin/run-bats"
 ln -sf "$SCRIPTS_DIR/run-pylint"           "$HOME/.local/bin/run-pylint"
+ln -sf "$SCRIPTS_DIR/run-shellcheck-libraries" "$HOME/.local/bin/run-shellcheck-libraries"
 
 # Go tools are installed to $GOPATH/bin which may not be on PATH — symlink them.
 if command -v go > /dev/null 2>&1; then
