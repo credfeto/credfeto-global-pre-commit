@@ -63,9 +63,11 @@ _bats_file_qualifies() {
 if [ "$#" -gt 0 ]; then
     if [ "$1" = "--all-files" ]; then
         # git ls-files prints repo-root-relative paths, so read them from
-        # REPO_ROOT whatever the caller's cwd.
+        # REPO_ROOT whatever the caller's cwd. -z gives each path verbatim:
+        # without it git C-quotes non-ASCII or quote-containing names, which
+        # then match no extension and name no file.
         cd "$REPO_ROOT" || exit 1
-        mapfile -t _bats_candidates < <(git ls-files)
+        mapfile -d '' -t _bats_candidates < <(git ls-files -z)
     else
         _bats_candidates=("$@")
     fi

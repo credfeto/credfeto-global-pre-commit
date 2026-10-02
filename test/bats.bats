@@ -581,6 +581,21 @@ run_bats_all_files() {
     assert_fixture_failed "${status}" "${output}"
 }
 
+# git quotes a non-ASCII path (core.quotePath defaults to true), so the
+# extension match only sees the real name when the list is NUL-separated.
+@test "run-bats --all-files runs the suite when a tracked shell script has a non-ASCII name" {
+    skip_unless_installed bats
+    local T
+    T="$(make_repo feature/all-files-non-ascii)"
+    write_fixture_suite "${T}" false
+    printf 'echo hello\n' > "${T}/tööl.sh"
+    printf '# Title\n' > "${T}/README.md"
+    commit_without_hooks "${T}" tööl.sh > /dev/null
+    commit_without_hooks "${T}" README.md > /dev/null
+    run_bats_all_files "${T}"
+    assert_fixture_failed "${status}" "${output}"
+}
+
 @test "run-bats --all-files exits 0 without running bats when no tracked file qualifies" {
     local T _shim_dir
     T="$(make_repo feature/all-files-no-qualifier)"
