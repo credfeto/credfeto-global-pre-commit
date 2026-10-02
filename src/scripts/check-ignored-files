@@ -7,16 +7,23 @@ die() {
     exit 1
 }
 
-TRACKED=$(git ls-files | grep -v 'server\.pfx' | grep -v '\.gitignore')
+# The file list is read, filtered and checked NUL-separated end to end (git
+# -z, grep -z), so a tracked name holding a non-ASCII byte, a double quote, a
+# backslash or a control character is reported by its real name rather than
+# the C-quoted form line-separated git output gives it ("f\303\263o.log", quotes included). check-ignore's
+# NUL-separated output goes to a temp file, not straight into tr, so that its
+# own exit status is the one tested below. A name containing a newline is
+# reported as two lines; such names are not supported.
+IGNORED_FILE=$(mktemp "${TMPDIR:-/tmp}/check-ignored-files.XXXXXXXXXX") || die "mktemp failed"
+trap 'rm -f "$IGNORED_FILE"' EXIT
 
-if [ -z "$TRACKED" ]; then
-    exit 0
-fi
-
-IGNORED=$(echo "$TRACKED" | git check-ignore --stdin --no-index 2>/dev/null)
+git ls-files -z | grep -zv 'server\.pfx' | grep -zv '\.gitignore' \
+    | git check-ignore --stdin -z --no-index > "$IGNORED_FILE" 2>/dev/null
 STATUS=$?
+IGNORED=$(tr '\000' '\n' < "$IGNORED_FILE")
 
-# git check-ignore exits 1 when no files matched — that's a pass
+# git check-ignore exits 1 when no files matched (including when it was given
+# none to check) — that's a pass
 if [ $STATUS -eq 1 ] || [ -z "$IGNORED" ]; then
     exit 0
 fi
@@ -26,5 +33,5 @@ if [ $STATUS -ne 0 ]; then
 fi
 
 printf '\n\033[31m✗\033[0m %s\n' "Ignored files found in tracking:" >&2
-echo "$IGNORED" | sed 's/^/  /' | sort -u >&2
+printf '%s\n' "$IGNORED" | sed 's/^/  /' | sort -u >&2
 exit 1
