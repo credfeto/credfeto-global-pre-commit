@@ -339,7 +339,16 @@ MODE_ARG=""
 # Skipped in all-files mode, which is expected to run against a clean tree,
 # and skipped for a --amend (see is_amend above), which legitimately has
 # nothing staged when only the commit message is being changed (issue #195).
-ALL_STAGED=$(git diff --cached --name-only)
+#
+# Every git file list in this hook is read NUL-separated (-z) and only then
+# turned into the newline-separated list its consumers loop over, because sh
+# has no arrays to hold a NUL-separated list. Line-separated git output
+# C-quotes any name holding a double quote, a backslash or a control
+# character, and by default (core.quotePath) any non-ASCII byte too, and an
+# extension or basename match against the quoted form ("t\303\251st.js",
+# quotes included) silently misses the file. A name containing a newline
+# still splits into two entries here; such names are not supported.
+ALL_STAGED=$(git diff --cached --name-only -z | tr '\000' '\n')
 if [ "$MODE" = "commit" ] && ! is_amend; then
     [ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
 fi
@@ -397,7 +406,8 @@ fi
 # exactly how a rename with edited content (status R, not M) was excluded and
 # let rename+edit-only commits skip every check below.
 # Skipped in all-files mode — an empty stage does not mean "nothing to check".
-STAGED=$(git diff --cached --name-only --diff-filter=d)
+# Read NUL-separated for the reason given above ALL_STAGED.
+STAGED=$(git diff --cached --name-only --diff-filter=d -z | tr '\000' '\n')
 if [ "$MODE" = "commit" ]; then
     [ -z "$STAGED" ] && exit 0
 fi
@@ -405,9 +415,10 @@ fi
 cd "$REPO_ROOT" || die "cannot cd to repo root"
 
 # CHECK_FILES is the file-list category checks below key off: staged files in
-# commit mode (unchanged), or every tracked file in all-files mode.
+# commit mode (unchanged), or every tracked file in all-files mode, read
+# NUL-separated for the reason given above ALL_STAGED.
 if [ "$MODE" = "all-files" ]; then
-    CHECK_FILES=$(git ls-files)
+    CHECK_FILES=$(git ls-files -z | tr '\000' '\n')
 else
     CHECK_FILES="$STAGED"
 fi
@@ -626,10 +637,12 @@ if [ -n "$SQL_CHANGES" ]; then
     if [ "$HAS_SQLFLUFF" -eq 1 ] && [ "${SQLFLUFF_EXECUTED:-0}" != "1" ]; then
         info "Detected SQL changes — running sqlfluff fix..."
         sqlfluff fix . || die "sqlfluff fix"
-        SQLFLUFF_FIXED=$(git diff --name-only | grep -E '\.sql$' || true)
-        if [ -n "$SQLFLUFF_FIXED" ]; then
+        # NUL-separated end to end (git -z, grep -z, xargs -0), for the reason
+        # given above ALL_STAGED; the list is only ever handed to git add, so
+        # it never needs converting to lines.
+        if git diff --name-only -z | grep -qzE '\.sql$'; then
             info "Staging files modified by sqlfluff fix..."
-            echo "$SQLFLUFF_FIXED" | xargs git add --
+            git diff --name-only -z | grep -zE '\.sql$' | xargs -0 git add --
         fi
         info "Detected SQL changes — running sqlfluff lint..."
         sqlfluff lint . || die "sqlfluff lint"

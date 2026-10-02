@@ -38,11 +38,20 @@ parse_all_files_mode_arg() {
 # while `git diff --name-only` alone prints paths relative to the *repo
 # root* -- an asymmetry that would otherwise make the all-files and commit
 # branches return differently-rooted paths when invoked from a subdirectory.
+#
+# Both lists are read and filtered NUL-separated (git -z, grep -z), so $1 is
+# matched against each whole, unquoted name, then printed one per line for
+# callers, since sh has no arrays to hold a NUL-separated list. Line-separated
+# git output C-quotes any name holding a double quote, a backslash or a
+# control character, and by default (core.quotePath) any non-ASCII byte too,
+# and $1 would then be matched against the quoted form ("scr\303\255pt.sh",
+# quotes included) and silently miss the file. A name containing a newline
+# still prints as two lines; such names are not supported.
 git_target_files() {
     _mode_arg_repo_root=$(git rev-parse --show-toplevel) || return 1
     if [ "$MODE" = "all-files" ]; then
-        git -C "$_mode_arg_repo_root" ls-files | grep -E "$1"
+        git -C "$_mode_arg_repo_root" ls-files -z | grep -zE "$1" | tr '\000' '\n'
     else
-        git -C "$_mode_arg_repo_root" diff --cached --name-only --diff-filter=d | grep -E "$1"
+        git -C "$_mode_arg_repo_root" diff --cached --name-only --diff-filter=d -z | grep -zE "$1" | tr '\000' '\n'
     fi
 }

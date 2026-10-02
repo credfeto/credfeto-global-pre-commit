@@ -251,3 +251,21 @@ CSPROJ_EOF
     printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
     printf '%s\n' "${lines[@]}" | grep -qxF "${WIDGETS_BENCH_REL}"
 }
+
+# ── non-ASCII file name ───────────────────────────────────────────────────────
+
+# git C-quotes a non-ASCII name in line-separated output (Ünits.cs comes out
+# as "...\303\234nits.cs", quotes included), which no longer ends in .cs, so
+# the change would be missed and every benchmark would run instead of only
+# the affected one.
+@test "a staged source file with a non-ASCII name affects only its own project's benchmark" {
+    local T
+    T="$(make_bench_repo)"
+    write_fixture "${T}"
+    commit_baseline "${T}"
+    printf 'class Units {}\n' > "${T}/src/Foo.Metrics/Ünits.cs"
+    git -C "${T}" add -- "src/Foo.Metrics/Ünits.cs"
+    run "${FILTER}" "${T}/src"
+    [ "${status}" -eq 0 ]
+    [ "${output}" = "${METRICS_BENCH_REL}" ]
+}
