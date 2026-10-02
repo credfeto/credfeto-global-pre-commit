@@ -97,7 +97,7 @@ cd ~/.global-hooks
 1. Make all hook and script files executable
 2. Auto-detect the platform and run `install-deps-arch` or `install-deps-debian`
 3. Run `git config --global core.hooksPath <hooks-dir>`
-4. Symlink the `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, and `run-shellcheck-libraries` wrapper scripts to `~/.local/bin`
+4. Symlink the `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, `run-bats`, and `run-pylint` wrapper scripts to `~/.local/bin` (not required for the hook, which puts `src/scripts` on `PATH` itself)
 5. Validate the `.pre-commit-config.yaml` schema (no managed environments to install — every hook is `language: system`)
 6. Print a status table of every check showing which are active and which need a system tool installed
 
@@ -182,7 +182,7 @@ git config --global core.hooksPath
 | No `src/FunFair.props` outside funfair-tech | `scripts/check-funfair-props` | When the `origin` remote's owner is not `funfair-tech` (case-insensitive; skipped when there is no `origin`), `git rm`s a tracked `src/FunFair.props` (staging the removal) or deletes an untracked one, then fails so the commit can be re-run with the removal included. Under `git commit -a`, `-i` or `<paths>`, git discards index changes made by a failing hook, so the file is only deleted and the message gives the `git rm` command to stage it. Also runs in `--all-files` mode |
 | Secret scanning | `scripts/check-secrets` | Runs `trufflehog --only-verified`; **skipped if not installed** |
 
-**Native pre-commit hooks (via `pre-commit/pre-commit-hooks`):**
+**pre-commit hooks (tools from the `pre-commit-hooks` pip package, run as `language: system`):**
 
 | Check | Hook ID | What it catches |
 | --- | --- | --- |
@@ -217,30 +217,28 @@ The commit is blocked on the first failure.
 Mirrors the super-linter `VALIDATE_*` configuration, run by `pre-commit` against
 staged files only (equivalent to `VALIDATE_ALL_CODEBASE: false`).
 
-**Managed** — pre-commit downloads and caches the tool automatically; no system install required:
-
-| VALIDATE_* | Tool | Hook repo |
-| --- | --- | --- |
-| `VALIDATE_JSON` / `VALIDATE_XML` / `VALIDATE_YAML` (syntax) | pre-commit-hooks | `pre-commit/pre-commit-hooks` |
-| `VALIDATE_BASH` | shellcheck | `shellcheck-py/shellcheck-py` |
-| `VALIDATE_YAML` (style) | yamllint | `adrienverge/yamllint` |
-| `VALIDATE_PYTHON` | flake8 | `PyCQA/flake8` |
-| `VALIDATE_MD` | markdownlint | `igorshubovych/markdownlint-cli` |
-| `VALIDATE_ANSIBLE` | ansible-lint | `ansible/ansible-lint` |
-
-**System** — tool must be on PATH:
+Every hook is a `repo: local` hook declared `language: system`, so pre-commit
+installs nothing itself and each tool must be on `PATH`:
 
 | VALIDATE_* | Tool | File trigger |
 | --- | --- | --- |
+| `VALIDATE_JSON` / `VALIDATE_XML` / `VALIDATE_YAML` (syntax) | `check-json` / `check-xml` / `check-yaml` (from the `pre-commit-hooks` pip package) | `*.json` / `*.xml` / `*.yaml/yml` |
+| `VALIDATE_BASH` | `shellcheck` | Shell scripts (by extension or shebang) |
+| `VALIDATE_BASH` (shell libraries) | `shellcheck` (via `run-shellcheck-libraries`) | Extensionless text files whose first line is a `# shellcheck shell=...` directive |
+| `VALIDATE_YAML` (style) | `yamllint` | `*.yaml/yml` |
+| `VALIDATE_PYTHON` | `flake8` | `*.py` |
+| `VALIDATE_MD` | `markdownlint` | `*.md` (except `CHANGELOG.md`) |
+| `VALIDATE_ANSIBLE` | `ansible-lint` | Every commit (scans the project itself) |
 | `VALIDATE_DOCKERFILE` + `VALIDATE_DOCKERFILE_HADOLINT` | `hadolint` | `Dockerfile*` |
-| `VALIDATE_GITHUB_ACTIONS` | `actionlint` | `.github/workflows/*.yml` |
-| `VALIDATE_PYTHON_PYLINT` | `pylint` | `*.py` |
+| `VALIDATE_GITHUB_ACTIONS` | `actionlint` | `.github/workflows/*.yml/yaml` |
+| `VALIDATE_GITHUB_ACTIONS` (composite actions) | `composite-action-lint` | `.github/actions/*.yml/yaml` |
+| `VALIDATE_PYTHON_PYLINT` | `pylint` (via `run-pylint`) | `*.py` |
 | `VALIDATE_CSS` | `stylelint` (via `run-stylelint`) | `*.css` (skips if no `package.json`) |
 | `VALIDATE_ENV` | `dotenv-linter` | `.env` / `.env.*` |
 | `VALIDATE_TYPESCRIPT_ES` | `eslint` (via `run-eslint`) | `*.ts/tsx/js/jsx` (skips if no eslint config) |
 | `VALIDATE_XML` (full) | `xmllint` | `*.xml` |
 | `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` (via `run-psscriptanalyzer`) | `*.ps1/psm1/psd1` |
-| `VALIDATE_BASH` (shell libraries) | `shellcheck` (via `run-shellcheck-libraries`) | Extensionless text files whose first line is a `# shellcheck shell=...` directive |
+| `VALIDATE_BATS` | `bats` (via `run-bats`, runs the whole `test/` suite) | `*.bats` |
 | `VALIDATE_SQLFLUFF` | — | Handled by dedicated SQL check |
 | `VALIDATE_CLOUDFORMATION` | — | Handled by dedicated CFN check |
 
@@ -311,7 +309,9 @@ They handle all system tools, install them idempotently, and are safe to re-run
 after updates.
 
 After installing any tool, re-run `./install` to see the updated status table.
-Run `pre-commit autoupdate --config ~/.global-hooks/src/.pre-commit-config.yaml` to update managed hook versions.
+Every hook is `language: system`, so hook tool versions are whatever is
+installed on the system: update them through the dependency scripts or the
+system package manager rather than `pre-commit autoupdate`.
 
 ---
 
@@ -330,6 +330,9 @@ Run `pre-commit autoupdate --config ~/.global-hooks/src/.pre-commit-config.yaml`
 | `scripts/run-stylelint` | Wrapper for stylelint — skips silently if no `package.json` |
 | `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer — runs per-file via pwsh |
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
+| `scripts/run-bats` | Wrapper for bats, runs the complete `test/` suite whenever `.bats` files are staged |
+| `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |
+| `scripts/run-formatter` | Local addition, applies `dotnet format` to staged `.cs` files and then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) to staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what it changes |
 
 ---
 
