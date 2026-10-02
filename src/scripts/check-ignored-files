@@ -24,7 +24,7 @@ STATUS=$?
 IGNORED=$(tr '\000' '\n' < "$IGNORED_FILE")
 
 # git check-ignore exits 1 when no files matched (including when it was given
-# none to check) — that's a pass
+# none to check); that's a pass
 if [ $STATUS -eq 1 ] || [ -z "$IGNORED" ]; then
     exit 0
 fi
