@@ -50,8 +50,8 @@ parse_all_files_mode_arg() {
 git_target_files() {
     _mode_arg_repo_root=$(git rev-parse --show-toplevel) || return 1
     if [ "$MODE" = "all-files" ]; then
-        git -C "$_mode_arg_repo_root" ls-files -z | grep -zE "$1" | tr '\000' '\n'
+        git -C "$_mode_arg_repo_root" ls-files -z
     else
-        git -C "$_mode_arg_repo_root" diff --cached --name-only --diff-filter=d -z | grep -zE "$1" | tr '\000' '\n'
-    fi
+        git -C "$_mode_arg_repo_root" diff --cached --name-only --diff-filter=d -z
+    fi | grep -zE "$1" | tr '\000' '\n'
 }

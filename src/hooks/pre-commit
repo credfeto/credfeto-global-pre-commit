@@ -423,6 +423,15 @@ else
     CHECK_FILES="$STAGED"
 fi
 
+# check_files_match <ERE>
+# Succeeds when any name in CHECK_FILES matches <ERE>. CHECK_FILES holds names
+# unquoted (see ALL_STAGED above), so it is printed with printf, not echo:
+# dash's echo interprets backslashes, and the \c in a name like a\c.txt would
+# cut the list short.
+check_files_match() {
+    printf '%s\n' "$CHECK_FILES" | grep -qE "$1"
+}
+
 # ── dotnet-tools.json sanity ─────────────────────────────────────────────────
 # A dotnet-tools.json anywhere in the repo pins local tool versions and
 # breaks the expected global tool setup.
@@ -593,19 +602,14 @@ if [ "$HAS_PRECOMMIT" -eq 1 ]; then
 fi
 
 # ── 3. Changelog: lint CHANGELOG.md if changed ───────────────────────────────
-# CHECK_FILES holds names unquoted (see ALL_STAGED above), so every category
-# check below prints it with printf, not echo: dash's echo interprets
-# backslashes, and the \c in a name like a\c.txt would cut the list short.
-CHANGELOG_CHANGES=$(printf '%s\n' "$CHECK_FILES" | grep -E '(^|/)CHANGELOG\.md$' | head -1)
-if [ -n "$CHANGELOG_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
+if check_files_match '(^|/)CHANGELOG\.md$' && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected CHANGELOG.md changes — running changelog lint..."
     # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
     sh "$SCRIPTS_DIR/check-changelog" $MODE_ARG || die "changelog lint"
 fi
 
 # ── 4. .NET: format check + build + test if source/project file changes ──────
-DOTNET_CHANGES=$(printf '%s\n' "$CHECK_FILES" | grep -E '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' | head -1)
-if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
+if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
     sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
     info "Detected .NET changes — running formatter fix..."
@@ -616,8 +620,7 @@ if [ -n "$DOTNET_CHANGES" ] && [ "$HAS_DOTNET" -eq 1 ]; then
 fi
 
 # ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────
-TS_CHANGES=$(printf '%s\n' "$CHECK_FILES" | grep -E '\.(ts|tsx|js|jsx)$' | head -1)
-if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
+if check_files_match '\.(ts|tsx|js|jsx)$' && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
     info "Detected TypeScript/JS changes — running npm tests..."
     if grep -q '"test:noe2e"' "$REPO_ROOT/package.json"; then
         npm run test:noe2e || die "npm run test:noe2e"
@@ -627,8 +630,7 @@ if [ -n "$TS_CHANGES" ] && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 
 fi
 
 # ── 6. SQL: tsqllint + sqlfluff if .sql changes ──────────────────────────────
-SQL_CHANGES=$(printf '%s\n' "$CHECK_FILES" | grep -E '\.sql$' | head -1)
-if [ -n "$SQL_CHANGES" ]; then
+if check_files_match '\.sql$'; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
         dotnet_tool_installed tsqllint TSQLLint || die_blocked "tsqllint dotnet tool is not installed"
         info "Detected SQL changes — running dotnet tsqllint..."
@@ -652,6 +654,7 @@ fi
 
 # ── 7. CloudFormation: cfn-lint on changed templates ─────────────────────────
 if [ "$HAS_CFNLINT" -eq 1 ]; then
+    # printf, not echo, for the reason given above check_files_match.
     CFN_FILES=$(printf '%s\n' "$CHECK_FILES" | grep -E '\.(yaml|yml|json|template)$' \
         | while read -r f; do
             grep -q "AWSTemplateFormatVersion" "$f" 2>/dev/null && printf '%s\n' "$f"

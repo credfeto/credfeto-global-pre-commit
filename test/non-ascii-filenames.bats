@@ -53,11 +53,8 @@ make_empty_config_repo() {
 
 # assert_shim_called <name> <expected args> <status> <output>
 assert_shim_called() {
-    { [ "$3" -eq 0 ] && grep -qxF -e "$2" "${BATS_TEST_TMPDIR}/$1-calls" 2> /dev/null; } || {
-        printf '# exit status: %s\n# output:\n' "$3" >&3
-        printf '%s\n' "$4" | sed 's/^/# /' >&3
-        return 1
-    }
+    { [ "$3" -eq 0 ] && grep -qxF -e "$2" "${BATS_TEST_TMPDIR}/$1-calls" 2> /dev/null; } ||
+        fail_with_run_output "$3" "$4" 0
 }
 
 # ── src/hooks/pre-commit category detection ──────────────────────────────────
@@ -204,7 +201,9 @@ run_git_target_files() {
     mkdir -p "${T}/sub"
     printf 'echo hello\n' > "${T}/scrípt.sh"
     printf '# Title\n' > "${T}/README.md"
-    commit_without_hooks "${T}" . > /dev/null
+    # Staging is enough to track the files (ls-files reads the index), and
+    # saves a signed commit.
+    git -C "${T}" add -- scrípt.sh README.md
     # Run from a subdirectory: the list must still be repo-root-relative.
     run_git_target_files "${T}/sub" all-files '\.sh$'
     [ "${status}" -eq 0 ]

@@ -162,6 +162,15 @@ fail_test() {
     return 1
 }
 
+# fail_with_run_output <status> <output> <expected status>
+# Prints a run's exit status and output to the TAP stream, so an unexpected
+# result is diagnosable, and fails.
+fail_with_run_output() {
+    printf '# exit status: %s (expected %s)\n# output:\n' "$1" "$3" >&3
+    printf '%s\n' "$2" | sed 's/^/# /' >&3
+    return 1
+}
+
 # Creates an isolated git repository in BATS_TEST_TMPDIR on the given branch
 # (default: feature/acceptance-test) and prints its path. Configured with a
 # valid identity and GPG signing key so check-identity passes by default —

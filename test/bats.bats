@@ -299,15 +299,6 @@ stage_and_run_bats_hook() {
 # arguments ("${status}" "${output}") rather than reading bats' run variables
 # directly, which shellcheck cannot follow out of a @test (SC2030/SC2031).
 
-# fail_with_run_output <status> <output> <expected status>
-# Prints a run's exit status and output to the TAP stream, so an unexpected
-# result is diagnosable, and fails.
-fail_with_run_output() {
-    printf '# exit status: %s (expected %s)\n# output:\n' "$1" "$3" >&3
-    printf '%s\n' "$2" | sed 's/^/# /' >&3
-    return 1
-}
-
 # assert_fixture_failed / assert_fixture_passed / assert_fixture_not_run
 #   <status> <output>
 # Check a run's exit status and the fixture suite's own TAP line, so a hook
