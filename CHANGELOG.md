@@ -76,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - run-formatter now runs dotnet format on staged .cs files before cscleanup, preferring a .slnx solution file over .sln for solution discovery (also applied to buildcheck and buildtest)
 - Added test/mode-arg-convention.bats, a regression test enforcing that scripts under src/scripts/ route git file-list selection through the shared all-files helper instead of re-deriving it directly (#234)
 - check-funfair-props pre-commit check that removes src/FunFair.props (git rm if tracked, or delete if untracked) and fails the commit when origin remote's owner is not funfair-tech (#240)
+- sqlfluff hook: runs sqlfluff fix only on staged SQL files in commit mode, re-stages only those, and fails if a staged SQL file has unstaged changes (--all-files mode unchanged) (#258)
 
 ### Fixed
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)

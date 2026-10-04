@@ -206,7 +206,7 @@ git config --global core.hooksPath
 | `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test (integration tests and all benchmark test projects always excluded from the main run via a static filter; only the benchmark projects staged changes could affect are then run individually and sequentially, see `scripts/benchmark-test-affected`) | `scripts/buildtest` |
 | `*.ts / *.tsx / *.js / *.jsx` + `package.json` + `npm` on PATH | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
 | `*.sql` + `dotnet` on PATH | T-SQL lint | `dotnet tsqllint .` |
-| `*.sql` + `sqlfluff` on PATH | SQL style lint | `sqlfluff lint .` |
+| `*.sql` + `sqlfluff` on PATH | SQL style fix of staged `*.sql` files, re-staging only those (the commit is blocked if a staged `*.sql` file also has unstaged changes), then SQL style lint | `sqlfluff fix -- <staged *.sql files>`, then `sqlfluff lint .` |
 | `*.yaml / *.yml / *.json / *.template` containing `AWSTemplateFormatVersion` + `cfn-lint` on PATH | CloudFormation lint | `cfn-lint <changed files>` |
 
 All triggered checks must pass. Missing tools are skipped silently.
