@@ -137,6 +137,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - bats hook now runs the suite when any shell script (by extension, shebang or # shellcheck shell= directive), test/test_helper.bash or the pre-commit config changes, not only .bats files; it is a no-op in repos without bats tests, but bats must be installed
 - Pre-commit hook and helper scripts (lib/mode-arg.sh, benchmark-test-affected, check-ignored-files, buildtest) now read git file lists NUL-separated, so files with non-ASCII or quoted names (backslash, quote, tab) are detected by name instead of being missed or mis-matched due to git's quoting
 - run-bats: pass --print-output-on-failure so failed tests show command output (#243)
+- Made the run-pylint wrapper venv bats tests hermetic by isolating the pip cache per test (#245)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
