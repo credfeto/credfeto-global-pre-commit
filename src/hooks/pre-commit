@@ -637,15 +637,38 @@ if check_files_match '\.sql$'; then
         DOTNET_ROLL_FORWARD=Major dotnet tsqllint . || die "dotnet tsqllint"
     fi
     if [ "$HAS_SQLFLUFF" -eq 1 ] && [ "${SQLFLUFF_EXECUTED:-0}" != "1" ]; then
-        info "Detected SQL changes — running sqlfluff fix..."
-        sqlfluff fix . || die "sqlfluff fix"
-        # NUL-separated end to end (git -z, grep -z, xargs -0), for the reason
-        # given above ALL_STAGED; the list is only ever handed to git add, so
-        # it never needs converting to lines.
+        # File lists are NUL-separated end to end (git -z, grep -z, xargs -0),
+        # for the reason given above ALL_STAGED, and handed to git with
+        # --literal-pathspecs so a name containing a glob character matches
+        # only itself.
         SQL_FILE_RE='\.sql$'
-        if git diff --name-only -z | grep -qzE "$SQL_FILE_RE"; then
+        if [ "$MODE" = "all-files" ]; then
+            info "Detected SQL changes — running sqlfluff fix..."
+            sqlfluff fix . || die "sqlfluff fix"
+            if git diff --name-only -z | grep -qzE "$SQL_FILE_RE"; then
+                info "Staging files modified by sqlfluff fix..."
+                git diff --name-only -z | grep -zE "$SQL_FILE_RE" | xargs -0 git add --
+            fi
+        else
+            # Only the staged SQL files are fixed and re-staged: fixing the
+            # whole tree would rewrite, and then stage, SQL files the user
+            # never staged. check_files_match above guarantees this list is
+            # not empty, so xargs always has at least one name to pass.
+            staged_sql_files() {
+                git diff --cached --name-only --diff-filter=d -z | grep -zE "$SQL_FILE_RE"
+            }
+            # A staged SQL file that also has unstaged edits cannot be fixed
+            # safely: re-staging the fixed file would stage those edits too.
+            PARTIAL_SQL=$(staged_sql_files | xargs -0 git --literal-pathspecs diff --name-only -z -- | tr '\000' '\n')
+            if [ -n "$PARTIAL_SQL" ]; then
+                printf '\n\033[31m✗\033[0m %s\n' "Staged SQL files also have unstaged changes, so sqlfluff fix cannot re-stage them without committing those changes:" >&2
+                printf '%s\n' "$PARTIAL_SQL" | sed 's/^/  /' >&2
+                die "stage or stash the unstaged changes to the SQL files listed above and retry"
+            fi
+            info "Detected SQL changes — running sqlfluff fix on staged SQL files..."
+            staged_sql_files | xargs -0 sqlfluff fix -- || die "sqlfluff fix"
             info "Staging files modified by sqlfluff fix..."
-            git diff --name-only -z | grep -zE "$SQL_FILE_RE" | xargs -0 git add --
+            staged_sql_files | xargs -0 git --literal-pathspecs add --
         fi
         info "Detected SQL changes — running sqlfluff lint..."
         sqlfluff lint . || die "sqlfluff lint"
