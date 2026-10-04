@@ -955,6 +955,23 @@ _write_six_fixture() {
     _write_six_probe_module "$1"
 }
 
+# Per-test XDG_CACHE_HOME for the tests below whose run-pylint venv really
+# pip-installs a declared dependency: pip's cache lives under it, and sharing
+# the host's one cache directory across concurrent pip installs under
+# bats --jobs made those installs race. Removed by teardown so a failed
+# assertion cannot leak it.
+PIP_TEST_CACHE=""
+
+teardown() {
+    if [ -n "${PIP_TEST_CACHE}" ]; then
+        rm -rf "${PIP_TEST_CACHE}"
+    fi
+}
+
+_run_hook_with_isolated_pip_cache() {
+    run_hook_env "$1" "${TEST_PATH}" "${PIP_TEST_CACHE}"
+}
+
 # Asserts pylint ran directly against $3 with no venv left behind and
 # rejected the undefined-variable fixture, shared by the "no venv built"
 # tests below. Takes $status/$output as $1/$2 rather than reading the bats
@@ -1029,11 +1046,12 @@ EOF
     fi
     local T
     _require_functional_venv
+    PIP_TEST_CACHE="$(mktemp -d)"
     T="$(make_repo feature/pylint-wrapper-reqs)"
     printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     _write_six_fixture "${T}"
     git -C "${T}" add .pre-commit-config.yaml requirements.txt good.py
-    run_hook "${T}"
+    _run_hook_with_isolated_pip_cache "${T}"
     [ "${status}" -eq 0 ]
     [ -x "${T}/.git/${PYLINT_VENV_DIR}/bin/python3" ]
 }
@@ -1047,15 +1065,16 @@ EOF
     fi
     local T _venv_python _inode_before _inode_after
     _require_functional_venv
+    PIP_TEST_CACHE="$(mktemp -d)"
     T="$(make_repo feature/pylint-wrapper-reqs-cache)"
     printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     _write_six_fixture "${T}"
     git -C "${T}" add .pre-commit-config.yaml requirements.txt good.py
-    run_hook "${T}"
+    _run_hook_with_isolated_pip_cache "${T}"
     [ "${status}" -eq 0 ]
     _venv_python="${T}/.git/${PYLINT_VENV_DIR}/bin/python3"
     _inode_before="$(stat -c %i "${_venv_python}")"
-    run_hook "${T}"
+    _run_hook_with_isolated_pip_cache "${T}"
     [ "${status}" -eq 0 ]
     _inode_after="$(stat -c %i "${_venv_python}")"
     [ "${_inode_before}" = "${_inode_after}" ]
@@ -1070,11 +1089,12 @@ EOF
     fi
     local T _venv_python _stamp _hash_after
     _require_functional_venv
+    PIP_TEST_CACHE="$(mktemp -d)"
     T="$(make_repo feature/pylint-wrapper-reqs-rebuild)"
     printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     _write_six_fixture "${T}"
     git -C "${T}" add .pre-commit-config.yaml requirements.txt good.py
-    run_hook "${T}"
+    _run_hook_with_isolated_pip_cache "${T}"
     [ "${status}" -eq 0 ]
     _venv_python="${T}/.git/${PYLINT_VENV_DIR}/bin/python3"
     _stamp="${T}/.git/${PYLINT_VENV_DIR}/.requirements-hash"
@@ -1091,7 +1111,7 @@ EOF
     [ "${status}" -ne 0 ]
     printf 'six==1.16.0\ncowsay\n' > "${T}/requirements.txt"
     git -C "${T}" add requirements.txt
-    run_hook "${T}"
+    _run_hook_with_isolated_pip_cache "${T}"
     [ "${status}" -eq 0 ]
     # A rebuild is proven behaviourally (the newly-declared dependency is now
     # importable from the venv) rather than via inode identity, which is not a
@@ -1112,6 +1132,7 @@ EOF
     fi
     local T
     _require_functional_venv
+    PIP_TEST_CACHE="$(mktemp -d)"
     T="$(make_repo feature/pylint-wrapper-pyproject-deps)"
     printf '%s' "${PYLINT_WRAPPER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     cat > "${T}/pyproject.toml" <<'EOF'
@@ -1124,7 +1145,7 @@ dependencies = [
 EOF
     _write_six_probe_module "${T}"
     git -C "${T}" add .pre-commit-config.yaml pyproject.toml good.py
-    run_hook "${T}"
+    _run_hook_with_isolated_pip_cache "${T}"
     [ "${status}" -eq 0 ]
     [ -x "${T}/.git/${PYLINT_VENV_DIR}/bin/python3" ]
 }
