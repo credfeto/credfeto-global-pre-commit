@@ -51,22 +51,33 @@ install_github_release() {
     asset="${asset//ARCH/$ARCH_GO}"
     local url="https://github.com/${repo}/releases/download/v${ver}/${asset}"
     echo "  Installing $cmd ${ver}..."
-    if [ "$binary" = "BIN" ]; then
-        # install(1) sets the mode itself, so the caller's umask (which sudo
-        # keeps) cannot leave the binary unusable by other users.
-        local tmp failure=""
-        tmp=$(mktemp) || die "failed to create a temporary file for $cmd"
-        if ! curl -sSfL "$url" -o "$tmp"; then
-            failure="failed to download $cmd"
-        elif ! sudo install -m 0755 "$tmp" "/usr/local/bin/$cmd"; then
-            failure="failed to install $cmd"
+    # A subshell, so the cleanup traps neither replace nor outlive any trap of
+    # the script that sourced this library; die there only leaves the subshell.
+    (
+        tmp=$(mktemp -d) || die "failed to create a temporary directory for $cmd"
+        trap 'rm -rf "$tmp"' EXIT
+        # Exiting runs the EXIT trap, so an interrupted download is removed too.
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        curl -sSfL "$url" -o "$tmp/download" || die "failed to download $cmd"
+        if [ "$binary" = "BIN" ]; then
+            release_binary="$tmp/download"
+        else
+            # Extracted as the caller rather than root, so the archive's
+            # recorded owner and mode are never applied.
+            mkdir "$tmp/extracted" || die "failed to extract $cmd"
+            tar -xzf "$tmp/download" -C "$tmp/extracted" "$binary" \
+                || die "failed to extract $cmd"
+            release_binary="$tmp/extracted/$binary"
         fi
-        rm -f "$tmp"
-        [ -z "$failure" ] || die "$failure"
-    else
-        curl -sSfL "$url" | sudo tar -xz -C /usr/local/bin "$binary" \
+        # install(1) sets the owner and mode itself, so neither the caller's
+        # umask (which sudo keeps) nor the download can leave the binary
+        # unusable by, or writable by, other users.
+        sudo install -m 0755 "$release_binary" "/usr/local/bin/$cmd" \
             || die "failed to install $cmd"
-    fi
+        rm -rf "$tmp"
+        trap - EXIT INT TERM
+    ) || exit
 }
 
 # Install or update PowerShell as a *local* dotnet tool in the user's
