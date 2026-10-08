@@ -72,22 +72,33 @@ chmod +x \
     "$REPO_DIR/install-deps-debian"
 
 # ── System git config helpers ────────────────────────────────────────────────
-# Prints the system git config's path, or nothing when it is missing or has no
-# entries. The path is asked of git as root because a non-root read fails on
-# exactly the unreadable file this script repairs. -z prints the origin raw
-# rather than C-quoted, and --system does not follow includes, so the first
-# origin is always the system file itself. git var GIT_CONFIG_SYSTEM would be
-# simpler but needs git 2.42, newer than Ubuntu 22.04 and Debian 12 ship.
-system_git_config_path() {
-    sudo git config --system --show-origin -z --list \
-        | tr '\0' '\n' | sed -n '1s/^file://p'
+# Sets SYSTEM_GIT_CONFIG to the system git config's path, whether or not the
+# file exists, and dies when sudo or git fails, so a failure is never mistaken
+# for a missing file. The path is asked of git as root because a non-root read
+# fails on exactly the unreadable file this script repairs. --edit hands the
+# editor the path even when the file has no entries, which --show-origin
+# --list cannot report, and this "editor" only prints it; printf rather than
+# echo, which some shells make interpret the path's backslashes. --system
+# --edit never creates the file, and git passes the editor the path with any
+# symlinks resolved. -C / keeps the caller's working directory, and any
+# repository config or ownership check there, out of the lookup. git var
+# GIT_CONFIG_SYSTEM would be simpler but needs git 2.42, newer than Ubuntu
+# 22.04 and Debian 12 ship.
+locate_system_git_config() {
+    if ! SYSTEM_GIT_CONFIG=$(sudo env GIT_EDITOR="printf '%s\n'" git -C / config --system --edit) \
+        || [ -z "$SYSTEM_GIT_CONFIG" ]; then
+        die "Failed to locate the system git config (sudo env git -C / config --system --edit failed)"
+    fi
 }
 
 # sudo keeps the caller's umask, so a restrictive one (e.g. 027) creates the
 # system config unreadable by other users, and git keeps an existing file's
-# mode on rewrite, so only an explicit chmod makes it readable again.
+# mode on rewrite, so only an explicit chmod makes it readable again. Only the
+# read bits are added, so any other mode bits an admin chose are kept. The
+# path is already symlink-resolved, and chmod would follow a symlink anyway,
+# so the mode changed is always that of the file git actually reads.
 make_system_git_config_world_readable() {
-    sudo chmod 0644 "$1" \
+    sudo chmod a+r "$1" \
         || die "Failed to make the system git config ($1) world-readable"
 }
 
@@ -95,20 +106,23 @@ make_system_git_config_world_readable() {
 # The dependency step runs git as the user (paru/yay clone AUR packages, the
 # nvm installer clones with git), and git dies on a system config it cannot
 # read, so one left unreadable by an earlier install is repaired first. A
-# missing file also fails the read, but then has no path and needs no repair.
+# missing file also fails the read, but needs no repair.
 if $SYSTEM_INSTALL && command -v git > /dev/null 2>&1 \
     && ! git config --system --list > /dev/null 2>&1; then
-    SYSTEM_GIT_CONFIG=$(system_git_config_path 2>/dev/null)
-    if [ -n "$SYSTEM_GIT_CONFIG" ]; then
+    locate_system_git_config
+    if [ -e "$SYSTEM_GIT_CONFIG" ]; then
         make_system_git_config_world_readable "$SYSTEM_GIT_CONFIG"
     fi
 fi
 
 # ── Install platform dependencies ─────────────────────────────────────────────
+# OS_RELEASE_TEST_OVERRIDE is a test-only escape hatch, so the tests pick the
+# dependency step whatever the host is; never set it in production shells.
+OS_RELEASE="${OS_RELEASE_TEST_OVERRIDE:-/etc/os-release}"
 distro_family() {
-    [ -f /etc/os-release ] || return 0
-    _id=$(grep '^ID=' /etc/os-release | cut -d= -f2- | tr -d '"')
-    _like=$(grep '^ID_LIKE=' /etc/os-release | cut -d= -f2- | tr -d '"')
+    [ -f "$OS_RELEASE" ] || return 0
+    _id=$(grep '^ID=' "$OS_RELEASE" | cut -d= -f2- | tr -d '"')
+    _like=$(grep '^ID_LIKE=' "$OS_RELEASE" | cut -d= -f2- | tr -d '"')
     case "$_id $_like" in
         *arch*)            printf 'arch' ;;
         *debian*|*ubuntu*) printf 'debian' ;;
@@ -137,9 +151,7 @@ if $SYSTEM_INSTALL; then
         || die "Failed to set core.hooksPath in the system git config"
     # Made world-readable whatever this user can read, because every other
     # user of the machine needs to read it too.
-    SYSTEM_GIT_CONFIG=$(system_git_config_path)
-    [ -n "$SYSTEM_GIT_CONFIG" ] \
-        || die "Failed to locate the system git config"
+    locate_system_git_config
     make_system_git_config_world_readable "$SYSTEM_GIT_CONFIG"
 else
     git config --global core.hooksPath "$HOOKS_DIR"

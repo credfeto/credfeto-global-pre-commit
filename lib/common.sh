@@ -53,6 +53,8 @@ install_github_release() {
     echo "  Installing $cmd ${ver}..."
     # A subshell, so the cleanup traps neither replace nor outlive any trap of
     # the script that sourced this library; die there only leaves the subshell.
+    # The EXIT trap removes the temporary directory on every path out of it,
+    # success included.
     (
         tmp=$(mktemp -d) || die "failed to create a temporary directory for $cmd"
         trap 'rm -rf "$tmp"' EXIT
@@ -65,7 +67,8 @@ install_github_release() {
         else
             # Extracted as the caller rather than root, so the archive's
             # recorded owner and mode are never applied.
-            mkdir "$tmp/extracted" || die "failed to extract $cmd"
+            mkdir "$tmp/extracted" \
+                || die "failed to create the extraction directory for $cmd"
             tar -xzf "$tmp/download" -C "$tmp/extracted" "$binary" \
                 || die "failed to extract $cmd"
             release_binary="$tmp/extracted/$binary"
@@ -75,8 +78,6 @@ install_github_release() {
         # unusable by, or writable by, other users.
         sudo install -m 0755 "$release_binary" "/usr/local/bin/$cmd" \
             || die "failed to install $cmd"
-        rm -rf "$tmp"
-        trap - EXIT INT TERM
     ) || exit
 }
 
