@@ -143,29 +143,45 @@ install_composite_action_lint() {
     esac
 }
 
-# Install or update PowerShell as a *local* dotnet tool in the user's
-# $HOME-scoped manifest (~/.config/dotnet-tools.json, or ~/dotnet-tools.json,
-# whichever this SDK already uses/creates), plus the PSScriptAnalyzer module it
-# needs. Per ai/global/dotnet.instructions.md, dotnet tools are always invoked
-# as `dotnet <toolname>` and never added to PATH; that only resolves for local
+# Install or update a dotnet tool as a *local* tool in the user's $HOME-scoped
+# manifest (~/.config/dotnet-tools.json, or ~/dotnet-tools.json, whichever this
+# SDK already uses/creates), creating the manifest when neither exists. Per
+# ai/global/dotnet.instructions.md, dotnet tools are always invoked as
+# `dotnet <toolname>` and never added to PATH; that only resolves for local
 # tools, so this installs into $HOME rather than --global: the same manifest
-# every other dotnet tool on this machine already uses, giving `dotnet pwsh`
-# resolution from any repo under $HOME without a per-repo manifest.
+# every other dotnet tool on this machine already uses, giving
+# `dotnet <toolname>` resolution from any repo under $HOME without a per-repo
+# manifest. Runs in a subshell so the caller's working directory is unchanged,
+# and returns non-zero on failure for the caller to report.
+#   $1 = package ID (e.g. PowerShell)
+#   $2 = command the package provides (e.g. pwsh)
+# Requires: dotnet on PATH.
+install_home_dotnet_tool() {
+    (
+        cd "$HOME" || exit 1
+        if [ ! -f dotnet-tools.json ] && [ ! -f .config/dotnet-tools.json ]; then
+            dotnet new tool-manifest || exit 1
+        fi
+        if dotnet tool list 2>/dev/null \
+            | awk -v pkg="$1" -v cmd="$2" \
+                'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}'; then
+            dotnet tool update "$1" || exit 1
+        else
+            dotnet tool install "$1" || exit 1
+        fi
+    )
+}
+
+# Install or update PowerShell as a local dotnet tool (see
+# install_home_dotnet_tool), plus the PSScriptAnalyzer module it needs, which
+# is installed by the pwsh resolved from $HOME's manifest.
 # Skipped with a warning if dotnet is not on PATH.
 install_pwsh() {
     info "PowerShell (pwsh, local dotnet tool)"
     if has dotnet; then
         (
+            install_home_dotnet_tool PowerShell pwsh || exit 1
             cd "$HOME" || exit 1
-            if [ ! -f dotnet-tools.json ] && [ ! -f .config/dotnet-tools.json ]; then
-                dotnet new tool-manifest || exit 1
-            fi
-            if dotnet tool list 2>/dev/null \
-                | awk 'tolower($3)=="pwsh" && tolower($1)=="powershell"{found=1} END{exit !found}'; then
-                dotnet tool update PowerShell || exit 1
-            else
-                dotnet tool install PowerShell || exit 1
-            fi
             dotnet pwsh -NoProfile -NonInteractive -Command \
                 "if (-not (Get-Module PSScriptAnalyzer -ListAvailable)) { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop }"
         ) || die "failed to install PowerShell dotnet tool or PSScriptAnalyzer module"
@@ -175,20 +191,14 @@ install_pwsh() {
 }
 
 # Install or update the cscleanup C# formatter (Credfeto.DotNet.Repo.Formatter)
-# as a dotnet global tool. Skipped with a warning if dotnet is not on PATH.
+# as a local dotnet tool (see install_home_dotnet_tool), which is how
+# run-formatter invokes it (`dotnet cscleanup`).
+# Skipped with a warning if dotnet is not on PATH.
 install_cscleanup() {
-    info "cscleanup (Credfeto.DotNet.Repo.Formatter)"
+    info "cscleanup (Credfeto.DotNet.Repo.Formatter, local dotnet tool)"
     if has dotnet; then
-        if dotnet tool list --global 2>/dev/null \
-            | awk 'tolower($3)=="cscleanup" && tolower($1)=="credfeto.dotnet.repo.formatter"{found=1} END{exit !found}'; then
-            dotnet tool update --global Credfeto.DotNet.Repo.Formatter || die "failed to update Credfeto.DotNet.Repo.Formatter dotnet tool"
-        else
-            dotnet tool install --global Credfeto.DotNet.Repo.Formatter || die "failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"
-        fi
-        if ! echo "$PATH" | grep -q "$HOME/.dotnet/tools"; then
-            info "warning: add ~/.dotnet/tools to PATH in your shell profile (e.g. ~/.bashrc):
-  export PATH=\"\$HOME/.dotnet/tools:\$PATH\""
-        fi
+        install_home_dotnet_tool Credfeto.DotNet.Repo.Formatter cscleanup \
+            || die "failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"
     else
         info "warning: dotnet not found, skipping cscleanup install"
     fi

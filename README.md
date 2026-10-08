@@ -41,7 +41,7 @@ helper is needed and nothing is built with `makepkg`.
 | `pipx` | `pre-commit-hooks` (no AUR package exists) |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
-| `dotnet tool --global` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`) — skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint` |
 
 Node.js itself is still not installed by the script: install it with the
@@ -66,7 +66,7 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 | `pipx` | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
-| `dotnet tool --global` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`) — skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint` — skipped with a warning if `go` is not on `PATH` |
 
 If `go` is on `PATH`, `actionlint` is installed via `go install` instead of a
@@ -76,17 +76,11 @@ them separately (nvm for Node.js).
 ### Notes applicable to both scripts
 
 - Safe to run multiple times — each step is idempotent.
-- `pwsh` is installed as a local `dotnet` tool in the `$HOME`-scoped tool manifest
-  (`~/.config/dotnet-tools.json` or `~/dotnet-tools.json`, whichever the SDK uses; one is
-  created if neither exists), along with the `PSScriptAnalyzer` module. It runs as
-  `dotnet pwsh` from any directory under `$HOME` and needs no `PATH` change.
-- `cscleanup` is installed as a `dotnet` global tool. Global tools land in
-  `~/.dotnet/tools/` which must be on `PATH`:
-
-  ```sh
-  export PATH="$HOME/.dotnet/tools:$PATH"
-  ```
-
+- `pwsh` and `cscleanup` are installed as local `dotnet` tools in the `$HOME`-scoped
+  tool manifest (`~/.config/dotnet-tools.json` or `~/dotnet-tools.json`, whichever the
+  SDK uses; one is created if neither exists), with the `PSScriptAnalyzer` module
+  alongside `pwsh`. They run as `dotnet pwsh` and `dotnet cscleanup` from any directory
+  under `$HOME` and need no `PATH` change.
 - `pipx` installs console scripts into `~/.local/bin/` (XDG-compliant).
   Ensure `~/.local/bin` is on `PATH` (most modern distributions include it by default).
 

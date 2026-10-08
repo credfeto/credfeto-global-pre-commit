@@ -1,11 +1,14 @@
 #!/usr/bin/env bats
 # Acceptance tests for the install helpers in lib/common.sh shared by
 # install-deps-arch and install-deps-debian: install_release_linters,
-# install_npm_globals and install_composite_action_lint.
+# install_npm_globals, install_composite_action_lint, install_pwsh and
+# install_cscleanup.
 #
 # Never installs anything: each helper runs in a bash whose PATH holds only
-# fakes, so the host's own node, npm or go can never be found, and
-# install_github_release is replaced by a function that records its arguments.
+# fakes, so the host's own node, npm, go or dotnet can never be found,
+# install_github_release is replaced by a function that records its arguments,
+# and HOME is a per-test directory, so the host's own dotnet tool manifest is
+# never seen.
 
 load test_helper
 
@@ -14,7 +17,8 @@ bats_require_minimum_version 1.5.0
 setup() {
     FAKE_BIN="${BATS_TEST_TMPDIR}/bin"
     FAKE_GOPATH="${BATS_TEST_TMPDIR}/gopath"
-    mkdir -p "${FAKE_BIN}" "${FAKE_GOPATH}/bin"
+    FAKE_HOME="${BATS_TEST_TMPDIR}/home"
+    mkdir -p "${FAKE_BIN}" "${FAKE_GOPATH}/bin" "${FAKE_HOME}"
 
     export CALL_LOG="${BATS_TEST_TMPDIR}/calls.log"
     export FAKE_GOPATH
@@ -47,6 +51,32 @@ EOF
     chmod +x "${FAKE_BIN}/$1"
 }
 
+# write_dotnet_fake
+# Writes a fake dotnet. `dotnet tool list` prints the column headings and then
+# FAKE_DOTNET_TOOLS (one "<package> <version> <command> <manifest>" row per
+# line). Every other call is recorded with the directory it ran in, and fails
+# when its arguments start with FAKE_DOTNET_FAIL (e.g. "tool install").
+write_dotnet_fake() {
+    cat > "${FAKE_BIN}/dotnet" <<'EOF'
+#!/bin/sh
+if [ "$*" = "tool list" ]; then
+    printf 'Package Id      Version      Commands      Manifest\n'
+    printf -- '----------------------------------------------------\n'
+    [ -z "${FAKE_DOTNET_TOOLS:-}" ] || printf '%s\n' "$FAKE_DOTNET_TOOLS"
+    exit 0
+fi
+printf 'dotnet %s (in %s)\n' "$*" "$PWD" >> "$CALL_LOG"
+case "$*" in
+    "${FAKE_DOTNET_FAIL:-no failure requested}"*) exit 1 ;;
+esac
+exit 0
+EOF
+    chmod +x "${FAKE_BIN}/dotnet"
+    # The installed-tool check pipes `dotnet tool list` through awk, which the
+    # fakes-only PATH would otherwise hide.
+    ln -s "$(command -v awk)" "${FAKE_BIN}/awk"
+}
+
 # write_present_fake <command>
 # Writes a fake that only exists, so the helper sees the command as installed.
 write_present_fake() {
@@ -56,12 +86,12 @@ write_present_fake() {
 
 # run_helper <helper> [extra PATH entry]
 # Sources lib/common.sh into a bash whose PATH is the fakes (plus the extra
-# entry), stubs install_github_release, and runs <helper>. The stub fails for
-# the tool named in FAKE_RELEASE_FAIL.
+# entry) and whose HOME is FAKE_HOME, stubs install_github_release, and runs
+# <helper>. The stub fails for the tool named in FAKE_RELEASE_FAIL.
 run_helper() {
     local _path="${FAKE_BIN}${2:+:$2}"
     # shellcheck disable=SC2016 # expanded by the inner bash, not here
-    run env PATH="${_path}" "${BASH}" -c '
+    run env PATH="${_path}" HOME="${FAKE_HOME}" "${BASH}" -c '
         . "$1"
         install_github_release() {
             printf "release %s\n" "$*" >> "$CALL_LOG"
@@ -149,4 +179,107 @@ release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "${output}" == *"warning: ${FAKE_GOPATH}/bin is not on PATH"* ]]
+}
+
+@test "install_cscleanup creates the HOME tool manifest and installs cscleanup locally when it is missing" {
+    write_dotnet_fake
+
+    run_helper install_cscleanup
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    _expected="dotnet new tool-manifest (in ${FAKE_HOME})
+dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
+    [ "$(calls)" = "${_expected}" ]
+    [[ "${output}" != *"warning:"* ]]
+}
+
+@test "install_cscleanup updates cscleanup in the existing HOME tool manifest when it is installed" {
+    write_dotnet_fake
+    mkdir -p "${FAKE_HOME}/.config"
+    : > "${FAKE_HOME}/.config/dotnet-tools.json"
+
+    FAKE_DOTNET_TOOLS="credfeto.dotnet.repo.formatter 1.0.0 cscleanup ${FAKE_HOME}/.config/dotnet-tools.json" \
+        run_helper install_cscleanup
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "$(calls)" = "dotnet tool update Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})" ]
+}
+
+@test "install_cscleanup installs cscleanup when only another package provides a cscleanup command" {
+    write_dotnet_fake
+    : > "${FAKE_HOME}/dotnet-tools.json"
+
+    FAKE_DOTNET_TOOLS="other.formatter 1.0.0 cscleanup ${FAKE_HOME}/dotnet-tools.json" \
+        run_helper install_cscleanup
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "$(calls)" = "dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})" ]
+}
+
+@test "install_cscleanup skips the install when dotnet is not on PATH" {
+    run_helper install_cscleanup
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"warning: dotnet not found, skipping cscleanup install"* ]]
+    [ -z "$(calls)" ]
+}
+
+@test "install_cscleanup fails when the dotnet tool install fails" {
+    write_dotnet_fake
+    : > "${FAKE_HOME}/dotnet-tools.json"
+
+    FAKE_DOTNET_FAIL="tool install" run_helper install_cscleanup
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"* ]]
+}
+
+@test "install_cscleanup fails when the HOME tool manifest cannot be created" {
+    write_dotnet_fake
+
+    FAKE_DOTNET_FAIL="new tool-manifest" run_helper install_cscleanup
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"* ]]
+    [ "$(calls)" = "dotnet new tool-manifest (in ${FAKE_HOME})" ]
+}
+
+@test "install_pwsh installs PowerShell locally, then the PSScriptAnalyzer module from HOME" {
+    write_dotnet_fake
+    : > "${FAKE_HOME}/dotnet-tools.json"
+
+    run_helper install_pwsh
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "$(sed -n 1p "${CALL_LOG}")" = "dotnet tool install PowerShell (in ${FAKE_HOME})" ]
+    [[ "$(sed -n 2p "${CALL_LOG}")" == "dotnet pwsh -NoProfile -NonInteractive -Command "*"Install-Module PSScriptAnalyzer"*"(in ${FAKE_HOME})" ]]
+}
+
+@test "install_pwsh updates PowerShell when it is already in the HOME tool manifest" {
+    write_dotnet_fake
+    : > "${FAKE_HOME}/dotnet-tools.json"
+
+    FAKE_DOTNET_TOOLS="powershell 7.5.0 pwsh ${FAKE_HOME}/dotnet-tools.json" run_helper install_pwsh
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "$(sed -n 1p "${CALL_LOG}")" = "dotnet tool update PowerShell (in ${FAKE_HOME})" ]
+}
+
+@test "install_pwsh fails, without running pwsh, when the PowerShell tool install fails" {
+    write_dotnet_fake
+    : > "${FAKE_HOME}/dotnet-tools.json"
+
+    FAKE_DOTNET_FAIL="tool install" run_helper install_pwsh
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install PowerShell dotnet tool or PSScriptAnalyzer module"* ]]
+    [ "$(grep -c '^dotnet pwsh ' "${CALL_LOG}")" -eq 0 ]
+}
+
+@test "install_pwsh skips the install when dotnet is not on PATH" {
+    run_helper install_pwsh
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"warning: dotnet not found, skipping pwsh install"* ]]
+    [ -z "$(calls)" ]
 }
