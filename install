@@ -71,11 +71,68 @@ chmod +x \
     "$REPO_DIR/install-deps-arch" \
     "$REPO_DIR/install-deps-debian"
 
+# ── System git config helpers ────────────────────────────────────────────────
+# SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE is a test-only escape hatch, so the
+# tests can exercise the fallback without touching the real /etc/gitconfig;
+# never set it in production shells.
+SYSTEM_GIT_CONFIG_FALLBACK="${SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE:-/etc/gitconfig}"
+
+# Sets SYSTEM_GIT_CONFIG to the system git config's path, whether or not the
+# file exists, without ever starting an editor. sudo is checked on its own
+# first, so a sudo failure dies naming sudo rather than being mistaken for a
+# missing file or an older git. git is asked as root because a non-root read
+# fails on exactly the unreadable file this script repairs, and -C / keeps the
+# caller's working directory, and any repository ownership check there, out
+# of the lookup. git var GIT_CONFIG_SYSTEM needs git 2.42, newer than Ubuntu
+# 22.04 and Debian 12 ship; older git rejects it with a usage message, so its
+# stderr is discarded and the distro git location is used instead.
+locate_system_git_config() {
+    sudo true || die "Failed to run sudo to locate the system git config"
+    if ! SYSTEM_GIT_CONFIG=$(sudo git -C / var GIT_CONFIG_SYSTEM 2> /dev/null) \
+        || [ -z "$SYSTEM_GIT_CONFIG" ]; then
+        SYSTEM_GIT_CONFIG="$SYSTEM_GIT_CONFIG_FALLBACK"
+    fi
+}
+
+# Succeeds when the system git config exists, checked as root because the
+# directory holding it need not be readable by this user. Only meaningful
+# after locate_system_git_config, which has already proved sudo works, so a
+# failure here means the file is missing.
+system_git_config_exists() {
+    sudo test -e "$SYSTEM_GIT_CONFIG"
+}
+
+# sudo keeps the caller's umask, so a restrictive one (e.g. 027) creates the
+# system config unreadable by other users, and git keeps an existing file's
+# mode on rewrite, so only an explicit chmod makes it readable again. Only the
+# read bits are added, so any other mode bits an admin chose are kept. chmod
+# follows a symlink, so the mode changed is always that of the file git reads.
+make_system_git_config_world_readable() {
+    sudo chmod a+r "$1" \
+        || die "Failed to make the system git config ($1) world-readable"
+}
+
+# ── Repair an unreadable system git config ───────────────────────────────────
+# The dependency step runs git as the user (paru/yay clone AUR packages, the
+# nvm installer clones with git), and git dies on a system config it cannot
+# read, so one left unreadable by an earlier install is repaired first. A
+# missing file also fails the read, but needs no repair.
+if $SYSTEM_INSTALL && command -v git > /dev/null 2>&1 \
+    && ! git config --system --list > /dev/null 2>&1; then
+    locate_system_git_config
+    if system_git_config_exists; then
+        make_system_git_config_world_readable "$SYSTEM_GIT_CONFIG"
+    fi
+fi
+
 # ── Install platform dependencies ─────────────────────────────────────────────
+# OS_RELEASE_TEST_OVERRIDE is a test-only escape hatch, so the tests pick the
+# dependency step whatever the host is; never set it in production shells.
+OS_RELEASE="${OS_RELEASE_TEST_OVERRIDE:-/etc/os-release}"
 distro_family() {
-    [ -f /etc/os-release ] || return 0
-    _id=$(grep '^ID=' /etc/os-release | cut -d= -f2- | tr -d '"')
-    _like=$(grep '^ID_LIKE=' /etc/os-release | cut -d= -f2- | tr -d '"')
+    [ -f "$OS_RELEASE" ] || return 0
+    _id=$(grep '^ID=' "$OS_RELEASE" | cut -d= -f2- | tr -d '"')
+    _like=$(grep '^ID_LIKE=' "$OS_RELEASE" | cut -d= -f2- | tr -d '"')
     case "$_id $_like" in
         *arch*)            printf 'arch' ;;
         *debian*|*ubuntu*) printf 'debian' ;;
@@ -100,7 +157,12 @@ esac
 
 # ── Register with git ────────────────────────────────────────────────────────
 if $SYSTEM_INSTALL; then
-    sudo git config --system core.hooksPath "$HOOKS_DIR"
+    sudo git config --system core.hooksPath "$HOOKS_DIR" \
+        || die "Failed to set core.hooksPath in the system git config"
+    # Made world-readable whatever this user can read, because every other
+    # user of the machine needs to read it too.
+    locate_system_git_config
+    make_system_git_config_world_readable "$SYSTEM_GIT_CONFIG"
 else
     git config --global core.hooksPath "$HOOKS_DIR"
 fi
