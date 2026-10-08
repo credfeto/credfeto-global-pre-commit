@@ -262,9 +262,30 @@ system_config_has_hooks_path() {
     run_system_install
 
     [ "${status}" -eq 0 ]
-    [[ "${output}" == *"Platform not recognised"* ]]
+    [[ "${output}" == *"→ Platform not recognised: skipping dependency install."* ]]
+    [[ "${output}" == *"Run ./install-deps-arch or ./install-deps-debian manually."* ]]
     [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
     [ "$(system_config_mode)" = "644" ]
+}
+
+@test "system install runs install-deps-arch on an Arch-based distro" {
+    run_system_install
+
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *"→ Detected Arch-based Linux: running install-deps-arch..."* ]]
+    [ -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+@test "system install runs install-deps-debian on a Debian-based distro" {
+    printf 'ID=ubuntu\nID_LIKE=debian\n' > "${FAKE_OS_RELEASE}"
+    # Only the Debian step may record that it ran.
+    printf '#!/bin/sh\nexit 1\n' > "${STAGE}/install-deps-arch"
+
+    run_system_install
+
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *"→ Detected Debian-based Linux: running install-deps-debian..."* ]]
+    [ -e "${FAKE_DEPS_RAN_MARKER}" ]
 }
 
 # Comment lines are dropped first, so prose naming these tools is not a call.
