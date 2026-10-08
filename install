@@ -101,14 +101,20 @@ esac
 # ── Register with git ────────────────────────────────────────────────────────
 if $SYSTEM_INSTALL; then
     # sudo keeps the caller's umask, so a restrictive one (e.g. 027) would
-    # create the system config unreadable by other users. The path is asked of
-    # git as root because a non-root read fails on exactly such a file, and
-    # git keeps an existing file's mode on rewrite, so the chmod is still needed
-    # to repair a config created restrictively earlier.
-    SYSTEM_GIT_CONFIG=$(sudo sh -c 'umask 022 && git config --system core.hooksPath "$1" && git config --system --show-origin --get core.hooksPath' sh "$HOOKS_DIR") \
+    # create the system config unreadable by other users, and git keeps an
+    # existing file's mode on rewrite, so the config is always chmodded, which
+    # also repairs one created restrictively earlier.
+    sudo git config --system core.hooksPath "$HOOKS_DIR" \
         || die "Failed to set core.hooksPath in the system git config"
-    SYSTEM_GIT_CONFIG=$(printf '%s\n' "$SYSTEM_GIT_CONFIG" | cut -f1)
-    SYSTEM_GIT_CONFIG=${SYSTEM_GIT_CONFIG#file:}
+    # The path is asked of git as root because a non-root read fails on exactly
+    # such a file. -z prints the origin raw rather than C-quoted, and --system
+    # does not follow includes, so the origin is always the system file itself.
+    # git var GIT_CONFIG_SYSTEM would be simpler but needs git 2.42, newer than
+    # Ubuntu 22.04 and Debian 12 ship.
+    SYSTEM_GIT_CONFIG=$(sudo git config --system --show-origin -z --get core.hooksPath \
+        | tr '\0' '\n' | sed -n '1s/^file://p')
+    [ -n "$SYSTEM_GIT_CONFIG" ] \
+        || die "Failed to locate the system git config"
     sudo chmod 0644 "$SYSTEM_GIT_CONFIG" \
         || die "Failed to make the system git config ($SYSTEM_GIT_CONFIG) world-readable"
 else
