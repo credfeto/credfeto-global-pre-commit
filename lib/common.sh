@@ -52,8 +52,11 @@ install_github_release() {
     local url="https://github.com/${repo}/releases/download/v${ver}/${asset}"
     echo "  Installing $cmd ${ver}..."
     if [ "$binary" = "BIN" ]; then
-        sudo curl -sSfL "$url" -o "/usr/local/bin/$cmd" || die "failed to download $cmd"
-        sudo chmod +x "/usr/local/bin/$cmd"
+        # sudo keeps the caller's umask, and chmod +x honours it too, so a
+        # restrictive one (e.g. 027) would leave the binary unusable by others.
+        sudo sh -c 'umask 022 && curl -sSfL "$1" -o "$2"' sh "$url" "/usr/local/bin/$cmd" \
+            || die "failed to download $cmd"
+        sudo chmod 0755 "/usr/local/bin/$cmd" || die "failed to make $cmd executable"
     else
         curl -sSfL "$url" | sudo tar -xz -C /usr/local/bin "$binary" \
             || die "failed to install $cmd"

@@ -100,7 +100,17 @@ esac
 
 # ── Register with git ────────────────────────────────────────────────────────
 if $SYSTEM_INSTALL; then
-    sudo git config --system core.hooksPath "$HOOKS_DIR"
+    # sudo keeps the caller's umask, so a restrictive one (e.g. 027) would
+    # create the system config unreadable by other users. The path is asked of
+    # git as root because a non-root read fails on exactly such a file, and
+    # git keeps an existing file's mode on rewrite, so the chmod is still needed
+    # to repair a config created restrictively earlier.
+    SYSTEM_GIT_CONFIG=$(sudo sh -c 'umask 022 && git config --system core.hooksPath "$1" && git config --system --show-origin --get core.hooksPath' sh "$HOOKS_DIR") \
+        || die "Failed to set core.hooksPath in the system git config"
+    SYSTEM_GIT_CONFIG=$(printf '%s\n' "$SYSTEM_GIT_CONFIG" | cut -f1)
+    SYSTEM_GIT_CONFIG=${SYSTEM_GIT_CONFIG#file:}
+    sudo chmod 0644 "$SYSTEM_GIT_CONFIG" \
+        || die "Failed to make the system git config ($SYSTEM_GIT_CONFIG) world-readable"
 else
     git config --global core.hooksPath "$HOOKS_DIR"
 fi
