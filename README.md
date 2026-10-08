@@ -70,8 +70,13 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 | `go install` | `composite-action-lint` — skipped with a warning if `go` is not on `PATH` |
 
 If `go` is on `PATH`, `actionlint` is installed via `go install` instead of a
-binary download. Node.js and the .NET SDK are not installed by the script — manage
-them separately (nvm for Node.js).
+binary download.
+
+Node.js itself is still not installed by the script: install it with the
+[nvm](https://github.com/nvm-sh/nvm) the script provides using nvm's official install
+script. The `npm -g` packages are skipped until a Node.js version is installed and active
+in nvm, so re-run the script afterwards. Similarly, the .NET SDK is not installed: install
+it separately and the script will pick it up automatically.
 
 ### Notes applicable to both scripts
 
