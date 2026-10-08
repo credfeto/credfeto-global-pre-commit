@@ -45,8 +45,10 @@ EOF
 
     # Models how real git reads the system config: the test user owns the
     # stand-in, so a non-root read is judged by its "other" read bit, as it
-    # would be for a root-owned file. --edit hands the editor the path whether
-    # or not the file exists or has entries, as real git does.
+    # would be for a root-owned file. var GIT_CONFIG_SYSTEM prints the path
+    # whether or not the file exists, as git 2.42+ does, or with
+    # FAKE_GIT_FAIL_VAR set rejects the variable with exit 129, as older git
+    # does.
     cat > "${FAKE_BIN}/git" <<'EOF'
 #!/bin/sh
 system_config_unreadable() {
@@ -69,12 +71,12 @@ case "$*" in
         ! system_config_unreadable || exit 128
         cat "$FAKE_SYSTEM_GITCONFIG"
         ;;
-    "-C / config --system --edit")
-        if [ -n "${FAKE_GIT_FAIL_EDIT:-}" ]; then
-            printf 'fatal: fake git config --edit failure\n' >&2
-            exit 128
+    "-C / var GIT_CONFIG_SYSTEM")
+        if [ -n "${FAKE_GIT_FAIL_VAR:-}" ]; then
+            printf 'usage: git var (-l | <variable>)\n' >&2
+            exit 129
         fi
-        exec sh -c "$GIT_EDITOR \"\$@\"" "$GIT_EDITOR" "$FAKE_SYSTEM_GITCONFIG"
+        printf '%s\n' "$FAKE_SYSTEM_GITCONFIG"
         ;;
     "config --system core.hooksPath "*)
         [ -z "${FAKE_GIT_FAIL_WRITE:-}" ] || exit 1
@@ -172,25 +174,58 @@ system_config_has_hooks_path() {
     [ "$(cat "${FAKE_SYSTEM_GITCONFIG}")" = "stale" ]
 }
 
+@test "system install repairs an unreadable, empty system git config" {
+    write_system_config '' 0640
+
+    run_system_install
+
+    [ "${status}" -eq 0 ]
+    [ -e "${FAKE_DEPS_RAN_MARKER}" ]
+    [ "$(system_config_mode)" = "644" ]
+    system_config_has_hooks_path
+}
+
+@test "system install skips the repair before the dependency step when the system git config is missing" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+
+    run_system_install FAKE_SUDO_LOG="${_sudo_log}"
+
+    [ "${status}" -eq 0 ]
+    [ -e "${FAKE_DEPS_RAN_MARKER}" ]
+    grep -Fxq "test -e ${FAKE_SYSTEM_GITCONFIG}" "${_sudo_log}"
+    # Only the chmod after writing the config, none for the missing file.
+    [ "$(grep -c '^chmod ' "${_sudo_log}")" -eq 1 ]
+    [ "$(system_config_mode)" = "644" ]
+}
+
+@test "system install falls back to the distro location when git cannot report the system git config path" {
+    write_system_config 'stale' 0640
+
+    run_system_install FAKE_GIT_FAIL_VAR=1 \
+        SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE="${FAKE_SYSTEM_GITCONFIG}"
+
+    [ "${status}" -eq 0 ]
+    [ -e "${FAKE_DEPS_RAN_MARKER}" ]
+    [ "$(system_config_mode)" = "644" ]
+    system_config_has_hooks_path
+}
+
+@test "system install's fallback location is /etc/gitconfig" {
+    # The fake sudo refuses every chmod, so /etc/gitconfig is never changed;
+    # the install dies at whichever repair reaches it first.
+    run_system_install FAKE_GIT_FAIL_VAR=1 FAKE_SUDO_FAIL_COMMAND=chmod
+
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"Failed to make the system git config (/etc/gitconfig) world-readable"* ]]
+}
+
 @test "system install dies before the dependency step when sudo fails to locate an unreadable system git config" {
     write_system_config 'stale' 0640
 
-    run_system_install FAKE_SUDO_FAIL_COMMAND=env
+    run_system_install FAKE_SUDO_FAIL_COMMAND=true
 
     [ "${status}" -eq 1 ]
-    [[ "${output}" == *"Failed to locate the system git config"* ]]
-    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
-    [ "$(system_config_mode)" = "640" ]
-}
-
-@test "system install dies before the dependency step, showing git's error, when git fails to locate an unreadable system git config" {
-    write_system_config 'stale' 0640
-
-    run_system_install FAKE_GIT_FAIL_EDIT=1
-
-    [ "${status}" -eq 1 ]
-    [[ "${output}" == *"fatal: fake git config --edit failure"* ]]
-    [[ "${output}" == *"Failed to locate the system git config"* ]]
+    [[ "${output}" == *"Failed to run sudo to locate the system git config"* ]]
     [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
     [ "$(system_config_mode)" = "640" ]
 }
@@ -202,15 +237,15 @@ system_config_has_hooks_path() {
     [[ "${output}" == *"Failed to set core.hooksPath in the system git config"* ]]
 }
 
-@test "system install dies when the system git config cannot be located after writing it" {
+@test "system install dies when sudo fails to locate the system git config after writing it" {
     write_system_config 'stale' 0644
 
-    run_system_install FAKE_GIT_FAIL_EDIT=1
+    run_system_install FAKE_SUDO_FAIL_COMMAND=true
 
     [ "${status}" -eq 1 ]
     [ -e "${FAKE_DEPS_RAN_MARKER}" ]
-    [[ "${output}" == *"fatal: fake git config --edit failure"* ]]
-    [[ "${output}" == *"Failed to locate the system git config"* ]]
+    system_config_has_hooks_path
+    [[ "${output}" == *"Failed to run sudo to locate the system git config"* ]]
 }
 
 @test "system install dies when making the system git config world-readable fails" {
