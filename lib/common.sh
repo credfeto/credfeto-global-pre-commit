@@ -3,8 +3,28 @@
 # Not intended to be run directly.
 
 die() {
-    echo "$@"
+    if [ -t 2 ]; then
+        printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    else
+        printf '\n✗ %s\n' "$*" >&2
+    fi
     exit 1
+}
+
+success() {
+    if [ -t 1 ]; then
+        printf '\n\033[32m✓\033[0m %s\n' "$*"
+    else
+        printf '\n✓ %s\n' "$*"
+    fi
+}
+
+info() {
+    if [ -t 1 ]; then
+        printf '\n\033[32m→\033[0m %s\n' "$*"
+    else
+        printf '\n→ %s\n' "$*"
+    fi
 }
 
 has() { command -v "$1" &>/dev/null; }
@@ -16,10 +36,7 @@ detect_arch() {
     case "$ARCH_UNAME" in
         x86_64)  ARCH_GO=amd64 ;;
         aarch64) ARCH_GO=arm64 ;;
-        *)
-            echo "Unsupported architecture: $ARCH_UNAME" >&2
-            exit 1
-            ;;
+        *) die "Unsupported architecture: $ARCH_UNAME" ;;
     esac
 }
 
@@ -39,7 +56,7 @@ pipx_ensure() {
 install_github_release() {
     local cmd="$1" repo="$2" asset_tmpl="$3" binary="${4:-$1}"
     if has "$cmd" && "$cmd" --version &>/dev/null 2>&1; then
-        echo "  $cmd already installed, skipping"
+        info "$cmd already installed, skipping"
         return
     fi
     local ver
@@ -50,7 +67,7 @@ install_github_release() {
     asset="${asset//UARCH/$ARCH_UNAME}"
     asset="${asset//ARCH/$ARCH_GO}"
     local url="https://github.com/${repo}/releases/download/v${ver}/${asset}"
-    echo "  Installing $cmd ${ver}..."
+    info "Installing $cmd ${ver}..."
     # A subshell, so the cleanup traps neither replace nor outlive any trap of
     # the script that sourced this library; die there only leaves the subshell.
     # The EXIT trap removes the temporary directory on every path out of it,
@@ -81,17 +98,62 @@ install_github_release() {
     ) || exit
 }
 
+# Install the linters both platforms take from GitHub releases.
+# Requires: detect_arch called beforehand, as install_github_release does.
+install_release_linters() {
+    install_github_release hadolint hadolint/hadolint "hadolint-linux-UARCH" BIN \
+        && install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-UARCH.tar.gz" \
+        && install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
+}
+
+# Skipped when node is not on PATH, because nvm only puts it there once a
+# version has been installed and activated.
+install_npm_globals() {
+    if has node; then
+        info "npm global packages"
+        npm install --global \
+            markdownlint-cli \
+            eslint \
+            stylelint \
+            stylelint-config-standard \
+            || die "npm global install failed"
+    else
+        info "node not active in nvm, skipping npm global packages"
+    fi
+}
+
+# composite-action-lint has no package or binary release, so it needs go.
+# Requires: go on PATH; callers decide what to do when it is not.
+install_composite_action_lint() {
+    if has composite-action-lint; then
+        info "composite-action-lint already installed, skipping"
+    else
+        go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest \
+            || die "failed to install composite-action-lint"
+    fi
+    local gobin
+    gobin="$(go env GOPATH)/bin" || die "failed to read GOPATH from go"
+    case ":$PATH:" in
+        *":$gobin:"*) ;;
+        *)
+            info "warning: $gobin is not on PATH: run ./install to link composite-action-lint into ~/.local/bin,
+  or add it to PATH in your shell profile (e.g. ~/.bashrc):
+  export PATH=\"\$(go env GOPATH)/bin:\$PATH\""
+            ;;
+    esac
+}
+
 # Install or update PowerShell as a *local* dotnet tool in the user's
-# $HOME-scoped manifest (~/.config/dotnet-tools.json, or ~/dotnet-tools.json —
+# $HOME-scoped manifest (~/.config/dotnet-tools.json, or ~/dotnet-tools.json,
 # whichever this SDK already uses/creates), plus the PSScriptAnalyzer module it
 # needs. Per ai/global/dotnet.instructions.md, dotnet tools are always invoked
 # as `dotnet <toolname>` and never added to PATH; that only resolves for local
-# tools, so this installs into $HOME rather than --global — the same manifest
+# tools, so this installs into $HOME rather than --global: the same manifest
 # every other dotnet tool on this machine already uses, giving `dotnet pwsh`
 # resolution from any repo under $HOME without a per-repo manifest.
 # Skipped with a warning if dotnet is not on PATH.
 install_pwsh() {
-    echo "==> PowerShell (pwsh, local dotnet tool)"
+    info "PowerShell (pwsh, local dotnet tool)"
     if has dotnet; then
         (
             cd "$HOME" || exit 1
@@ -108,14 +170,14 @@ install_pwsh() {
                 "if (-not (Get-Module PSScriptAnalyzer -ListAvailable)) { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop }"
         ) || die "failed to install PowerShell dotnet tool or PSScriptAnalyzer module"
     else
-        echo "  dotnet not found — skipping pwsh install" >&2
+        info "warning: dotnet not found, skipping pwsh install"
     fi
 }
 
 # Install or update the cscleanup C# formatter (Credfeto.DotNet.Repo.Formatter)
 # as a dotnet global tool. Skipped with a warning if dotnet is not on PATH.
 install_cscleanup() {
-    echo "==> cscleanup (Credfeto.DotNet.Repo.Formatter)"
+    info "cscleanup (Credfeto.DotNet.Repo.Formatter)"
     if has dotnet; then
         if dotnet tool list --global 2>/dev/null \
             | awk 'tolower($3)=="cscleanup" && tolower($1)=="credfeto.dotnet.repo.formatter"{found=1} END{exit !found}'; then
@@ -124,10 +186,10 @@ install_cscleanup() {
             dotnet tool install --global Credfeto.DotNet.Repo.Formatter || die "failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"
         fi
         if ! echo "$PATH" | grep -q "$HOME/.dotnet/tools"; then
-            echo "warning: add ~/.dotnet/tools to PATH in your shell profile (e.g. ~/.bashrc):" >&2
-            echo "  export PATH=\"\$HOME/.dotnet/tools:\$PATH\"" >&2
+            info "warning: add ~/.dotnet/tools to PATH in your shell profile (e.g. ~/.bashrc):
+  export PATH=\"\$HOME/.dotnet/tools:\$PATH\""
         fi
     else
-        echo "  dotnet not found — skipping cscleanup install" >&2
+        info "warning: dotnet not found, skipping cscleanup install"
     fi
 }

@@ -30,22 +30,24 @@ calls the appropriate deps script automatically. You can also run them manually:
 ./install-deps-arch
 ```
 
-Requires an AUR helper (`paru` or `yay`). The script will print instructions for
-installing one if neither is found. If [Chaotic-AUR](https://aur.chaotic.cx/) is
-configured, pre-compiled `-bin` packages are used automatically — no local
-compilation required.
+Expects [Chaotic-AUR](https://aur.chaotic.cx/) to be configured as a `pacman`
+repo, because some of the packages below are only available from it. No AUR
+helper is needed and nothing is built with `makepkg`.
 
 | Source | Packages |
 | -------- | ---------- |
-| `pacman` | `git`, `python-pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `trivy` |
-| AUR | `hadolint-bin`, `dotenv-linter-bin`, `sqlfluff`, `python-cfn-lint` |
-| GitHub releases | `actionlint`, `trufflehog` (downloaded to `/usr/local/bin`) |
+| `pacman` | `git`, `bats`, `go`, `pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `python-pipx`, `trivy`, `parallel`, `curl`, `nvm`, `sqlfluff`, `python-cfn-lint` |
+| GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks` (no AUR package exists) |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool --global` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`) — skipped with a warning if `dotnet` is not on `PATH` |
+| `go install` | `composite-action-lint` |
 
-Node.js is intentionally not installed by the script — use [nvm](https://github.com/nvm-sh/nvm)
-to manage it. Similarly, the .NET SDK is not installed — install it separately
+Node.js itself is still not installed by the script: install it with the
+[nvm](https://github.com/nvm-sh/nvm) the script provides from `pacman`. The `npm -g`
+packages are skipped until a Node.js version is installed and active in nvm, so re-run
+the script afterwards. Similarly, the .NET SDK is not installed — install it separately
 and the script will pick it up automatically.
 
 ### Debian / Ubuntu
@@ -58,12 +60,14 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
 | Source | Packages |
 | -------- | ---------- |
-| `apt` | `git`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-pylint`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx` |
-| `apt` (fallback: `pipx`) | `ansible-lint` — installed via `pipx` on older releases where the `apt` package is unavailable |
+| `apt` | `git`, `bats`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx`, `parallel` |
+| `apt` (fallback: `pipx`) | `ansible-lint`, `python3-pylint` (`pylint` from `pipx`) — installed via `pipx` on releases where the `apt` package is unavailable |
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool --global` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`) — skipped with a warning if `dotnet` is not on `PATH` |
+| `go install` | `composite-action-lint` — skipped with a warning if `go` is not on `PATH` |
 
 If `go` is on `PATH`, `actionlint` is installed via `go install` instead of a
 binary download. Node.js and the .NET SDK are not installed by the script — manage
@@ -72,8 +76,12 @@ them separately (nvm for Node.js).
 ### Notes applicable to both scripts
 
 - Safe to run multiple times — each step is idempotent.
-- `pwsh` is installed as a `dotnet` global tool (`dotnet tool install --global PowerShell`).
-  Global tools land in `~/.dotnet/tools/` which must be on `PATH`:
+- `pwsh` is installed as a local `dotnet` tool in the `$HOME`-scoped tool manifest
+  (`~/.config/dotnet-tools.json` or `~/dotnet-tools.json`, whichever the SDK uses; one is
+  created if neither exists), along with the `PSScriptAnalyzer` module. It runs as
+  `dotnet pwsh` from any directory under `$HOME` and needs no `PATH` change.
+- `cscleanup` is installed as a `dotnet` global tool. Global tools land in
+  `~/.dotnet/tools/` which must be on `PATH`:
 
   ```sh
   export PATH="$HOME/.dotnet/tools:$PATH"

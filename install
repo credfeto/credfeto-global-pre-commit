@@ -113,8 +113,8 @@ make_system_git_config_world_readable() {
 }
 
 # ── Repair an unreadable system git config ───────────────────────────────────
-# The dependency step runs git as the user (paru/yay clone AUR packages, the
-# nvm installer clones with git), and git dies on a system config it cannot
+# The dependency step can run git as the user (the nvm installer on Debian
+# clones with git), and git dies on a system config it cannot
 # read, so one left unreadable by an earlier install is repaired first. A
 # missing file also fails the read, but needs no repair.
 if $SYSTEM_INSTALL && command -v git > /dev/null 2>&1 \
