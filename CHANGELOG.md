@@ -170,6 +170,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - buildtest: skip benchmark tests when the resolved .NET SDK is a pre-release build, since they are expected to fail against one
 - Pre-commit hook: CONTRIBUTING.md (at any depth) can now only be changed in cs-template, like other shared conformance files
 - README and local AI instructions now describe all hooks as language: system and state that wrapper scripts need no PATH symlink because the hook prepends $SCRIPTS_DIR to PATH
+- TBD - to be finalized after review
 
 ### Deprecated
 ### Removed
