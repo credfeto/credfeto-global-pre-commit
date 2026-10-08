@@ -40,15 +40,8 @@ helper is needed and nothing is built with `makepkg`.
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks` (no AUR package exists) |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
-| `dotnet tool` | `PowerShell` (`pwsh`), skipped with a warning if `dotnet` is not on `PATH` |
-| `dotnet tool` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint` |
-
-Node.js itself is still not installed by the script: install it with the
-[nvm](https://github.com/nvm-sh/nvm) the script provides from `pacman`. The `npm -g`
-packages are skipped until a Node.js version is installed and active in nvm, so re-run
-the script afterwards. Similarly, the .NET SDK is not installed: install it separately
-and the script will pick it up automatically.
 
 ### Debian / Ubuntu
 
@@ -65,22 +58,22 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
-| `dotnet tool` | `PowerShell` (`pwsh`), skipped with a warning if `dotnet` is not on `PATH` |
-| `dotnet tool` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint`, skipped with a warning if `go` is not on `PATH` |
 
 If `go` is on `PATH`, `actionlint` is installed via `go install` instead of a
 binary download.
 
-Node.js itself is still not installed by the script: install it with the
-[nvm](https://github.com/nvm-sh/nvm) the script provides using nvm's official install
-script. The `npm -g` packages are skipped until a Node.js version is installed and active
-in nvm, so re-run the script afterwards. Similarly, the .NET SDK is not installed: install
-it separately and the script will pick it up automatically.
+`nvm` is not in `apt`, so it is installed using nvm's official install script.
 
 ### Notes applicable to both scripts
 
 - Safe to run multiple times: each step is idempotent.
+- Node.js itself is not installed by either script: install it with the
+  [nvm](https://github.com/nvm-sh/nvm) the script provides. The `npm -g` packages are
+  skipped until a Node.js version is installed and active in nvm, so re-run the script
+  afterwards. Similarly, the .NET SDK is not installed: install it separately and the
+  script will pick it up automatically.
 - `pwsh` and `cscleanup` are installed as local `dotnet` tools in the `$HOME`-scoped
   tool manifest (`~/.config/dotnet-tools.json` or `~/dotnet-tools.json`, whichever the
   SDK uses; one is created if neither exists), with the `PSScriptAnalyzer` module
