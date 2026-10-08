@@ -162,6 +162,24 @@ fail_test() {
     return 1
 }
 
+# write_fake_sudo <dir>
+# Writes a fake sudo to "<dir>/sudo" that never elevates. It appends each
+# call's arguments to $FAKE_SUDO_LOG when that is set, fails when the command
+# it is asked to run is the one named in $FAKE_SUDO_FAIL_COMMAND, and otherwise
+# runs the command as the current user. Anything that must not really run
+# (e.g. a write into /usr/local/bin) needs its own fake earlier on PATH.
+write_fake_sudo() {
+    local _dir="$1"
+    mkdir -p "${_dir}"
+    cat > "${_dir}/sudo" <<'EOF'
+#!/bin/sh
+[ -z "${FAKE_SUDO_LOG:-}" ] || printf '%s\n' "$*" >> "$FAKE_SUDO_LOG"
+[ "$1" != "${FAKE_SUDO_FAIL_COMMAND:-}" ] || exit 1
+exec "$@"
+EOF
+    chmod +x "${_dir}/sudo"
+}
+
 # fail_with_run_output <status> <output> <expected status>
 # Prints a run's exit status and output to the TAP stream, so an unexpected
 # result is diagnosable, and fails.
