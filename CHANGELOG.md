@@ -138,8 +138,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pre-commit hook and helper scripts (lib/mode-arg.sh, benchmark-test-affected, check-ignored-files, buildtest) now read git file lists NUL-separated, so files with non-ASCII or quoted names (backslash, quote, tab) are detected by name instead of being missed or mis-matched due to git's quoting
 - run-bats: pass --print-output-on-failure so failed tests show command output (#243)
 - Made the run-pylint wrapper venv bats tests hermetic by isolating the pip cache per test (#245)
-- install --system now leaves the system git config world-readable (0644) whatever the caller's umask, and first repairs one an earlier install left unreadable, so a restrictive umask such as 027 no longer makes git unusable
 - Tools installed from GitHub releases into /usr/local/bin are now root-owned and world-executable whatever the caller's umask or the owner and mode the release archive recorded
+- install --system now leaves the system git config readable by all users whatever the caller's umask, and first repairs one an earlier install left unreadable, so a restrictive umask such as 027 no longer makes git unusable
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
