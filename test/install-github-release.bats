@@ -135,6 +135,27 @@ release_temp_removed() {
     release_temp_removed
 }
 
+@test "archive release install dies and removes the temp dir when the extraction directory cannot be created" {
+    make_release_archive
+    _real_mkdir="$(command -v mkdir)"
+    cat > "${FAKE_BIN}/mkdir" <<EOF
+#!/bin/sh
+case "\$*" in
+    */extracted) exit 1 ;;
+esac
+exec "${_real_mkdir}" "\$@"
+EOF
+    chmod +x "${FAKE_BIN}/mkdir"
+
+    run_archive_install
+
+    [ "${status}" -eq 1 ]
+    [[ "${output}" == *"failed to create the extraction directory for fake-release-tool"* ]]
+    [[ "${output}" != *"failed to extract"* ]]
+    [ ! -e "${FAKE_INSTALL_ARGS}" ]
+    release_temp_removed
+}
+
 @test "binary release install dies and removes the temp dir when the download fails" {
     export FAKE_CURL_FAIL_DOWNLOAD=1
 
