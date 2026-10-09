@@ -3,9 +3,10 @@
 # installed when it is a local dotnet tool in the $HOME manifest or, failing
 # that, a global dotnet tool; when it is neither, the local-install hint shows.
 #
-# Uses a fake dotnet ahead of the host PATH and a per-test HOME, so the host's
-# own dotnet and tool manifest are never consulted. check-setup's exit status
-# depends on which other linters the host has, so only its output is checked.
+# Runs check-setup with a PATH holding only a fake dotnet and the few
+# utilities check-setup itself needs, and a per-test HOME, so the host's own
+# dotnet, tool manifest and linters are never consulted or started. Every
+# other linter is therefore missing, so only the cscleanup line is checked.
 
 load test_helper
 
@@ -39,11 +40,16 @@ esac
 exit 0
 FAKE
     chmod +x "${FAKE_BIN}/dotnet"
+
+    local _util
+    for _util in awk dirname grep head; do
+        ln -s "$(command -v "${_util}")" "${FAKE_BIN}/${_util}"
+    done
 }
 
 # run_check_setup [NAME=value ...]
 run_check_setup() {
-    run env HOME="${FAKE_HOME}" PATH="${FAKE_BIN}:${TEST_PATH}" "$@" "${REPO_DIR}/check-setup"
+    run env HOME="${FAKE_HOME}" PATH="${FAKE_BIN}" "$@" "${REPO_DIR}/check-setup"
 }
 
 cscleanup_line() {
@@ -52,28 +58,31 @@ cscleanup_line() {
 
 @test "check-setup reports cscleanup installed as a local tool in the HOME manifest" {
     run_check_setup FAKE_LOCAL_CSCLEANUP=1
+    _line="$(cscleanup_line)"
 
-    [[ "$(cscleanup_line)" == *"v1.2.3"* ]] \
+    [[ "${_line}" == *"v1.2.3"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
-    [[ "$(cscleanup_line)" != *"not installed"* ]] \
+    [[ "${_line}" != *"not installed"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
 }
 
 @test "check-setup reports cscleanup installed when it is only a global tool" {
     run_check_setup FAKE_GLOBAL_CSCLEANUP=1
+    _line="$(cscleanup_line)"
 
-    [[ "$(cscleanup_line)" == *"v9.9.9"* ]] \
+    [[ "${_line}" == *"v9.9.9"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
-    [[ "$(cscleanup_line)" != *"not installed"* ]] \
+    [[ "${_line}" != *"not installed"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
 }
 
 @test "check-setup gives the local-install hint when cscleanup is neither a local nor a global tool" {
     run_check_setup
+    _line="$(cscleanup_line)"
 
-    [[ "$(cscleanup_line)" == *"not installed"*"dotnet tool install Credfeto.DotNet.Repo.Formatter"* ]] \
+    [[ "${_line}" == *"not installed"*"dotnet tool install Credfeto.DotNet.Repo.Formatter"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
-    [[ "$(cscleanup_line)" != *"--global"* ]] \
+    [[ "${_line}" != *"--global"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
     [ "${status}" -ne 0 ]
 }
