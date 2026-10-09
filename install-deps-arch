@@ -1,7 +1,8 @@
 #!/bin/bash
 # Install dependencies for credfeto-global-pre-commit on Arch Linux.
 # Safe to run multiple times: pacman --needed skips already-installed packages,
-# and the release, go and pipx installs skip or upgrade tools already present.
+# the release and go installs skip tools already present, and pipx upgrades
+# packages already installed.
 #
 # Expects Chaotic-AUR to be configured as a pacman repo, because some of the
 # pacman packages below are only available from it.

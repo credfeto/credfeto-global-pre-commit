@@ -75,14 +75,21 @@ write_present_fake() {
     chmod +x "${FAKE_BIN}/$1"
 }
 
-# run_helper <helper> [extra PATH entry]
+# run_helper [--separate-stderr] <helper> [extra PATH entry]
 # Sources lib/common.sh into a bash whose PATH is the fakes (plus the extra
 # entry) and whose HOME is FAKE_HOME, stubs install_github_release, and runs
 # <helper>. The stub fails for the tool named in FAKE_RELEASE_FAIL.
+# --separate-stderr is passed to bats' run, which then leaves stderr in
+# ${stderr} instead of merging it into ${output}.
 run_helper() {
+    local -a _run_flags=()
+    if [ "$1" = "--separate-stderr" ]; then
+        _run_flags=("$1")
+        shift
+    fi
     local _path="${FAKE_BIN}${2:+:$2}"
     # shellcheck disable=SC2016 # expanded by the inner bash, not here
-    run env PATH="${_path}" HOME="${FAKE_HOME}" "${BASH}" -c '
+    run "${_run_flags[@]}" env PATH="${_path}" HOME="${FAKE_HOME}" "${BASH}" -c '
         . "$1"
         install_github_release() {
             printf "release %s\n" "$*" >> "$CALL_LOG"
@@ -96,18 +103,28 @@ calls() {
     cat "${CALL_LOG}"
 }
 
-@test "install_release_linters requests hadolint, dotenv-linter and trufflehog with their asset templates" {
-    run_helper install_release_linters
+@test "install_release_linters requests hadolint, dotenv-linter and trufflehog with their asset templates on x86_64" {
+    ARCH_UNAME=x86_64 run_helper install_release_linters
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    _expected="release hadolint hadolint/hadolint hadolint-linux-UARCH BIN
+    _expected="release hadolint hadolint/hadolint hadolint-linux-x86_64 BIN
+release dotenv-linter dotenv-linter/dotenv-linter dotenv-linter-linux-UARCH.tar.gz
+release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.gz"
+    [ "$(calls)" = "${_expected}" ]
+}
+
+@test "install_release_linters requests hadolint's arm64 asset on aarch64" {
+    ARCH_UNAME=aarch64 run_helper install_release_linters
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    _expected="release hadolint hadolint/hadolint hadolint-linux-arm64 BIN
 release dotenv-linter dotenv-linter/dotenv-linter dotenv-linter-linux-UARCH.tar.gz
 release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.gz"
     [ "$(calls)" = "${_expected}" ]
 }
 
 @test "install_release_linters fails, and stops, when a release install fails" {
-    FAKE_RELEASE_FAIL=dotenv-linter run_helper install_release_linters
+    ARCH_UNAME=x86_64 FAKE_RELEASE_FAIL=dotenv-linter run_helper install_release_linters
 
     [ "${status}" -ne 0 ] || fail_with_run_output "${status}" "${output}" "non-zero"
     [[ "$(calls)" == *"release dotenv-linter "* ]]
@@ -166,10 +183,11 @@ release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.
 }
 
 @test "install_composite_action_lint warns when the GOPATH bin directory is not on PATH" {
-    run_helper install_composite_action_lint
+    run_helper --separate-stderr install_composite_action_lint
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [[ "${output}" == *"warning: ${FAKE_GOPATH}/bin is not on PATH"* ]]
+    [[ "${stderr}" == *"warning: ${FAKE_GOPATH}/bin is not on PATH"* ]]
+    [[ "${output}" != *"warning:"* ]]
 }
 
 @test "install_cscleanup creates the HOME tool manifest and installs cscleanup locally when it is missing" {
@@ -208,10 +226,11 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
 }
 
 @test "install_cscleanup skips the install when dotnet is not on PATH" {
-    run_helper install_cscleanup
+    run_helper --separate-stderr install_cscleanup
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [[ "${output}" == *"warning: dotnet not found, skipping cscleanup install"* ]]
+    [[ "${stderr}" == *"warning: dotnet not found, skipping cscleanup install"* ]]
+    [[ "${output}" != *"warning:"* ]]
     [ -z "$(calls)" ]
 }
 
@@ -268,9 +287,10 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
 }
 
 @test "install_pwsh skips the install when dotnet is not on PATH" {
-    run_helper install_pwsh
+    run_helper --separate-stderr install_pwsh
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [[ "${output}" == *"warning: dotnet not found, skipping pwsh install"* ]]
+    [[ "${stderr}" == *"warning: dotnet not found, skipping pwsh install"* ]]
+    [[ "${output}" != *"warning:"* ]]
     [ -z "$(calls)" ]
 }

@@ -27,6 +27,15 @@ info() {
     fi
 }
 
+# info's format, on stderr, for problems that do not stop the install.
+warn() {
+    if [ -t 2 ]; then
+        printf '\n\033[32m→\033[0m warning: %s\n' "$*" >&2
+    else
+        printf '\n→ warning: %s\n' "$*" >&2
+    fi
+}
+
 has() { command -v "$1" &>/dev/null; }
 
 # Sets ARCH_UNAME (e.g. x86_64) and ARCH_GO (e.g. amd64).
@@ -99,9 +108,18 @@ install_github_release() {
 }
 
 # Install the linters both platforms take from GitHub releases.
-# Requires: detect_arch called beforehand, as install_github_release does.
+# Requires: detect_arch called beforehand (sets ARCH_UNAME), as
+# install_github_release does.
 install_release_linters() {
-    install_github_release hadolint hadolint/hadolint "hadolint-linux-UARCH" BIN \
+    # hadolint's release assets are named x86_64 and arm64, which neither the
+    # UARCH nor the ARCH placeholder gives on both architectures, so the asset
+    # name is picked per-arch here.
+    local hadolint_asset
+    case "$ARCH_UNAME" in
+        x86_64)  hadolint_asset=hadolint-linux-x86_64 ;;
+        aarch64) hadolint_asset=hadolint-linux-arm64 ;;
+    esac
+    install_github_release hadolint hadolint/hadolint "$hadolint_asset" BIN \
         && install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-UARCH.tar.gz" \
         && install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
 }
@@ -136,7 +154,7 @@ install_composite_action_lint() {
     case ":$PATH:" in
         *":$gobin:"*) ;;
         *)
-            info "warning: $gobin is not on PATH: run ./install to link composite-action-lint into ~/.local/bin,
+            warn "$gobin is not on PATH: run ./install to link composite-action-lint into ~/.local/bin,
   or add it to PATH in your shell profile (e.g. ~/.bashrc):
   export PATH=\"\$(go env GOPATH)/bin:\$PATH\""
             ;;
@@ -186,7 +204,7 @@ install_pwsh() {
                 "if (-not (Get-Module PSScriptAnalyzer -ListAvailable)) { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop }"
         ) || die "failed to install PowerShell dotnet tool or PSScriptAnalyzer module"
     else
-        info "warning: dotnet not found, skipping pwsh install"
+        warn "dotnet not found, skipping pwsh install"
     fi
 }
 
@@ -200,6 +218,6 @@ install_cscleanup() {
         install_home_dotnet_tool Credfeto.DotNet.Repo.Formatter cscleanup \
             || die "failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"
     else
-        info "warning: dotnet not found, skipping cscleanup install"
+        warn "dotnet not found, skipping cscleanup install"
     fi
 }
