@@ -43,6 +43,14 @@ helper is needed and nothing is built with `makepkg`.
 | `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint` |
 
+The `pacman` `nvm` package does not load nvm into the shell. Before `nvm` (and any
+Node.js it installs) can be used, source its init script from your shell rc file
+(e.g. `~/.bashrc`) and open a new shell:
+
+```sh
+source /usr/share/nvm/init-nvm.sh
+```
+
 ### Debian / Ubuntu
 
 Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
@@ -70,7 +78,8 @@ binary download.
 
 - Safe to run multiple times: each step is idempotent.
 - Node.js itself is not installed by either script: install it with the
-  [nvm](https://github.com/nvm-sh/nvm) the script provides. The `npm -g` packages are
+  [nvm](https://github.com/nvm-sh/nvm) the script provides (on Arch, load nvm into the
+  shell first, as described above). The `npm -g` packages are
   skipped until a Node.js version is installed and active in nvm, so re-run the script
   afterwards. Similarly, the .NET SDK is not installed: install it separately and the
   script will pick it up automatically.
