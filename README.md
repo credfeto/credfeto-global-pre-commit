@@ -1,7 +1,7 @@
 # credfeto-global-pre-commit
 
 Global git hooks that run automatically on every `git commit` across every
-repository on the machine — no per-repo setup required.
+repository on the machine, with no per-repo setup required.
 
 Used as the local enforcement layer alongside the
 [GitHub API proxy](https://github.com/dnyw4l3n13/github-api-proxy), which
@@ -30,23 +30,26 @@ calls the appropriate deps script automatically. You can also run them manually:
 ./install-deps-arch
 ```
 
-Requires an AUR helper (`paru` or `yay`). The script will print instructions for
-installing one if neither is found. If [Chaotic-AUR](https://aur.chaotic.cx/) is
-configured, pre-compiled `-bin` packages are used automatically — no local
-compilation required.
+Expects [Chaotic-AUR](https://aur.chaotic.cx/) to be configured as a `pacman`
+repo, because some of the packages below are only available from it. No AUR
+helper is needed and nothing is built with `makepkg`.
 
 | Source | Packages |
 | -------- | ---------- |
-| `pacman` | `git`, `python-pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `trivy` |
-| AUR | `hadolint-bin`, `dotenv-linter-bin`, `sqlfluff`, `python-cfn-lint` |
-| GitHub releases | `actionlint`, `trufflehog` (downloaded to `/usr/local/bin`) |
+| `pacman` | `git`, `bats`, `go`, `pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `python-pipx`, `trivy`, `parallel`, `curl`, `nvm`, `sqlfluff`, `python-cfn-lint` |
+| GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks` (no AUR package exists) |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
-| `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
+| `go install` | `composite-action-lint` |
 
-Node.js is intentionally not installed by the script — use [nvm](https://github.com/nvm-sh/nvm)
-to manage it. Similarly, the .NET SDK is not installed — install it separately
-and the script will pick it up automatically.
+The `pacman` `nvm` package does not load nvm into the shell. Before `nvm` (and any
+Node.js it installs) can be used, source its init script from your shell rc file
+(e.g. `~/.bashrc`) and open a new shell:
+
+```sh
+source /usr/share/nvm/init-nvm.sh
+```
 
 ### Debian / Ubuntu
 
@@ -58,27 +61,33 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
 | Source | Packages |
 | -------- | ---------- |
-| `apt` | `git`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-pylint`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx` |
-| `apt` (fallback: `pipx`) | `ansible-lint` — installed via `pipx` on older releases where the `apt` package is unavailable |
+| `apt` | `git`, `bats`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx`, `parallel` |
+| `apt` (fallback: `pipx`) | `ansible-lint`, `python3-pylint` (`pylint` from `pipx`), installed via `pipx` on releases where the `apt` package is unavailable |
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
 | `pipx` | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
-| `dotnet tool` | `PowerShell` (`pwsh`) — skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
+| `go install` | `composite-action-lint`, skipped with a warning if `go` is not on `PATH` |
 
 If `go` is on `PATH`, `actionlint` is installed via `go install` instead of a
-binary download. Node.js and the .NET SDK are not installed by the script — manage
-them separately (nvm for Node.js).
+binary download.
+
+`nvm` is not in `apt`, so it is installed using nvm's official install script.
 
 ### Notes applicable to both scripts
 
-- Safe to run multiple times — each step is idempotent.
-- `pwsh` is installed as a `dotnet` global tool (`dotnet tool install --global PowerShell`).
-  Global tools land in `~/.dotnet/tools/` which must be on `PATH`:
-
-  ```sh
-  export PATH="$HOME/.dotnet/tools:$PATH"
-  ```
-
+- Safe to run multiple times: each step is idempotent.
+- Node.js itself is not installed by either script: install it with the
+  [nvm](https://github.com/nvm-sh/nvm) the script provides (on Arch, load nvm into the
+  shell first, as described above). The `npm -g` packages are
+  skipped until a Node.js version is installed and active in nvm, so re-run the script
+  afterwards. Similarly, the .NET SDK is not installed: install it separately and the
+  script will pick it up automatically.
+- `pwsh` and `cscleanup` are installed as local `dotnet` tools in the `$HOME`-scoped
+  tool manifest (`~/.config/dotnet-tools.json` or `~/dotnet-tools.json`, whichever the
+  SDK uses; one is created if neither exists), with the `PSScriptAnalyzer` module
+  alongside `pwsh`. They run as `dotnet pwsh` and `dotnet cscleanup` from any directory
+  under `$HOME` and need no `PATH` change.
 - `pipx` installs console scripts into `~/.local/bin/` (XDG-compliant).
   Ensure `~/.local/bin` is on `PATH` (most modern distributions include it by default).
 
@@ -98,7 +107,7 @@ cd ~/.global-hooks
 2. Auto-detect the platform and run `install-deps-arch` or `install-deps-debian`
 3. Run `git config --global core.hooksPath <hooks-dir>`
 4. Symlink the `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, `run-bats`, and `run-pylint` wrapper scripts to `~/.local/bin` (not required for the hook, which puts `src/scripts` on `PATH` itself)
-5. Validate the `.pre-commit-config.yaml` schema (no managed environments to install — every hook is `language: system`)
+5. Validate the `.pre-commit-config.yaml` schema (no managed environments to install, because every hook is `language: system`)
 6. Print a status table of every check showing which are active and which need a system tool installed
 
 `pre-commit` must be installed for linting to run (`pip install pre-commit`).
@@ -106,14 +115,14 @@ cd ~/.global-hooks
 ### Why every hook is `language: system`
 
 By default, pre-commit auto-installs each hook into its own managed environment
-(a Python venv, a node_modules, etc.) on first run — typically 1–3 minutes
+(a Python venv, a node_modules, etc.) on first run, typically 1–3 minutes
 and ~150 MB on disk. That cost is a one-off on a developer workstation, but on
 ephemeral containers (Docker / CI / agent spawns) it's paid on every fresh
 spawn.
 
 This config opts out of that model: every hook is declared `language: system`
 and calls a binary already on `PATH`. Faster startup, smaller image, no
-per-spawn redownloads — but you have to install the tools yourself. `install`
+per-spawn redownloads, but you have to install the tools yourself. `install`
 prints what's missing and exact install commands.
 
 System tools required for full coverage: `pre-commit-hooks` (pip), `shellcheck`,
@@ -177,7 +186,7 @@ git config --global core.hooksPath
 
 | Check | Script | What it catches |
 | --- | --- | --- |
-| No merge commits | `scripts/check-merge-commits` | Blocks if `MERGE_HEAD` is present — rebase instead of merge |
+| No merge commits | `scripts/check-merge-commits` | Blocks if `MERGE_HEAD` is present (rebase instead of merge) |
 | No ignored files tracked | `scripts/check-ignored-files` | Fails if a tracked file is matched by `.gitignore` rules |
 | No `src/FunFair.props` outside funfair-tech | `scripts/check-funfair-props` | When the `origin` remote's owner is not `funfair-tech` (case-insensitive; skipped when there is no `origin`), `git rm`s a tracked `src/FunFair.props` (staging the removal) or deletes an untracked one, then fails so the commit can be re-run with the removal included. Under `git commit -a`, `-i` or `<paths>`, git discards index changes made by a failing hook, so the file is only deleted and the message gives the `git rm` command to stage it. Also runs in `--all-files` mode |
 | Secret scanning | `scripts/check-secrets` | Runs `trufflehog --only-verified`; **skipped if not installed** |
@@ -195,7 +204,7 @@ git config --global core.hooksPath
 | Valid TOML | `check-toml` | Syntax-checks `*.toml` (`Cargo.toml`, `pyproject.toml`, etc.) |
 | No private keys | `detect-private-key` | Pattern-matches common private key headers |
 | Executables have shebangs | `check-executables-have-shebangs` | Catches executable files missing `#!` |
-| Shebang scripts are `+x` | `check-shebang-scripts-are-executable` | Inverse — shebang files that aren't executable |
+| Shebang scripts are `+x` | `check-shebang-scripts-are-executable` | Inverse: shebang files that aren't executable |
 
 ### Conditional (triggered by staged file types + tool availability)
 
@@ -239,8 +248,8 @@ installs nothing itself and each tool must be on `PATH`:
 | `VALIDATE_XML` (full) | `xmllint` | `*.xml` |
 | `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` (via `run-psscriptanalyzer`) | `*.ps1/psm1/psd1` |
 | `VALIDATE_BATS` | `bats` (via `run-bats`, runs the whole `test/` suite) | Any staged shell script (including `test/test_helper.bash`) or `src/.pre-commit-config.yaml`, when `test/` holds a `*.bats` file (see `_bats_file_qualifies` in `src/scripts/run-bats` for the full rule) |
-| `VALIDATE_SQLFLUFF` | — | Handled by dedicated SQL check |
-| `VALIDATE_CLOUDFORMATION` | — | Handled by dedicated CFN check |
+| `VALIDATE_SQLFLUFF` | None | Handled by dedicated SQL check |
+| `VALIDATE_CLOUDFORMATION` | None | Handled by dedicated CFN check |
 
 Both shellcheck hooks follow every `source` they can resolve and lint the
 sourced file as well, including files outside the repository such as
@@ -254,7 +263,7 @@ and `run-bats` decides whether to run the suite. In a repository without bats
 tests it therefore shows `Passed` rather than `Skipped`, because it runs and
 exits at once without invoking `bats`.
 
-**Additional security checks** — not part of the Super-linter `VALIDATE_*` set, added independently; tool must be on PATH:
+**Additional security checks** (not part of the Super-linter `VALIDATE_*` set, added independently; tool must be on PATH):
 
 | Check | Tool | File trigger |
 | --- | --- | --- |
@@ -262,15 +271,15 @@ exits at once without invoking `bats`.
 | Compose volume mount mode typos (e.g. `:r` instead of `:ro`) | `check-compose-volumes` (bundled, no external tool) | `docker-compose*.yml/yaml`, `compose*.yml/yaml` |
 | Backslash used as a path separator in MSBuild files | `check-msbuild-path-separator` (bundled, no external tool) | `*.props`, `*.targets`, `*.csproj`, `*.slnx` |
 
-`trivy`'s secret scanner is deliberately not enabled — it would duplicate the
+`trivy`'s secret scanner is deliberately not enabled, because it would duplicate the
 verified-only `trufflehog` check above with noisier, unverified findings.
 
 ---
 
 ## Baseline mode (`--all-files`)
 
-Run the full check suite against the whole tracked tree — independent of
-whatever is (or isn't) staged — with:
+Run the full check suite against the whole tracked tree, independent of
+whatever is (or isn't) staged, with:
 
 ```sh
 sh ~/.global-hooks/src/hooks/pre-commit --all-files
@@ -300,7 +309,7 @@ on it.
 
 The protected/linter-config-file guards (blocking staged changes to
 `.shellcheckrc`, `.ai-instructions`, `ai/global/`, etc.) still key off
-whatever is staged, in both modes — they guard commit *content*, not the
+whatever is staged, in both modes: they guard commit *content*, not the
 tracked tree, so they are unaffected by `--all-files`.
 
 An unrecognised argument is rejected with a non-zero exit and an error
@@ -316,7 +325,7 @@ message; the default no-argument invocation is unaffected by this mode.
 
 ## Installing optional tools
 
-Use the provided dependency scripts — see [Dependencies](#dependencies) above.
+Use the provided dependency scripts (see [Dependencies](#dependencies) above).
 They handle all system tools, install them idempotently, and are safe to re-run
 after updates.
 
@@ -331,16 +340,16 @@ system package manager rather than `pre-commit autoupdate`.
 
 | Script | Source |
 | --- | --- |
-| `scripts/buildtest` | Vendored from [credfeto/scripts — buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
+| `scripts/buildtest` | Vendored from [credfeto/scripts: buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
 | `scripts/benchmark-test-affected` | Local addition, decides which benchmark test projects `buildtest`'s separate benchmark-only test step should run, from staged git changes alone (no `dotnet` required) |
 | `scripts/latest-target-framework` | Local addition, prints a multi-targeted `.csproj`'s latest target framework moniker so `buildtest`'s benchmark test step can restrict itself to it (older frameworks are assumed to work); prints nothing for a single-targeted project (no `dotnet` required) |
-| `scripts/buildcheck` | Vendored from [credfeto/scripts — buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
+| `scripts/buildcheck` | Vendored from [credfeto/scripts: buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
 | `scripts/check-funfair-props` | Local addition, removes `src/FunFair.props` from repositories whose `origin` remote is not owned by `funfair-tech` |
 | `scripts/check-merge-commits` | Port of [check-no-merge-commits](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-commits/action.yml) |
-| `scripts/run-eslint` | Wrapper for eslint — skips silently if no `package.json` or eslint config |
-| `scripts/run-stylelint` | Wrapper for stylelint — skips silently if no `package.json` |
-| `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer — runs per-file via pwsh |
+| `scripts/run-eslint` | Wrapper for eslint; skips silently if no `package.json` or eslint config |
+| `scripts/run-stylelint` | Wrapper for stylelint; skips silently if no `package.json` |
+| `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer; runs per-file via pwsh |
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
 | `scripts/run-bats` | Wrapper for bats, runs the complete `test/` suite when a staged file qualifies (see `VALIDATE_BATS` above) |
 | `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |

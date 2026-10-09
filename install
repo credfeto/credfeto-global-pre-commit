@@ -15,6 +15,14 @@ die() {
     exit 1
 }
 
+info() {
+    if [ -t 1 ]; then
+        printf '\n\033[32m→\033[0m %s\n' "$*"
+    else
+        printf '\n→ %s\n' "$*"
+    fi
+}
+
 SYSTEM_INSTALL=false
 for _arg in "$@"; do
     case "$_arg" in
@@ -113,8 +121,8 @@ make_system_git_config_world_readable() {
 }
 
 # ── Repair an unreadable system git config ───────────────────────────────────
-# The dependency step runs git as the user (paru/yay clone AUR packages, the
-# nvm installer clones with git), and git dies on a system config it cannot
+# The dependency step can run git as the user (the nvm installer on Debian
+# clones with git), and git dies on a system config it cannot
 # read, so one left unreadable by an earlier install is repaired first. A
 # missing file also fails the read, but needs no repair.
 if $SYSTEM_INSTALL && command -v git > /dev/null 2>&1 \
@@ -142,16 +150,16 @@ distro_family() {
 DISTRO=$(distro_family)
 case "$DISTRO" in
     arch)
-        echo "Detected Arch-based Linux — running install-deps-arch..."
+        info "Detected Arch-based Linux: running install-deps-arch..."
         "$REPO_DIR/install-deps-arch"
         ;;
     debian)
-        echo "Detected Debian-based Linux — running install-deps-debian..."
+        info "Detected Debian-based Linux: running install-deps-debian..."
         "$REPO_DIR/install-deps-debian"
         ;;
     *)
-        echo "Platform not recognised — skipping dependency install."
-        echo "Run ./install-deps-arch or ./install-deps-debian manually."
+        info "Platform not recognised: skipping dependency install.
+Run ./install-deps-arch or ./install-deps-debian manually."
         ;;
 esac
 
@@ -176,7 +184,7 @@ ln -sf "$SCRIPTS_DIR/run-psscriptanalyzer" "$HOME/.local/bin/run-psscriptanalyze
 ln -sf "$SCRIPTS_DIR/run-bats"             "$HOME/.local/bin/run-bats"
 ln -sf "$SCRIPTS_DIR/run-pylint"           "$HOME/.local/bin/run-pylint"
 
-# Go tools are installed to $GOPATH/bin which may not be on PATH — symlink them.
+# Go tools are installed to $GOPATH/bin, which may not be on PATH, so symlink them.
 if command -v go > /dev/null 2>&1; then
     _gobin="$(go env GOPATH)/bin"
     [ -f "$_gobin/composite-action-lint" ] && \
@@ -186,7 +194,7 @@ fi
 # ── Report setup status ───────────────────────────────────────────────────────
 # Validates the pre-commit config and reports which checks/tools are available.
 # check-setup exits non-zero when tools are missing, but install itself succeeds
-# regardless — all listed tools are optional linters; the hooks still run without
+# regardless: all listed tools are optional linters; the hooks still run without
 # them (they are skipped per file type).  Run ./check-setup independently to
 # verify a complete setup.
 if $SYSTEM_INSTALL; then

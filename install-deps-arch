@@ -1,11 +1,11 @@
 #!/bin/bash
 # Install dependencies for credfeto-global-pre-commit on Arch Linux.
-# Safe to run multiple times — pacman --needed skips already-installed packages,
-# and AUR helpers with --needed do the same.
+# Safe to run multiple times: pacman --needed skips already-installed packages,
+# the release and go installs skip tools already present, and pipx upgrades
+# packages already installed.
 #
-# Requires: an AUR helper (paru or yay) for AUR packages.
-# Chaotic-AUR is supported transparently — its packages are used automatically
-# if the repo is already configured.
+# Expects Chaotic-AUR to be configured as a pacman repo, because some of the
+# pacman packages below are only available from it.
 
 set -euo pipefail
 
@@ -13,29 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
 . "$SCRIPT_DIR/lib/common.sh"
 
-# ── AUR helper detection ──────────────────────────────────────────────────────
-if has paru; then
-    AUR=paru
-elif has yay; then
-    AUR=yay
-else
-    cat >&2 <<'EOF'
-error: no AUR helper found (paru or yay required)
-
-Install paru (recommended):
-  sudo pacman -S --needed base-devel git
-  git clone https://aur.archlinux.org/paru.git /tmp/paru
-  cd /tmp/paru && makepkg -si
-
-Install yay:
-  sudo pacman -S --needed base-devel git
-  git clone https://aur.archlinux.org/yay.git /tmp/yay
-  cd /tmp/yay && makepkg -si
-EOF
-    exit 1
-fi
-
-echo "Using AUR helper: $AUR"
+detect_arch
 
 # ── Locale ────────────────────────────────────────────────────────────────────
 LOCALES_MISSING=0
@@ -49,8 +27,8 @@ if [ "$LOCALES_MISSING" -eq 1 ]; then
     sudo locale-gen || die "locale-gen failed"
 fi
 
-# ── Official repository packages ──────────────────────────────────────────────
-echo "==> pacman packages"
+# ── Repository packages ───────────────────────────────────────────────────────
+info "pacman packages"
 sudo pacman -S --needed --noconfirm \
     git \
     bats \
@@ -65,61 +43,37 @@ sudo pacman -S --needed --noconfirm \
     python-pipx \
     trivy \
     parallel \
-    || die "pacman install failed"
-
-# ── AUR packages ──────────────────────────────────────────────────────────────
-# -bin variants are pre-compiled; Chaotic-AUR provides many of these as
-# binary packages so no local compilation is needed if it is configured.
-echo "==> AUR packages"
-"$AUR" -S --needed --noconfirm \
-    hadolint-bin \
-    dotenv-linter-bin \
+    curl \
     nvm \
     sqlfluff \
     python-cfn-lint \
-    || die "AUR install failed"
+    || die "pacman install failed"
 
 # ── Binary tools from GitHub releases ────────────────────────────────────────
-# trufflehog-bin AUR package is broken (wrapper points to missing binary).
-# actionlint-bin is not universally available in AUR.
-echo "==> Binary tools from GitHub releases"
-detect_arch
+# install_release_linters installs hadolint, dotenv-linter and trufflehog.
+# hadolint and dotenv-linter are in neither the official repos nor Chaotic-AUR,
+# and trufflehog is not in the official repos.
+info "Binary tools from GitHub releases"
 install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
-install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
+install_release_linters
 
 # ── Go tools ──────────────────────────────────────────────────────────────────
-# composite-action-lint has no AUR or binary release; requires go install.
-echo "==> Go tools"
-if ! has composite-action-lint; then
-    go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest \
-        || die "failed to install composite-action-lint"
-else
-    echo "  composite-action-lint already installed, skipping"
-fi
-if ! echo "$PATH" | grep -q "$(go env GOPATH)/bin"; then
-    echo "warning: \$(go env GOPATH)/bin not on PATH — run ./install to symlink tools into ~/.local/bin" >&2
-fi
+info "Go tools"
+has go || die "go not found, but pacman should have installed it"
+install_composite_action_lint
 
 # ── pipx packages ─────────────────────────────────────────────────────────────
 # python-pre-commit-hooks does not exist in AUR; pipx is the only option.
 # Provides check-merge-conflict, end-of-file-fixer, check-json, etc.
-echo "==> pipx packages"
+info "pipx packages"
 pipx_ensure pre-commit-hooks
 
 # ── npm global packages ───────────────────────────────────────────────────────
-# These JS tools are best installed via npm — AUR packages lag behind upstream
-# and the global npm path is already on PATH when nodejs is installed.
-if has node; then
-    echo "==> npm global packages"
-    npm install --global \
-        markdownlint-cli \
-        eslint \
-        stylelint \
-        stylelint-config-standard \
-        || die "npm global install failed"
-else
-    echo "  node not active in nvm — skipping npm global packages"
-fi
+# The pacman nvm package does not load nvm into the shell, so node stays off
+# PATH until the user sources its init script.
+install_npm_globals "add this to your shell rc (e.g. ~/.bashrc), open a new shell,
+  install a Node.js version with nvm, then re-run this script:
+  source /usr/share/nvm/init-nvm.sh"
 
 # ── PowerShell ────────────────────────────────────────────────────────────────
 install_pwsh
@@ -127,6 +81,5 @@ install_pwsh
 # ── cscleanup (C# formatter dotnet tool) ──────────────────────────────────────
 install_cscleanup
 
-echo ""
-echo "All dependencies installed."
-echo "Run ./install to register the global git hooks."
+success "All dependencies installed."
+info "Run ./install to register the global git hooks."

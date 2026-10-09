@@ -4,7 +4,8 @@
 # umask is restrictive, because sudo keeps that umask, and one an earlier
 # install left unreadable must be repaired before the dependency step, which
 # runs git as the user. Only read bits are added, so other mode bits an admin
-# chose are kept.
+# chose are kept. Also guards that install-deps-arch never calls an AUR helper
+# or makepkg, since everything it installs comes from pacman repos or releases.
 #
 # Never runs the real installer or real sudo: install is copied into a temp
 # tree with stub dependency/setup scripts, and sudo and git are fakes on PATH
@@ -29,8 +30,8 @@ setup() {
         printf '#!/bin/sh\nexit 0\n' > "${STAGE}/${_stub}"
         chmod +x "${STAGE}/${_stub}"
     done
-    # The real dependency step runs git as the user (paru/yay, the nvm
-    # installer), so the stub does too and records that git worked.
+    # The real dependency step can run git as the user (the nvm installer on
+    # Debian), so the stub does too and records that git worked.
     for _stub in install-deps-arch install-deps-debian; do
         cat > "${STAGE}/${_stub}" <<'EOF'
 #!/bin/sh
@@ -261,7 +262,44 @@ system_config_has_hooks_path() {
     run_system_install
 
     [ "${status}" -eq 0 ]
-    [[ "${output}" == *"Platform not recognised"* ]]
+    [[ "${output}" == *"→ Platform not recognised: skipping dependency install."* ]]
+    [[ "${output}" == *"Run ./install-deps-arch or ./install-deps-debian manually."* ]]
     [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
     [ "$(system_config_mode)" = "644" ]
+}
+
+@test "system install runs install-deps-arch on an Arch-based distro" {
+    # Only the Arch step may record that it ran.
+    printf '#!/bin/sh\nexit 1\n' > "${STAGE}/install-deps-debian"
+
+    run_system_install
+
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *"→ Detected Arch-based Linux: running install-deps-arch..."* ]]
+    [ -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+@test "system install runs install-deps-debian on a Debian-based distro" {
+    printf 'ID=ubuntu\nID_LIKE=debian\n' > "${FAKE_OS_RELEASE}"
+    # Only the Debian step may record that it ran.
+    printf '#!/bin/sh\nexit 1\n' > "${STAGE}/install-deps-arch"
+
+    run_system_install
+
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *"→ Detected Debian-based Linux: running install-deps-debian..."* ]]
+    [ -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+# Comment lines are dropped first, so prose naming these tools is not a call.
+non_comment_lines() {
+    grep -v '^[[:space:]]*#' "$1"
+}
+
+@test "install-deps-arch never invokes an AUR helper or makepkg" {
+    _code="$(non_comment_lines "${REPO_DIR}/install-deps-arch")"
+
+    [ -n "${_code}" ]
+    run grep -Ew 'paru|yay|makepkg' <<< "${_code}"
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
 }

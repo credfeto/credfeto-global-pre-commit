@@ -140,6 +140,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Made the run-pylint wrapper venv bats tests hermetic by isolating the pip cache per test (#245)
 - Tools installed from GitHub releases into /usr/local/bin are now root-owned and world-executable whatever the caller's umask or the owner and mode the release archive recorded
 - install --system now leaves the system git config readable by all users whatever the caller's umask, and first repairs one an earlier install left unreadable, so a restrictive umask such as 027 no longer makes git unusable
+- hadolint now installs on aarch64 (install-deps-debian requested a release asset that does not exist; hadolint publishes arm64)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
@@ -170,6 +171,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - buildtest: skip benchmark tests when the resolved .NET SDK is a pre-release build, since they are expected to fail against one
 - Pre-commit hook: CONTRIBUTING.md (at any depth) can now only be changed in cs-template, like other shared conformance files
 - README and local AI instructions now describe all hooks as language: system and state that wrapper scripts need no PATH symlink because the hook prepends $SCRIPTS_DIR to PATH
+- Shared install helpers (install_release_linters, install_npm_globals, install_composite_action_lint) moved into lib/common.sh and are used by both install-deps scripts
+- install script uses the info output helper for messaging
+- install-deps-arch no longer requires an AUR helper (paru/yay); nvm, python-cfn-lint, sqlfluff and curl now come from pacman repos (Chaotic-AUR expected as configured), and hadolint and dotenv-linter from GitHub releases
+- README: dependency tables and notes corrected to match the install scripts, cscleanup documented as a local dotnet tool, Node.js/nvm notes clarified, and em dashes removed
+- cscleanup is now installed as a local dotnet tool in the $HOME manifest instead of a global tool, and check-setup's install hint gives the local install command
+- lib/common.sh die and the new warn helper write to stderr; status output uses the info and success helpers
 
 ### Deprecated
 ### Removed

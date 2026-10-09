@@ -1,7 +1,7 @@
 #!/bin/bash
 # Install dependencies for credfeto-global-pre-commit on Debian / Ubuntu.
-# Safe to run multiple times — apt is idempotent, binary installs are skipped
-# if the tool is already present, and pipx skips already-installed packages.
+# Safe to run multiple times: apt is idempotent, binary installs are skipped
+# if the tool is already present, and pipx upgrades already-installed packages.
 #
 # Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
@@ -16,14 +16,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 detect_arch
 
 # ── Locale ────────────────────────────────────────────────────────────────────
-echo "==> locale"
+info "locale"
 for loc in en_GB.UTF-8 en_US.UTF-8; do
     locale -a 2>/dev/null | grep -qi "${loc//UTF-8/utf8}" \
         || sudo locale-gen "$loc" || die "locale-gen $loc failed"
 done
 
 # ── System packages ───────────────────────────────────────────────────────────
-echo "==> apt packages"
+info "apt packages"
 sudo apt-get update -qq || die "apt-get update failed"
 sudo apt-get install -y \
     git \
@@ -48,16 +48,16 @@ if ! has pipx; then
 fi
 
 # ansible-lint is in Ubuntu 22.04+ repos; fall back to pipx on older releases.
-echo "==> ansible-lint"
+info "ansible-lint"
 if ! sudo apt-get install -y ansible-lint 2>/dev/null; then
-    echo "  ansible-lint not in apt, installing via pipx"
+    info "ansible-lint not in apt, installing via pipx"
     pipx_ensure ansible-lint
 fi
 
-# pylint — apt package removed in Ubuntu 24.04+; fall back to pipx.
-echo "==> pylint"
+# pylint: apt package removed in Ubuntu 24.04+; fall back to pipx.
+info "pylint"
 if ! sudo apt-get install -y python3-pylint 2>/dev/null; then
-    echo "  python3-pylint not in apt, installing pylint via pipx"
+    info "python3-pylint not in apt, installing pylint via pipx"
     pipx_ensure pylint
 fi
 
@@ -70,7 +70,7 @@ install_cscleanup
 # ── pipx packages ─────────────────────────────────────────────────────────────
 # pre-commit-hooks provides the individual check-* / end-of-file-fixer / etc.
 # binaries used by the language: system hooks in .pre-commit-config.yaml.
-echo "==> pipx packages"
+info "pipx packages"
 for pkg in pre-commit-hooks sqlfluff cfn-lint; do
     pipx_ensure "$pkg"
 done
@@ -80,68 +80,46 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # ── nvm ───────────────────────────────────────────────────────────────────────
 # nvm is not in apt; use the official install script.
-echo "==> nvm"
+info "nvm"
 if [ ! -s "$HOME/.nvm/nvm.sh" ]; then
     curl -sSfo- https://raw.githubusercontent.com/nvm-sh/nvm/HEAD/install.sh | bash \
         || die "nvm install failed"
 else
-    echo "  nvm already installed, skipping"
+    info "nvm already installed, skipping"
 fi
 
 # ── npm global packages ───────────────────────────────────────────────────────
-if has node; then
-    echo "==> npm global packages"
-    npm install --global \
-        markdownlint-cli \
-        eslint \
-        stylelint \
-        stylelint-config-standard \
-        || die "npm global install failed"
-else
-    echo "  node not active in nvm — skipping npm global packages"
-fi
+install_npm_globals
 
 # ── Binary releases from GitHub ───────────────────────────────────────────────
 # These tools have no Debian package; binaries are downloaded from GitHub
 # releases and installed to /usr/local/bin.
-echo "==> Binary tools from GitHub releases"
+info "Binary tools from GitHub releases"
 
-install_github_release hadolint hadolint/hadolint "hadolint-linux-UARCH" BIN
+install_release_linters
 
-# actionlint — prefer go install, fall back to binary download
+# actionlint: prefer go install, fall back to binary download
 if has go; then
     if ! has actionlint; then
         go install github.com/rhysd/actionlint/cmd/actionlint@latest || die "failed to install actionlint"
     else
-        echo "  actionlint already installed, skipping"
+        info "actionlint already installed, skipping"
     fi
-    if ! has composite-action-lint; then
-        go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest \
-            || die "failed to install composite-action-lint"
-    else
-        echo "  composite-action-lint already installed, skipping"
-    fi
-    if ! echo "$PATH" | grep -q "${GOPATH:-$HOME/go}/bin"; then
-        echo "warning: add \$GOPATH/bin to PATH in your shell profile (e.g. ~/.bashrc):" >&2
-        echo "  export PATH=\"\$(go env GOPATH)/bin:\$PATH\"" >&2
-    fi
+    install_composite_action_lint
 else
     install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
-    echo "  go not found — skipping composite-action-lint (install go and rerun)" >&2
+    warn "go not found, skipping composite-action-lint (install go and rerun)"
 fi
 
-install_github_release dotenv-linter dotenv-linter/dotenv-linter "dotenv-linter-linux-UARCH.tar.gz"
-install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
-
 # trivy's release assets use "64bit"/"ARM64" naming, incompatible with the
-# UARCH/ARCH placeholders (uname -m / go arch) install_github_release fills in
-# for every other tool above, so the asset template is picked per-arch here.
+# UARCH/ARCH placeholders (uname -m / go arch) install_github_release fills in,
+# so the asset template is picked per-arch here, as install_release_linters
+# does for hadolint.
 case "$ARCH_UNAME" in
     x86_64)  install_github_release trivy aquasecurity/trivy "trivy_VERSION_Linux-64bit.tar.gz" ;;
     aarch64) install_github_release trivy aquasecurity/trivy "trivy_VERSION_Linux-ARM64.tar.gz" ;;
 esac
 
-echo ""
-echo "All dependencies installed."
-echo "You may need to start a new shell for PATH changes (pipx) to take effect."
-echo "Run ./install to register the global git hooks."
+success "All dependencies installed."
+info "You may need to start a new shell for PATH changes (pipx) to take effect."
+info "Run ./install to register the global git hooks."
