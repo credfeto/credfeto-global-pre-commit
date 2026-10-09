@@ -27,10 +27,10 @@ info() {
     fi
 }
 
-# info's format, on stderr, for problems that do not stop the install.
+# info's format in yellow, on stderr, for problems that do not stop the install.
 warn() {
     if [ -t 2 ]; then
-        printf '\n\033[32m→\033[0m warning: %s\n' "$*" >&2
+        printf '\n\033[33m→\033[0m warning: %s\n' "$*" >&2
     else
         printf '\n→ warning: %s\n' "$*" >&2
     fi
