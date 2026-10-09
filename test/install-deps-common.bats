@@ -204,7 +204,9 @@ release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.
     run_helper --separate-stderr install_composite_action_lint
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [[ "${stderr}" == *"warning: ${FAKE_GOPATH}/bin is not on PATH"* ]]
+    [[ "${stderr}" == *"warning: ${FAKE_GOPATH}/bin is not on PATH: add it to PATH in your shell profile"* ]]
+    [[ "${stderr}" == *"export PATH=\"\$(go env GOPATH)/bin:\$PATH\""* ]]
+    [[ "${stderr}" != *"./install"* ]]
     [[ "${output}" != *"warning:"* ]]
 }
 

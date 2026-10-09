@@ -161,8 +161,7 @@ install_composite_action_lint() {
     case ":$PATH:" in
         *":$gobin:"*) ;;
         *)
-            warn "$gobin is not on PATH: run ./install to link composite-action-lint into ~/.local/bin,
-  or add it to PATH in your shell profile (e.g. ~/.bashrc):
+            warn "$gobin is not on PATH: add it to PATH in your shell profile (e.g. ~/.bashrc):
   export PATH=\"\$(go env GOPATH)/bin:\$PATH\""
             ;;
     esac
