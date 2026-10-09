@@ -75,10 +75,11 @@ write_present_fake() {
     chmod +x "${FAKE_BIN}/$1"
 }
 
-# run_helper [--separate-stderr] <helper> [extra PATH entry]
+# run_helper [--separate-stderr] <helper> [extra PATH entry] [helper args...]
 # Sources lib/common.sh into a bash whose PATH is the fakes (plus the extra
-# entry) and whose HOME is FAKE_HOME, stubs install_github_release, and runs
-# <helper>. The stub fails for the tool named in FAKE_RELEASE_FAIL.
+# entry, if not empty) and whose HOME is FAKE_HOME, stubs
+# install_github_release, and runs <helper> with the helper args. The stub
+# fails for the tool named in FAKE_RELEASE_FAIL.
 # --separate-stderr is passed to bats' run, which then leaves stderr in
 # ${stderr} instead of merging it into ${output}.
 run_helper() {
@@ -95,8 +96,8 @@ run_helper() {
             printf "release %s\n" "$*" >> "$CALL_LOG"
             [ "$1" != "${FAKE_RELEASE_FAIL:-}" ]
         }
-        "$2"
-    ' _ "${REPO_DIR}/lib/common.sh" "$1"
+        "$2" "${@:3}"
+    ' _ "${REPO_DIR}/lib/common.sh" "$1" "${@:3}"
 }
 
 calls() {
@@ -145,6 +146,23 @@ release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "${output}" == *"node not active in nvm, skipping npm global packages"* ]]
+    [ -z "$(calls)" ]
+}
+
+@test "install_npm_globals adds the nvm setup hint to the skip message when nvm is not loaded" {
+    NVM_DIR='' run_helper install_npm_globals "" "source the nvm init script"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"node not active in nvm, skipping npm global packages; nvm is not loaded, so source the nvm init script"* ]]
+    [ -z "$(calls)" ]
+}
+
+@test "install_npm_globals leaves out the nvm setup hint when nvm is loaded" {
+    NVM_DIR="${FAKE_HOME}/.nvm" run_helper install_npm_globals "" "source the nvm init script"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"node not active in nvm, skipping npm global packages"* ]]
+    [[ "${output}" != *"nvm is not loaded"* ]]
     [ -z "$(calls)" ]
 }
 

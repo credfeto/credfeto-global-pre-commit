@@ -125,8 +125,13 @@ install_release_linters() {
 }
 
 # Skipped when node is not on PATH, because nvm only puts it there once a
-# version has been installed and activated.
+# version has been installed and activated. The optional nvm setup hint is
+# added to the skip message only when NVM_DIR is unset: nvm's init scripts
+# export it, so an unset NVM_DIR means nvm itself was never loaded, rather than
+# just having no Node.js version active.
 install_npm_globals() {
+    local nvm_setup_hint="${1:-}"
+    local skip_message="node not active in nvm, skipping npm global packages"
     if has node; then
         info "npm global packages"
         npm install --global \
@@ -135,8 +140,10 @@ install_npm_globals() {
             stylelint \
             stylelint-config-standard \
             || die "npm global install failed"
+    elif [ -n "$nvm_setup_hint" ] && [ -z "${NVM_DIR:-}" ]; then
+        info "$skip_message; nvm is not loaded, so $nvm_setup_hint"
     else
-        info "node not active in nvm, skipping npm global packages"
+        info "$skip_message"
     fi
 }
 

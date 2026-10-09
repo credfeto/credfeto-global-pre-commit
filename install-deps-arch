@@ -50,7 +50,9 @@ sudo pacman -S --needed --noconfirm \
     || die "pacman install failed"
 
 # ── Binary tools from GitHub releases ────────────────────────────────────────
-# hadolint and dotenv-linter are in neither the official repos nor Chaotic-AUR.
+# install_release_linters installs hadolint, dotenv-linter and trufflehog.
+# hadolint and dotenv-linter are in neither the official repos nor Chaotic-AUR,
+# and trufflehog is not in the official repos.
 info "Binary tools from GitHub releases"
 install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
 install_release_linters
@@ -67,11 +69,10 @@ info "pipx packages"
 pipx_ensure pre-commit-hooks
 
 # ── npm global packages ───────────────────────────────────────────────────────
-install_npm_globals
 # The pacman nvm package does not load nvm into the shell, so node stays off
 # PATH until the user sources its init script.
-has node || info "To use the pacman nvm package, add this to your shell rc (e.g. ~/.bashrc),
-  open a new shell, install a Node.js version with nvm, then re-run this script:
+install_npm_globals "add this to your shell rc (e.g. ~/.bashrc), open a new shell,
+  install a Node.js version with nvm, then re-run this script:
   source /usr/share/nvm/init-nvm.sh"
 
 # ── PowerShell ────────────────────────────────────────────────────────────────
