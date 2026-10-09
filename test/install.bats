@@ -269,6 +269,9 @@ system_config_has_hooks_path() {
 }
 
 @test "system install runs install-deps-arch on an Arch-based distro" {
+    # Only the Arch step may record that it ran.
+    printf '#!/bin/sh\nexit 1\n' > "${STAGE}/install-deps-debian"
+
     run_system_install
 
     [ "${status}" -eq 0 ]
