@@ -24,7 +24,12 @@ setup() {
     export FAKE_GOPATH
     : > "${CALL_LOG}"
 
-    write_logging_fake npm
+    cat > "${FAKE_BIN}/npm" <<'EOF'
+#!/bin/sh
+printf 'npm %s\n' "$*" >> "$CALL_LOG"
+[ -z "${FAKE_NPM_FAIL:-}" ] || exit 1
+EOF
+    chmod +x "${FAKE_BIN}/npm"
     cat > "${FAKE_BIN}/go" <<'EOF'
 #!/bin/sh
 if [ "$*" = "env GOPATH" ]; then
@@ -35,20 +40,6 @@ printf 'go %s\n' "$*" >> "$CALL_LOG"
 [ -z "${FAKE_GO_FAIL:-}" ] || exit 1
 EOF
     chmod +x "${FAKE_BIN}/go"
-}
-
-# write_logging_fake <command>
-# Writes a fake that records its arguments, and fails when FAKE_<COMMAND>_FAIL
-# is set (FAKE_NPM_FAIL for npm).
-write_logging_fake() {
-    local _fail_var
-    _fail_var="FAKE_$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')_FAIL"
-    cat > "${FAKE_BIN}/$1" <<EOF
-#!/bin/sh
-printf '$1 %s\n' "\$*" >> "\$CALL_LOG"
-[ -z "\${${_fail_var}:-}" ] || exit 1
-EOF
-    chmod +x "${FAKE_BIN}/$1"
 }
 
 # write_dotnet_fake
@@ -119,8 +110,8 @@ release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.
     FAKE_RELEASE_FAIL=dotenv-linter run_helper install_release_linters
 
     [ "${status}" -ne 0 ] || fail_with_run_output "${status}" "${output}" "non-zero"
-    grep -Fq "release dotenv-linter " "${CALL_LOG}"
-    [ "$(grep -Fc "release trufflehog " "${CALL_LOG}")" -eq 0 ]
+    [[ "$(calls)" == *"release dotenv-linter "* ]]
+    [[ "$(calls)" != *"release trufflehog "* ]]
 }
 
 @test "install_npm_globals installs the global npm linters when node is on PATH" {
@@ -251,8 +242,8 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
     run_helper install_pwsh
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ "$(sed -n 1p "${CALL_LOG}")" = "dotnet tool install PowerShell (in ${FAKE_HOME})" ]
-    [[ "$(sed -n 2p "${CALL_LOG}")" == "dotnet pwsh -NoProfile -NonInteractive -Command "*"Install-Module PSScriptAnalyzer"*"(in ${FAKE_HOME})" ]]
+    [ "$(calls | sed -n 1p)" = "dotnet tool install PowerShell (in ${FAKE_HOME})" ]
+    [[ "$(calls | sed -n 2p)" == "dotnet pwsh -NoProfile -NonInteractive -Command "*"Install-Module PSScriptAnalyzer"*"(in ${FAKE_HOME})" ]]
 }
 
 @test "install_pwsh updates PowerShell when it is already in the HOME tool manifest" {
@@ -262,7 +253,7 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
     FAKE_DOTNET_TOOLS="powershell 7.5.0 pwsh ${FAKE_HOME}/dotnet-tools.json" run_helper install_pwsh
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ "$(sed -n 1p "${CALL_LOG}")" = "dotnet tool update PowerShell (in ${FAKE_HOME})" ]
+    [ "$(calls | sed -n 1p)" = "dotnet tool update PowerShell (in ${FAKE_HOME})" ]
 }
 
 @test "install_pwsh fails, without running pwsh, when the PowerShell tool install fails" {
@@ -273,7 +264,7 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
 
     [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
     [[ "${output}" == *"failed to install PowerShell dotnet tool or PSScriptAnalyzer module"* ]]
-    [ "$(grep -c '^dotnet pwsh ' "${CALL_LOG}")" -eq 0 ]
+    [[ "$(calls)" != *"dotnet pwsh "* ]]
 }
 
 @test "install_pwsh skips the install when dotnet is not on PATH" {
