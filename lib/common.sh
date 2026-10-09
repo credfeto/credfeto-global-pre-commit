@@ -165,9 +165,9 @@ install_home_dotnet_tool() {
         if dotnet tool list 2>/dev/null \
             | awk -v pkg="$1" -v cmd="$2" \
                 'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}'; then
-            dotnet tool update "$1" || exit 1
+            dotnet tool update "$1"
         else
-            dotnet tool install "$1" || exit 1
+            dotnet tool install "$1"
         fi
     )
 }
