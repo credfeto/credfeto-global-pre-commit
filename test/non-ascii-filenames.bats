@@ -131,7 +131,7 @@ assert_shim_called() {
 
     run_hook_env "${T}" "${_shim_dir}:${_path}" "${BATS_TEST_TMPDIR}/xdg-cache"
 
-    assert_shim_called sqlfluff "fix ." "${status}" "${output}"
+    assert_shim_called sqlfluff "fix -- plain.sql qüery.sql" "${status}" "${output}"
     # Every fixed file was re-staged: nothing is left unstaged, and the
     # staged content of the non-ASCII file carries the fixer's change.
     [ -z "$(git -C "${T}" diff --name-only)" ]
