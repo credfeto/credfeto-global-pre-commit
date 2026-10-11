@@ -143,6 +143,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - install --system now leaves the system git config readable by all users whatever the caller's umask, and first repairs one an earlier install left unreadable, so a restrictive umask such as 027 no longer makes git unusable
 - hadolint now installs on aarch64 (install-deps-debian requested a release asset that does not exist; hadolint publishes arm64)
 - pre-commit: only run sqlfluff fix on staged SQL files in commit mode and fail if a staged SQL file has unstaged changes, so unstaged SQL is no longer swept into the commit (#258)
+- pre-commit: fail the hook when re-staging sqlfluff fixes (git add / git diff) fails instead of committing unfixed SQL (#257)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
