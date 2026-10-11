@@ -642,34 +642,57 @@ if check_files_match '\.sql$'; then
         # --literal-pathspecs so a name containing a glob character matches
         # only itself.
         SQL_FILE_RE='\.sql$'
+        SQL_LIST_DIR=$(mktemp -d) || die "failed to create a temporary directory for the SQL file list"
+        SQL_LIST="$SQL_LIST_DIR/sql"
+        sql_die() {
+            rm -rf "$SQL_LIST_DIR"
+            die "$*"
+        }
+        # list_sql_files <git diff option>...
+        # Writes the SQL names git diff reports to $SQL_LIST. The list goes
+        # through a file, with each step's status checked, because POSIX sh
+        # has no pipefail: piped, a failed git diff reads as "no SQL files".
+        # grep exits 1 when nothing matches, which is an empty list, not a
+        # failure.
+        list_sql_files() {
+            git diff "$@" --name-only -z > "$SQL_LIST_DIR/all" || return 1
+            grep -zE "$SQL_FILE_RE" < "$SQL_LIST_DIR/all" > "$SQL_LIST"
+            [ $? -le 1 ]
+        }
+        restage_sql_list() {
+            [ -s "$SQL_LIST" ] || return 0
+            info "Staging files modified by sqlfluff fix..."
+            xargs -0 git --literal-pathspecs add -- < "$SQL_LIST" \
+                || sql_die "git add failed, so the sqlfluff fixes were not staged and the commit would contain unfixed SQL"
+        }
         if [ "$MODE" = "all-files" ]; then
             info "Detected SQL changes — running sqlfluff fix..."
-            sqlfluff fix . || die "sqlfluff fix"
-            if git diff --name-only -z | grep -qzE "$SQL_FILE_RE"; then
-                info "Staging files modified by sqlfluff fix..."
-                git diff --name-only -z | grep -zE "$SQL_FILE_RE" | xargs -0 git add --
-            fi
+            sqlfluff fix . || sql_die "sqlfluff fix"
+            list_sql_files \
+                || sql_die "git diff failed, so the files modified by sqlfluff fix could not be listed and the sqlfluff fixes were not staged"
+            restage_sql_list
         else
             # Only the staged SQL files are fixed and re-staged: fixing the
             # whole tree would rewrite, and then stage, SQL files the user
             # never staged. check_files_match above guarantees this list is
             # not empty, so xargs always has at least one name to pass.
-            staged_sql_files() {
-                git diff --cached --name-only --diff-filter=d -z | grep -zE "$SQL_FILE_RE"
-            }
+            list_sql_files --cached --diff-filter=d \
+                || sql_die "git diff --cached failed, so the staged SQL files could not be listed for sqlfluff fix"
             # A staged SQL file that also has unstaged edits cannot be fixed
             # safely: re-staging the fixed file would stage those edits too.
-            PARTIAL_SQL=$(staged_sql_files | xargs -0 git --literal-pathspecs diff --name-only -z -- | tr '\000' '\n')
+            xargs -0 git --literal-pathspecs diff --name-only -z -- < "$SQL_LIST" > "$SQL_LIST_DIR/partial" \
+                || sql_die "git diff failed, so staged SQL files with unstaged changes could not be detected"
+            PARTIAL_SQL=$(tr '\000' '\n' < "$SQL_LIST_DIR/partial")
             if [ -n "$PARTIAL_SQL" ]; then
                 printf '\n\033[31m✗\033[0m %s\n' "Staged SQL files also have unstaged changes, so sqlfluff fix cannot re-stage them without committing those changes:" >&2
                 printf '%s\n' "$PARTIAL_SQL" | sed 's/^/  /' >&2
-                die "stage or stash the unstaged changes to the SQL files listed above and retry"
+                sql_die "stage or stash the unstaged changes to the SQL files listed above and retry"
             fi
             info "Detected SQL changes — running sqlfluff fix on staged SQL files..."
-            staged_sql_files | xargs -0 sqlfluff fix -- || die "sqlfluff fix"
-            info "Staging files modified by sqlfluff fix..."
-            staged_sql_files | xargs -0 git --literal-pathspecs add --
+            xargs -0 sqlfluff fix -- < "$SQL_LIST" || sql_die "sqlfluff fix"
+            restage_sql_list
         fi
+        rm -rf "$SQL_LIST_DIR"
         info "Detected SQL changes — running sqlfluff lint..."
         sqlfluff lint . || die "sqlfluff lint"
         export SQLFLUFF_EXECUTED=1
