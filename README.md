@@ -277,7 +277,7 @@ installs nothing itself and each tool must be on `PATH`:
 | `VALIDATE_TYPESCRIPT_ES` | `eslint` (via `run-eslint`) | `*.ts/tsx/js/jsx` (skips if no eslint config) |
 | `VALIDATE_XML` (full) | `xmllint` | `*.xml` |
 | `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` (via `run-psscriptanalyzer`) | `*.ps1/psm1/psd1` |
-| `VALIDATE_BATS` | `bats` (via `run-bats`, runs the whole `test/` suite) | Any staged shell script (including `test/test_helper.bash`) or `src/.pre-commit-config.yaml`, when `test/` holds a `*.bats` file (see `_bats_file_qualifies` in `src/scripts/run-bats` for the full rule) |
+| `VALIDATE_BATS` | `bats` (via `run-bats`, runs only the `test/` files the staged files affect; see below) | Any staged shell script (including `test/test_helper.bash`) or `src/.pre-commit-config.yaml`, when `test/` holds a `*.bats` file (see `_bats_file_qualifies` in `src/scripts/run-bats` for the full rule) |
 | `VALIDATE_SQLFLUFF` | None | Handled by dedicated SQL check |
 | `VALIDATE_CLOUDFORMATION` | None | Handled by dedicated CFN check |
 
@@ -292,6 +292,24 @@ The bats hook has no file filter: pre-commit passes it every staged text file
 and `run-bats` decides whether to run the suite. In a repository without bats
 tests it therefore shows `Passed` rather than `Skipped`, because it runs and
 exits at once without invoking `bats`.
+
+`run-bats` runs only the bats files the qualifying staged files affect (see
+`_bats_map_file` in `src/scripts/run-bats`):
+
+- a staged `test/**/*.bats` file runs itself;
+- a staged script `X` runs `test/<X without extension>.bats` if it exists,
+  plus every `.bats` file under `test/` that mentions `X`'s basename (so a
+  test naming its repo-relative path also matches);
+- any other file under `test/` (such as `test/test_helper.bash`),
+  `src/.pre-commit-config.yaml`, a `.bats` file outside `test/`, a deleted
+  `.bats` file, a file outside the repository, or a script no test mentions
+  runs the whole `test/` suite instead.
+
+Files that do not qualify (for example `README.md`) are ignored. Set
+`RUN_BATS_FULL=1` to always run the whole suite. `run-bats --all-files` and
+`run-bats` with no arguments also run the whole suite. `pre-commit run
+--all-files` passes every tracked text file rather than the flag, so every
+tracked `test/` bats file is still run.
 
 **Additional security checks** (not part of the Super-linter `VALIDATE_*` set, added independently; tool must be on PATH):
 
@@ -382,7 +400,7 @@ system package manager rather than `pre-commit autoupdate`.
 | `scripts/run-stylelint` | Wrapper for stylelint; skips silently if no `package.json` |
 | `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer; runs per-file via pwsh |
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
-| `scripts/run-bats` | Wrapper for bats, runs the complete `test/` suite when a staged file qualifies (see `VALIDATE_BATS` above) |
+| `scripts/run-bats` | Wrapper for bats, runs the `test/` files affected by the qualifying staged files, or the complete suite when they cannot be narrowed down or `RUN_BATS_FULL=1` is set (see `VALIDATE_BATS` above) |
 | `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |
 | `scripts/run-formatter` | Applies `dotnet format` to staged `.cs` files and then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) to staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what it changes |
 
