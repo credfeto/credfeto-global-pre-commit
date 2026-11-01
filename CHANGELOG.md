@@ -184,6 +184,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - README: dependency tables and notes corrected to match the install scripts, cscleanup documented as a local dotnet tool, Node.js/nvm notes clarified, and em dashes removed
 - cscleanup is now installed as a local dotnet tool in the $HOME manifest instead of a global tool, and check-setup's install hint gives the local install command
 - lib/common.sh die and the new warn helper write to stderr; status output uses the info and success helpers
+- run-bats runs only the bats tests affected by staged files in commit mode - #276
 
 ### Deprecated
 ### Removed
