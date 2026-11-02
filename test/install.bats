@@ -313,11 +313,15 @@ system_config_has_hooks_path() {
 
 @test "system install runs no chmod +x when every listed file is already executable" {
     local _chmod_log="${BATS_TEST_TMPDIR}/chmod.log"
+    # Created empty so the no-match check below does not depend on some other
+    # chmod call having written the log.
+    : > "${_chmod_log}"
 
     run_system_install FAKE_CHMOD_LOG="${_chmod_log}" FAKE_CHMOD_FAIL=1
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ "$(grep -c -- ' +x ' "${_chmod_log}")" -eq 0 ]
+    # Exit 1 is no match; a missing or unreadable log exits 2 and fails.
+    run -1 grep -q -- ' +x ' "${_chmod_log}"
     system_config_has_hooks_path
 }
 
@@ -432,23 +436,31 @@ add_fake_composite_action_lint() {
 
 @test "system install installs nothing when go has no composite-action-lint" {
     local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    # Created empty so the no-match check below does not depend on some other
+    # sudo call having written the log.
+    : > "${_sudo_log}"
 
     run_system_install FAKE_SUDO_LOG="${_sudo_log}"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    run ! grep -q '^install ' "${_sudo_log}"
+    # Exit 1 is no match; a missing or unreadable log exits 2 and fails.
+    run -1 grep -q '^install ' "${_sudo_log}"
     [ -z "$(ls -A "${SYSTEM_BIN_DIR_TEST_OVERRIDE}")" ]
 }
 
 @test "system install installs nothing and succeeds when go is missing" {
     local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    # Created empty so the no-match check below does not depend on some other
+    # sudo call having written the log.
+    : > "${_sudo_log}"
     add_fake_composite_action_lint
 
     run_system_install FAKE_SUDO_LOG="${_sudo_log}" PATH="$(path_without_go)"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     system_config_has_hooks_path
-    run ! grep -q '^install ' "${_sudo_log}"
+    # Exit 1 is no match; a missing or unreadable log exits 2 and fails.
+    run -1 grep -q '^install ' "${_sudo_log}"
     [ -z "$(ls -A "${SYSTEM_BIN_DIR_TEST_OVERRIDE}")" ]
 }
 
