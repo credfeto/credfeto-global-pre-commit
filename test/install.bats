@@ -143,15 +143,23 @@ EOF
 # fake fail without exporting into its own shell.
 run_system_install() {
     umask 027
-    run env HOME="${BATS_TEST_TMPDIR}/home" PATH="${FAKE_BIN}:${TEST_PATH}" \
-        OS_RELEASE_TEST_OVERRIDE="${FAKE_OS_RELEASE}" "$@" "${STAGE}/install" --system
+    run_installer --system "$@"
 }
 
 # run_user_install [NAME=value ...]
 # As run_system_install, without --system.
 run_user_install() {
+    run_installer "" "$@"
+}
+
+# run_installer FLAG [NAME=value ...]
+# Runs the staged install in the fake environment, passing FLAG when it is
+# not empty.
+run_installer() {
+    local _flag="$1"
+    shift
     run env HOME="${BATS_TEST_TMPDIR}/home" PATH="${FAKE_BIN}:${TEST_PATH}" \
-        OS_RELEASE_TEST_OVERRIDE="${FAKE_OS_RELEASE}" "$@" "${STAGE}/install"
+        OS_RELEASE_TEST_OVERRIDE="${FAKE_OS_RELEASE}" "$@" "${STAGE}/install" ${_flag:+"${_flag}"}
 }
 
 # Writes the stand-in system config with the given content and mode.
