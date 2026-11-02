@@ -65,7 +65,7 @@ EOF
     chmod +x "${FAKE_BIN}/dotnet"
     # The installed-tool check pipes `dotnet tool list` through awk, which the
     # fakes-only PATH would otherwise hide.
-    ln -s "$(command -v awk)" "${FAKE_BIN}/awk"
+    link_host_tool awk "${FAKE_BIN}"
 }
 
 # write_present_fake <command>
