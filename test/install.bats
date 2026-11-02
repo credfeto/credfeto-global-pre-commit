@@ -452,14 +452,18 @@ add_fake_composite_action_lint() {
     [ -z "$(ls -A "${SYSTEM_BIN_DIR_TEST_OVERRIDE}")" ]
 }
 
-@test "system install dies naming composite-action-lint when the sudo install fails" {
+@test "system install warns naming composite-action-lint and carries on to check-setup when the sudo install fails" {
+    local _check_setup_marker="${BATS_TEST_TMPDIR}/check-setup.ran"
     add_fake_composite_action_lint
+    printf '#!/bin/sh\n: > "%s"\n' "${_check_setup_marker}" > "${STAGE}/check-setup"
 
     run_system_install FAKE_SUDO_FAIL_COMMAND=install
 
-    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
-    [[ "${output}" == *"Failed to install ${FAKE_GOPATH}/bin/composite-action-lint into ${SYSTEM_BIN_DIR_TEST_OVERRIDE}"* ]]
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"warning: Failed to install ${FAKE_GOPATH}/bin/composite-action-lint into ${SYSTEM_BIN_DIR_TEST_OVERRIDE}"* ]]
     [ ! -e "${SYSTEM_BIN_DIR_TEST_OVERRIDE}/composite-action-lint" ]
+    system_config_has_hooks_path
+    [ -e "${_check_setup_marker}" ]
 }
 
 @test "system install skips the dependency step on an unrecognised distro" {
