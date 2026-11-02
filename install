@@ -62,9 +62,12 @@ fi
 # ── Make everything executable ────────────────────────────────────────────────
 # A root-owned --system copy is normally executable already, so only files the
 # caller cannot execute are touched, and a --system install retries as root
-# when the caller is not allowed to change one.
+# when the caller is not allowed to change one. A listed file missing from the
+# checkout dies first, because the --system chmod hides its error and the sudo
+# retry would otherwise report it as a permission failure.
 make_executable() {
     for _file in "$@"; do
+        [ -e "$_file" ] || die "$_file is missing from the checkout"
         if [ -x "$_file" ]; then
             continue
         fi
