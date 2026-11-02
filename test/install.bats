@@ -382,7 +382,7 @@ path_without_go() {
         [ "$(basename "${_tool}")" = go ] || ln -s "${_tool}" "${_dir}/"
     done
     for _tool in cat cut dirname grep install ln mkdir stat tr true; do
-        ln -s "$(type -P "${_tool}")" "${_dir}/${_tool}"
+        link_host_tool "${_tool}" "${_dir}" || return 1
     done
     printf '%s' "${_dir}"
 }
@@ -455,7 +455,11 @@ add_fake_composite_action_lint() {
     : > "${_sudo_log}"
     add_fake_composite_action_lint
 
-    run_system_install FAKE_SUDO_LOG="${_sudo_log}" PATH="$(path_without_go)"
+    # Assigned on its own so a missing host tool fails the test here; inside
+    # the run_system_install arguments its exit status would be ignored.
+    _path_without_go="$(path_without_go)"
+
+    run_system_install FAKE_SUDO_LOG="${_sudo_log}" PATH="${_path_without_go}"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     system_config_has_hooks_path
