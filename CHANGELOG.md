@@ -146,7 +146,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - pre-commit: fail the hook when re-staging sqlfluff fixes (git diff/git add) fails instead of committing unfixed SQL (#257)
 - Pre-commit dotnet install-location check accepts a symlinked /usr/share/dotnet (#284)
 - Bats test helper resolves a symlinked /usr/share/dotnet when choosing the expected dotnet path, and the PowerShell tests check for dotnet on TEST_PATH
-- TBD - to be finalized after review
+- install --system now works from a read-only, root-owned copy: only files that are not already executable are made executable (retrying with sudo), no per-user run-* wrapper links are created because the shared hook puts the scripts on PATH for every user, and composite-action-lint is copied into /usr/local/bin so every user can run it (#280)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
