@@ -102,6 +102,7 @@ release_temp_removed() {
     run_binary_install
 
     [ "${status}" -eq 0 ]
+    local _expected
     _expected="-m 0755 $(download_dir)/download /usr/local/bin/fake-release-tool"
     [ "$(cat "${FAKE_INSTALL_ARGS}")" = "${_expected}" ]
     grep -Fxq "install ${_expected}" "${FAKE_SUDO_LOG}"
@@ -115,6 +116,7 @@ release_temp_removed() {
     run_archive_install
 
     [ "${status}" -eq 0 ]
+    local _expected
     _expected="-m 0755 $(download_dir)/extracted/fake-release-tool /usr/local/bin/fake-release-tool"
     [ "$(cat "${FAKE_INSTALL_ARGS}")" = "${_expected}" ]
     grep -Fxq "install ${_expected}" "${FAKE_SUDO_LOG}"
@@ -137,6 +139,7 @@ release_temp_removed() {
 
 @test "archive release install dies and removes the temp dir when the extraction directory cannot be created" {
     make_release_archive
+    local _real_mkdir
     _real_mkdir="$(command -v mkdir)"
     cat > "${FAKE_BIN}/mkdir" <<EOF
 #!/bin/sh

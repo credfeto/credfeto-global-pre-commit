@@ -58,6 +58,7 @@ cscleanup_line() {
 
 @test "check-setup reports cscleanup installed as a local tool in the HOME manifest" {
     run_check_setup FAKE_LOCAL_CSCLEANUP=1
+    local _line
     _line="$(cscleanup_line)"
 
     [[ "${_line}" == *"v1.2.3"* ]] \
@@ -68,6 +69,7 @@ cscleanup_line() {
 
 @test "check-setup reports cscleanup installed when it is only a global tool" {
     run_check_setup FAKE_GLOBAL_CSCLEANUP=1
+    local _line
     _line="$(cscleanup_line)"
 
     [[ "${_line}" == *"v9.9.9"* ]] \
@@ -78,6 +80,7 @@ cscleanup_line() {
 
 @test "check-setup gives the local-install hint when cscleanup is neither a local nor a global tool" {
     run_check_setup
+    local _line
     _line="$(cscleanup_line)"
 
     [[ "${_line}" == *"not installed"*"dotnet tool install Credfeto.DotNet.Repo.Formatter"* ]] \

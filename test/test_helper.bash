@@ -100,6 +100,7 @@ _run_once() {
 # _run_once_value <value_file> <command...>
 _run_once_value() {
     local _value_file="$1"
+    local _value
     shift
     _run_once "${_value_file}.done" "$@" || return 1
     IFS= read -r _value < "${_value_file}" || return 1

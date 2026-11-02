@@ -29,6 +29,7 @@ setup() {
 
     cp "${REPO_DIR}/install" "${STAGE}/install"
     cp -R "${REPO_DIR}/src" "${STAGE}/src"
+    local _stub
     for _stub in check-setup acceptance-test; do
         printf '#!/bin/sh\nexit 0\n' > "${STAGE}/${_stub}"
         chmod +x "${STAGE}/${_stub}"
@@ -547,6 +548,7 @@ non_comment_lines() {
 }
 
 @test "install-deps-arch never invokes an AUR helper or makepkg" {
+    local _code
     _code="$(non_comment_lines "${REPO_DIR}/install-deps-arch")"
 
     [ -n "${_code}" ]
