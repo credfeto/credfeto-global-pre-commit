@@ -6,7 +6,9 @@
 # runs git as the user. Only read bits are added, so other mode bits an admin
 # chose are kept. Only listed files the caller cannot already execute are
 # chmodded, a --system install retrying a refused chmod as root, so a
-# root-owned copy installs without one. Also guards that install-deps-arch
+# root-owned copy installs without one. A --system install links no wrappers
+# into the user's bin directory and copies composite-action-lint into the
+# system bin directory, while a per-user install links both. Also guards that install-deps-arch
 # never calls an AUR helper or makepkg, since everything it installs comes
 # from pacman repos or releases.
 #
@@ -81,8 +83,10 @@ system_config_unreadable() {
     printf "fatal: unable to access '%s': Permission denied\n" "$FAKE_SYSTEM_GITCONFIG" >&2
 }
 case "$*" in
-    "config --global --get core.hooksPath")
+    "config --global --get core.hooksPath" | "config --system --get core.hooksPath")
         exit 1
+        ;;
+    "config --global core.hooksPath "*)
         ;;
     "config --get user.name")
         ! system_config_unreadable || exit 128
@@ -111,6 +115,23 @@ case "$*" in
 esac
 EOF
     chmod +x "${FAKE_BIN}/git"
+
+    # Stands in for the host's go, which is often on TEST_PATH, so no test
+    # depends on the host's Go bin directory. Its GOPATH has no tools until a
+    # test adds one.
+    export FAKE_GOPATH="${BATS_TEST_TMPDIR}/gopath"
+    mkdir -p "${FAKE_GOPATH}/bin"
+    cat > "${FAKE_BIN}/go" <<'EOF'
+#!/bin/sh
+[ "$*" = "env GOPATH" ] || exit 2
+printf '%s\n' "$FAKE_GOPATH"
+EOF
+    chmod +x "${FAKE_BIN}/go"
+
+    # Every install sees this, so a --system install never writes into the
+    # real /usr/local/bin.
+    export SYSTEM_BIN_DIR_TEST_OVERRIDE="${BATS_TEST_TMPDIR}/system-bin"
+    mkdir -p "${SYSTEM_BIN_DIR_TEST_OVERRIDE}"
 
     FAKE_OS_RELEASE="${BATS_TEST_TMPDIR}/os-release"
     printf 'ID=arch\n' > "${FAKE_OS_RELEASE}"
@@ -337,6 +358,102 @@ system_config_has_hooks_path() {
     [[ "${output}" != *"even with sudo"* ]]
     [ ! -e "${_sudo_log}" ]
     [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+WRAPPER_LINKS="run-eslint run-stylelint run-psscriptanalyzer run-bats run-pylint"
+
+# Prints a PATH holding the fakes and only the host tools the installer and
+# its stubs need, so go is missing even when the host keeps it in /usr/bin.
+path_without_go() {
+    local _dir="${BATS_TEST_TMPDIR}/no-go-bin"
+    local _tool
+    mkdir -p "${_dir}"
+    for _tool in "${FAKE_BIN}"/*; do
+        [ "$(basename "${_tool}")" = go ] || ln -s "${_tool}" "${_dir}/"
+    done
+    for _tool in cat cut dirname grep install ln mkdir stat tr true; do
+        ln -s "$(type -P "${_tool}")" "${_dir}/${_tool}"
+    done
+    printf '%s' "${_dir}"
+}
+
+add_fake_composite_action_lint() {
+    printf '#!/bin/sh\nexit 0\n' > "${FAKE_GOPATH}/bin/composite-action-lint"
+    chmod 0700 "${FAKE_GOPATH}/bin/composite-action-lint"
+}
+
+@test "system install links no wrappers into the user's bin directory" {
+    run_system_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    for _link in ${WRAPPER_LINKS}; do
+        [ ! -e "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}" ]
+        [ ! -L "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}" ]
+    done
+}
+
+@test "per-user install links the wrappers into the user's bin directory" {
+    run_user_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    for _link in ${WRAPPER_LINKS}; do
+        [ "$(readlink "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}")" = "${STAGE}/src/scripts/${_link}" ]
+    done
+}
+
+@test "per-user install links composite-action-lint into the user's bin directory" {
+    add_fake_composite_action_lint
+
+    run_user_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "$(readlink "${BATS_TEST_TMPDIR}/home/.local/bin/composite-action-lint")" = "${FAKE_GOPATH}/bin/composite-action-lint" ]
+}
+
+@test "system install copies composite-action-lint into the system bin directory with mode 0755" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    local _target="${SYSTEM_BIN_DIR_TEST_OVERRIDE}/composite-action-lint"
+    add_fake_composite_action_lint
+
+    run_system_install FAKE_SUDO_LOG="${_sudo_log}"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    grep -Fxq "install -m 0755 ${FAKE_GOPATH}/bin/composite-action-lint ${_target}" "${_sudo_log}"
+    [ ! -L "${_target}" ]
+    [ "$(stat -c %a "${_target}")" = "755" ]
+    [ ! -e "${BATS_TEST_TMPDIR}/home/.local/bin/composite-action-lint" ]
+}
+
+@test "system install installs nothing when go has no composite-action-lint" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+
+    run_system_install FAKE_SUDO_LOG="${_sudo_log}"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    run ! grep -q '^install ' "${_sudo_log}"
+    [ -z "$(ls -A "${SYSTEM_BIN_DIR_TEST_OVERRIDE}")" ]
+}
+
+@test "system install installs nothing and succeeds when go is missing" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    add_fake_composite_action_lint
+
+    run_system_install FAKE_SUDO_LOG="${_sudo_log}" PATH="$(path_without_go)"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    system_config_has_hooks_path
+    run ! grep -q '^install ' "${_sudo_log}"
+    [ -z "$(ls -A "${SYSTEM_BIN_DIR_TEST_OVERRIDE}")" ]
+}
+
+@test "system install dies naming composite-action-lint when the sudo install fails" {
+    add_fake_composite_action_lint
+
+    run_system_install FAKE_SUDO_FAIL_COMMAND=install
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Failed to install ${FAKE_GOPATH}/bin/composite-action-lint into ${SYSTEM_BIN_DIR_TEST_OVERRIDE}"* ]]
+    [ ! -e "${SYSTEM_BIN_DIR_TEST_OVERRIDE}/composite-action-lint" ]
 }
 
 @test "system install skips the dependency step on an unrecognised distro" {
