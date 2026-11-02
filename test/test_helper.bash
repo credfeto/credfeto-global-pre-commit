@@ -236,8 +236,10 @@ is_untracked() {
     [ -z "$(git -C "$1" ls-files -- "$2")" ]
 }
 
-# Runs the hook in the given repo directory using TEST_PATH (dotnet stripped
-# when not at the expected location).  Sets $status and $output via bats run.
+# run_in_hook_env <repo> <path> [NAME=value ...] <command> [arg ...]
+# Runs <command> from <repo> with PATH set to <path> and any NAME=value
+# assignments added, in the environment every run_hook* helper gives the hook.
+# Sets $status and $output via bats run.
 # bats 1.10.x (Ubuntu 24.04) does not export bats_readlinkf from its wrapper
 # when invoked from a sh parent process; without it bats-exec-file cannot locate
 # bats-exec-test.  Defining and exporting bats_readlinkf here ensures the inner
@@ -247,16 +249,21 @@ is_untracked() {
 # fresh tmpdir hierarchy rather than re-using the outer suite directories.
 # HOOKS_REPO_DIR_TEST_OVERRIDE, if exported by the caller (see freshness.bats), is
 # inherited by bash -c like any other exported variable, and this applies to every
-# run_hook* helper in this file, not just this one.
-run_hook() {
-    local _repo="$1"
+# run_hook* helper in this file.
+run_in_hook_env() {
     run bash -c '
         cd "$1"
         unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
-        env PATH="$2" sh "$3"
-    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+        env PATH="$2" "${@:3}"
+    ' _ "$@"
+}
+
+# Runs the hook in the given repo directory using TEST_PATH (dotnet stripped
+# when not at the expected location).  Sets $status and $output via bats run.
+run_hook() {
+    run_in_hook_env "$1" "${TEST_PATH}" sh "${HOOK}"
 }
 
 # Runs the hook with IS_AMEND_TEST_OVERRIDE=1, simulating the invoking git
@@ -264,55 +271,25 @@ run_hook() {
 # the real signal is the parent process's own command line, which this
 # bash -c/sh invocation can never make look like `git commit --amend`).
 run_hook_as_amend() {
-    local _repo="$1"
-    run bash -c '
-        cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        env PATH="$2" IS_AMEND_TEST_OVERRIDE=1 sh "$3"
-    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+    run_in_hook_env "$1" "${TEST_PATH}" IS_AMEND_TEST_OVERRIDE=1 sh "${HOOK}"
 }
 
 # Runs the hook in --all-files (baseline) mode using TEST_PATH.
 # Sets $status and $output via bats run.
 run_hook_all_files() {
-    local _repo="$1"
-    run bash -c '
-        cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        env PATH="$2" sh "$3" --all-files
-    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+    run_in_hook_env "$1" "${TEST_PATH}" sh "${HOOK}" --all-files
 }
 
 # Runs the hook with a custom PATH and XDG_CACHE_HOME (for freshness tests).
 # run_hook_env <repo> <path> <xdg_cache_home>
 run_hook_env() {
-    local _repo="$1"
-    local _path="$2"
-    local _cache="$3"
-    run bash -c '
-        cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        env PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
-    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
+    run_in_hook_env "$1" "$2" XDG_CACHE_HOME="$3" sh "${HOOK}"
 }
 
 # Runs the hook in the given repo directory with HOOKS_REPO_DIR_TEST_OVERRIDE set to the
 # repo path so that the hook's protected-file guard fires as if this were the hooks repo.
 run_hook_as_hooks_repo() {
-    local _repo="$1"
-    run bash -c '
-        cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        env PATH="$2" HOOKS_REPO_DIR_TEST_OVERRIDE="$1" sh "$3"
-    ' _ "${_repo}" "${TEST_PATH}" "${HOOK}"
+    run_in_hook_env "$1" "${TEST_PATH}" HOOKS_REPO_DIR_TEST_OVERRIDE="$1" sh "${HOOK}"
 }
 
 # Returns true (0) when running inside any OCI container (Docker, Podman, etc.).
@@ -325,16 +302,7 @@ in_container() {
 # Runs the hook as an AI agent (CLAUDECODE=1) with a custom PATH and XDG_CACHE_HOME.
 # run_hook_env_as_agent <repo> <path> <xdg_cache_home>
 run_hook_env_as_agent() {
-    local _repo="$1"
-    local _path="$2"
-    local _cache="$3"
-    run bash -c '
-        cd "$1"
-        unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        env CLAUDECODE=1 PATH="$2" XDG_CACHE_HOME="$3" sh "$4"
-    ' _ "${_repo}" "${_path}" "${_cache}" "${HOOK}"
+    run_in_hook_env "$1" "$2" CLAUDECODE=1 XDG_CACHE_HOME="$3" sh "${HOOK}"
 }
 
 # run_isolated <cwd> <path> <command>...
@@ -344,7 +312,7 @@ run_hook_env_as_agent() {
 # every fixture repo resolves to the same $XDG_RUNTIME_DIR/_local/repo/bats,
 # which run-bats wipes before each run; under bats --jobs that would delete a
 # concurrent test's tmpdir, while the /tmp fallback gives each run its own
-# bats-run-XXXXXX. It is unset only here, not in run_hook, because gpg and
+# bats-run-XXXXXX. It is unset only here, not in run_in_hook_env, because gpg and
 # other tools the remaining tests reach rely on it.
 run_isolated() {
     run bash -c '
