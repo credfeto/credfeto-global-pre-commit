@@ -19,14 +19,15 @@ This file covers the rules for adding and removing scripts in this repository.
 
 ## Invariant to maintain
 
-The file list of the `make_executable` call in `install` must exactly match the set of files that:
+The file list of the `make_executable` call in `install` must contain exactly these files, and nothing else:
 
-- Exist in `src/scripts/`, **and**
-- Are executable entry points (called by a hook or directly by a user).
+- Every executable entry point in `src/scripts/` (a script called by a hook or directly by a user), listed as `$SCRIPTS_DIR/<name>`.
+- Every hook in `src/hooks/` (`pre-commit` and `pre-push`), listed as `$HOOKS_DIR/<name>`.
+- Every root-level executable other than `install` itself (e.g. `check-setup`, `acceptance-test`), listed as `$REPO_DIR/<name>`. `install` is left out because it is the script that applies the list.
 
-Root-level executables (e.g. `acceptance-test`) use `$REPO_DIR/<name>` in that list rather than `$SCRIPTS_DIR/<name>`, because they do not go in `src/scripts/`.
+`install` is the only step that guarantees these files carry the executable bit, so a file missing from the list fails to run wherever that bit was lost, and a file in the list that is not an entry point (such as a sourced library under `src/scripts/lib/`) is made executable for no reason.
 
-Before committing any change that adds, removes, or renames a script, verify the `make_executable` file list is consistent with the actual contents of `src/scripts/`.
+Before committing any change that adds, removes, or renames a script, hook or root-level executable, verify the `make_executable` file list is consistent with the actual contents of `src/scripts/`, `src/hooks/` and the repository root.
 
 ## `language: system` wrappers invoked by bare name need no PATH symlink
 
