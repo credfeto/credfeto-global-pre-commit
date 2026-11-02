@@ -108,6 +108,7 @@ calls() {
     ARCH_UNAME=x86_64 run_helper install_release_linters
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _expected
     _expected="release hadolint hadolint/hadolint hadolint-linux-x86_64 BIN
 release dotenv-linter dotenv-linter/dotenv-linter dotenv-linter-linux-UARCH.tar.gz
 release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.gz"
@@ -118,6 +119,7 @@ release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.
     ARCH_UNAME=aarch64 run_helper install_release_linters
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _expected
     _expected="release hadolint hadolint/hadolint hadolint-linux-arm64 BIN
 release dotenv-linter dotenv-linter/dotenv-linter dotenv-linter-linux-UARCH.tar.gz
 release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.gz"
@@ -216,6 +218,7 @@ release trufflehog trufflesecurity/trufflehog trufflehog_VERSION_linux_ARCH.tar.
     run_helper install_cscleanup
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _expected
     _expected="dotnet new tool-manifest (in ${FAKE_HOME})
 dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
     [ "$(calls)" = "${_expected}" ]
