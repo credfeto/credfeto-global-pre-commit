@@ -4,13 +4,11 @@
 # umask is restrictive, because sudo keeps that umask, and one an earlier
 # install left unreadable must be repaired before the dependency step, which
 # runs git as the user. Only read bits are added, so other mode bits an admin
-# chose are kept. Only listed files the caller cannot already execute are
-# chmodded, a --system install retrying a refused chmod as root, so a
-# root-owned copy installs without one. A --system install links no wrappers
-# into the user's bin directory and copies composite-action-lint into the
-# system bin directory, while a per-user install links both. Also guards that install-deps-arch
-# never calls an AUR helper or makepkg, since everything it installs comes
-# from pacman repos or releases.
+# chose are kept. Also covers making the listed files executable (with a sudo
+# retry for --system) and linking or copying the wrappers and
+# composite-action-lint for each install mode, and guards that
+# install-deps-arch never calls an AUR helper or makepkg, since everything it
+# installs comes from pacman repos or releases.
 #
 # Never runs the real installer or real sudo: install is copied into a temp
 # tree with stub dependency/setup scripts, and sudo and git are fakes on PATH
