@@ -144,7 +144,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - hadolint now installs on aarch64 (install-deps-debian requested a release asset that does not exist; hadolint publishes arm64)
 - pre-commit: only run sqlfluff fix on staged SQL files in commit mode and fail if a staged SQL file has unstaged changes, so unstaged SQL is no longer swept into the commit (#258)
 - pre-commit: fail the hook when re-staging sqlfluff fixes (git diff/git add) fails instead of committing unfixed SQL (#257)
-- TBD - to be finalized after review
+- install --system now works from a read-only, root-owned copy: only files that are not already executable are made executable (retrying with sudo), no per-user run-* wrapper links are created because the shared hook puts the scripts on PATH for every user, and composite-action-lint is copied into /usr/local/bin so every user can run it (#280)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
