@@ -162,6 +162,19 @@ fail_test() {
     return 1
 }
 
+# link_host_tool <tool> <dir>
+# Symlinks the host's <tool> into <dir>, so a test PATH limited to fakes can
+# still run it. Fails naming the tool when the host has none, rather than
+# leaving a dangling link that surfaces later as a misleading
+# command-not-found.
+link_host_tool() {
+    local _real
+    _real="$(type -P "$1")" \
+        || fail_test "link_host_tool: host tool '$1' not found on PATH" \
+        || return 1
+    ln -s "${_real}" "$2/$1"
+}
+
 # write_fake_sudo <dir>
 # Writes a fake sudo to "<dir>/sudo" that never elevates. It appends each
 # call's arguments to $FAKE_SUDO_LOG when that is set, fails when the command
