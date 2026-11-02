@@ -146,6 +146,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - pre-commit: fail the hook when re-staging sqlfluff fixes (git diff/git add) fails instead of committing unfixed SQL (#257)
 - Pre-commit dotnet install-location check accepts a symlinked /usr/share/dotnet (#284)
 - Bats test helper resolves a symlinked /usr/share/dotnet when choosing the expected dotnet path, and the PowerShell tests check for dotnet on TEST_PATH
+- TBD - to be finalized after review
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
