@@ -355,6 +355,26 @@ system_config_has_hooks_path() {
     [ ! -e "${FAKE_SYSTEM_GITCONFIG}" ]
 }
 
+@test "system install dies naming a listed file missing from the checkout without any chmod or sudo" {
+    local _chmod_log="${BATS_TEST_TMPDIR}/chmod.log"
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    local _script="${STAGE}/src/scripts/run-bats"
+    # Created empty so the emptiness check below does not depend on some other
+    # chmod call having written the log.
+    : > "${_chmod_log}"
+    rm "${_script}"
+
+    run_system_install FAKE_CHMOD_LOG="${_chmod_log}" FAKE_SUDO_LOG="${_sudo_log}" FAKE_CHMOD_FAIL=1
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"${_script} is missing from the checkout"* ]]
+    [[ "${output}" != *"even with sudo"* ]]
+    [ ! -s "${_chmod_log}" ]
+    [ ! -e "${_sudo_log}" ]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+    [ ! -e "${FAKE_SYSTEM_GITCONFIG}" ]
+}
+
 @test "per-user install dies naming the file when chmod +x fails" {
     local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
     local _script="${STAGE}/src/scripts/run-bats"
