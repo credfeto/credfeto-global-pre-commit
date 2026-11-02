@@ -23,6 +23,14 @@ info() {
     fi
 }
 
+warn() {
+    if [ -t 2 ]; then
+        printf '\n\033[33m→\033[0m warning: %s\n' "$*" >&2
+    else
+        printf '\n→ warning: %s\n' "$*" >&2
+    fi
+}
+
 SYSTEM_INSTALL=false
 for _arg in "$@"; do
     case "$_arg" in
@@ -213,12 +221,14 @@ SYSTEM_BIN_DIR="${SYSTEM_BIN_DIR_TEST_OVERRIDE:-/usr/local/bin}"
 # Go tools are installed to $GOPATH/bin, which may not be on PATH. A --system
 # install copies them rather than linking, because a link into the installing
 # user's home directory is unreadable for every other user.
+# A failed copy only warns, because composite-action-lint is optional and
+# core.hooksPath is already set: check-setup then reports it missing.
 if command -v go > /dev/null 2>&1; then
     _gobin="$(go env GOPATH)/bin"
     if [ -f "$_gobin/composite-action-lint" ]; then
         if $SYSTEM_INSTALL; then
             sudo install -m 0755 "$_gobin/composite-action-lint" "$SYSTEM_BIN_DIR/composite-action-lint" \
-                || die "Failed to install $_gobin/composite-action-lint into $SYSTEM_BIN_DIR"
+                || warn "Failed to install $_gobin/composite-action-lint into $SYSTEM_BIN_DIR"
         else
             ln -sf "$_gobin/composite-action-lint" "$HOME/.local/bin/composite-action-lint"
         fi
