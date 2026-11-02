@@ -109,12 +109,6 @@ SHELLCHECK_CONFIG='repos:
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf '# Test\n' > "${T}/README.md"
     git -C "${T}" add .pre-commit-config.yaml README.md
-    run bash -c '
-        cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        env PATH="$2" sh "$3" --bogus
-    ' _ "${T}" "${TEST_PATH}" "${HOOK}"
+    run_in_hook_env "${T}" "${TEST_PATH}" sh "${HOOK}" --bogus
     [ "${status}" -eq 1 ]
 }

@@ -84,15 +84,7 @@ make_committed_props_repo() {
 run_git_commit() {
     local _repo="$1"
     shift
-    run bash -c '
-        cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
-        bats_readlinkf() { readlink -f "$1"; }
-        export -f bats_readlinkf
-        _path="$2"
-        shift 2
-        env PATH="${_path}" git commit --quiet "$@"
-    ' _ "${_repo}" "${TEST_PATH}" "$@"
+    run_in_hook_env "${_repo}" "${TEST_PATH}" git commit --quiet "$@"
 }
 
 # Succeeds when HEAD's commit records the deletion of src/FunFair.props.
