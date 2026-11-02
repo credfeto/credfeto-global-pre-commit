@@ -4,8 +4,11 @@
 # umask is restrictive, because sudo keeps that umask, and one an earlier
 # install left unreadable must be repaired before the dependency step, which
 # runs git as the user. Only read bits are added, so other mode bits an admin
-# chose are kept. Also guards that install-deps-arch never calls an AUR helper
-# or makepkg, since everything it installs comes from pacman repos or releases.
+# chose are kept. Only listed files the caller cannot already execute are
+# chmodded, a --system install retrying a refused chmod as root, so a
+# root-owned copy installs without one. Also guards that install-deps-arch
+# never calls an AUR helper or makepkg, since everything it installs comes
+# from pacman repos or releases.
 #
 # Never runs the real installer or real sudo: install is copied into a temp
 # tree with stub dependency/setup scripts, and sudo and git are fakes on PATH
@@ -43,6 +46,24 @@ EOF
     done
 
     write_fake_sudo "${FAKE_BIN}"
+
+    # Logs each call, marked root when run through the fake sudo, and with
+    # FAKE_CHMOD_FAIL set refuses every non-root call as chmod does on a file
+    # the caller does not own; otherwise hands over to the real chmod.
+    export FAKE_REAL_CHMOD
+    FAKE_REAL_CHMOD="$(command -v chmod)"
+    cat > "${FAKE_BIN}/chmod" <<'EOF'
+#!/bin/sh
+_caller=user
+[ -z "${FAKE_SUDO_AS_ROOT:-}" ] || _caller=root
+[ -z "${FAKE_CHMOD_LOG:-}" ] || printf '%s %s\n' "$_caller" "$*" >> "$FAKE_CHMOD_LOG"
+if [ -n "${FAKE_CHMOD_FAIL:-}" ] && [ -z "${FAKE_SUDO_AS_ROOT:-}" ]; then
+    printf "chmod: changing permissions of '%s': Operation not permitted\n" "$2" >&2
+    exit 1
+fi
+exec "$FAKE_REAL_CHMOD" "$@"
+EOF
+    chmod +x "${FAKE_BIN}/chmod"
 
     # Models how real git reads the system config: the test user owns the
     # stand-in, so a non-root read is judged by its "other" read bit, as it
@@ -105,6 +126,13 @@ run_system_install() {
     umask 027
     run env HOME="${BATS_TEST_TMPDIR}/home" PATH="${FAKE_BIN}:${TEST_PATH}" \
         OS_RELEASE_TEST_OVERRIDE="${FAKE_OS_RELEASE}" "$@" "${STAGE}/install" --system
+}
+
+# run_user_install [NAME=value ...]
+# As run_system_install, without --system.
+run_user_install() {
+    run env HOME="${BATS_TEST_TMPDIR}/home" PATH="${FAKE_BIN}:${TEST_PATH}" \
+        OS_RELEASE_TEST_OVERRIDE="${FAKE_OS_RELEASE}" "$@" "${STAGE}/install"
 }
 
 # Writes the stand-in system config with the given content and mode.
@@ -254,6 +282,61 @@ system_config_has_hooks_path() {
 
     [ "${status}" -eq 1 ]
     [[ "${output}" == *"Failed to make the system git config (${FAKE_SYSTEM_GITCONFIG}) world-readable"* ]]
+}
+
+@test "system install runs no chmod +x when every listed file is already executable" {
+    local _chmod_log="${BATS_TEST_TMPDIR}/chmod.log"
+
+    run_system_install FAKE_CHMOD_LOG="${_chmod_log}" FAKE_CHMOD_FAIL=1
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "$(grep -c -- ' +x ' "${_chmod_log}")" -eq 0 ]
+    system_config_has_hooks_path
+}
+
+@test "system install retries a refused chmod +x with sudo and goes on to set core.hooksPath" {
+    local _chmod_log="${BATS_TEST_TMPDIR}/chmod.log"
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    local _script="${STAGE}/src/scripts/run-bats"
+    chmod -x "${_script}"
+
+    run_system_install FAKE_CHMOD_LOG="${_chmod_log}" FAKE_SUDO_LOG="${_sudo_log}" FAKE_CHMOD_FAIL=1
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    grep -Fxq "user +x ${_script}" "${_chmod_log}"
+    grep -Fxq "root +x ${_script}" "${_chmod_log}"
+    grep -Fxq "chmod +x ${_script}" "${_sudo_log}"
+    # Only the file that was not executable is changed.
+    [ "$(grep -c -- ' +x ' "${_chmod_log}")" -eq 2 ]
+    [ -x "${_script}" ]
+    system_config_has_hooks_path
+}
+
+@test "system install dies naming the file when the sudo chmod +x retry fails" {
+    local _script="${STAGE}/src/scripts/run-bats"
+    chmod -x "${_script}"
+
+    run_system_install FAKE_CHMOD_FAIL=1 FAKE_SUDO_FAIL_COMMAND=chmod
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Failed to make ${_script} executable, even with sudo"* ]]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+    [ ! -e "${FAKE_SYSTEM_GITCONFIG}" ]
+}
+
+@test "per-user install dies naming the file when chmod +x fails" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    local _script="${STAGE}/src/scripts/run-bats"
+    chmod -x "${_script}"
+
+    run_user_install FAKE_CHMOD_FAIL=1 FAKE_SUDO_LOG="${_sudo_log}"
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Operation not permitted"* ]]
+    [[ "${output}" == *"Failed to make ${_script} executable"* ]]
+    [[ "${output}" != *"even with sudo"* ]]
+    [ ! -e "${_sudo_log}" ]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
 }
 
 @test "system install skips the dependency step on an unrecognised distro" {

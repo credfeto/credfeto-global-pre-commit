@@ -52,7 +52,25 @@ Remove it first with: git config --${_other_scope} --unset core.hooksPath"
 fi
 
 # ── Make everything executable ────────────────────────────────────────────────
-chmod +x \
+# A root-owned --system copy is normally executable already, so only files the
+# caller cannot execute are touched, and a --system install retries as root
+# when the caller is not allowed to change one.
+make_executable() {
+    for _file in "$@"; do
+        if [ -x "$_file" ]; then
+            continue
+        fi
+        if $SYSTEM_INSTALL; then
+            chmod +x "$_file" 2> /dev/null \
+                || sudo chmod +x "$_file" \
+                || die "Failed to make $_file executable, even with sudo"
+        else
+            chmod +x "$_file" || die "Failed to make $_file executable"
+        fi
+    done
+}
+
+make_executable \
     "$HOOKS_DIR/pre-commit" \
     "$HOOKS_DIR/pre-push" \
     "$SCRIPTS_DIR/buildtest" \
