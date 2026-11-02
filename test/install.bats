@@ -416,6 +416,7 @@ add_fake_composite_action_lint() {
     run_system_install
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _link
     for _link in ${WRAPPER_LINKS}; do
         [ ! -e "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}" ]
         [ ! -L "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}" ]
@@ -426,6 +427,7 @@ add_fake_composite_action_lint() {
     run_user_install
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _link
     for _link in ${WRAPPER_LINKS}; do
         [ "$(readlink "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}")" = "${STAGE}/src/scripts/${_link}" ]
     done
@@ -476,7 +478,9 @@ add_fake_composite_action_lint() {
     add_fake_composite_action_lint
 
     # Assigned on its own so a missing host tool fails the test here; inside
-    # the run_system_install arguments its exit status would be ignored.
+    # the run_system_install arguments its exit status would be ignored, and
+    # declared separately because `local` would mask that status too.
+    local _path_without_go
     _path_without_go="$(path_without_go)"
 
     run_system_install FAKE_SUDO_LOG="${_sudo_log}" PATH="${_path_without_go}"
