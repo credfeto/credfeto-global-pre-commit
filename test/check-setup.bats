@@ -43,7 +43,7 @@ FAKE
 
     local _util
     for _util in awk dirname grep head; do
-        ln -s "$(command -v "${_util}")" "${FAKE_BIN}/${_util}"
+        link_host_tool "${_util}" "${FAKE_BIN}" || return 1
     done
 }
 
