@@ -83,29 +83,40 @@ tree_usable_by_all() {
     [ -z "$(find "$1" \( -type d ! -perm -o=rx \) -o \( -type f ! -perm -o=r \) -o \( -type f -perm -u=x ! -perm -o=x \) 2>/dev/null | head -1)" ]
 }
 
-# Succeeds when pipx-installable tool $1 (from package $2) is usable by every
-# user this install serves. Otherwise fails, printing why when it is installed
-# but unusable by other users, and nothing when it is not installed at all.
-# Without --system only this user matters, so being on PATH is enough.
-pipx_tool_usable() {
-    has "$1" || return 1
+# Succeeds when tool $1 (from package $3) is usable by every user this install
+# serves. Otherwise fails, printing why when it is installed but unusable by
+# other users, and nothing when it is not installed at all. Without --system
+# only this user matters, so being on PATH is enough.
+#   $2 = function printing the shared install command for package $3
+#   $4 = directory holding one subdirectory per installed package; a command
+#        that resolves into one must find that whole subdirectory usable
+#   $5... = directories every user must be able to enter to reach $4's contents
+shared_tool_usable() {
+    _cmd=$1 _hint_fn=$2 _package=$3 _packages_root=$4
+    shift 4
+    has "$_cmd" || return 1
     $SYSTEM_INSTALL || return 0
-    if ! _shared=$(shared_command_path "$1"); then
-        printf 'installed only under %s, so other users cannot run it; run: %s' "$HOME" "$(shared_pipx_hint "$2")"
+    if ! _shared=$(shared_command_path "$_cmd"); then
+        printf 'installed only under %s, so other users cannot run it; run: %s' "$HOME" "$("$_hint_fn" "$_package")"
         return 1
     fi
     case "$_shared" in
-        "$PIPX_SHARED_HOME"/venvs/*)
-            _venv="${_shared#"$PIPX_SHARED_HOME"/venvs/}"
-            _venv="$PIPX_SHARED_HOME/venvs/${_venv%%/*}"
-            if ! dirs_searchable_by_all "$PIPX_SHARED_HOME" "$PIPX_SHARED_HOME/venvs" \
-                || ! tree_usable_by_all "$_venv"; then
-                printf '%s is not readable and executable by other users, so they cannot run it; run: %s' "$_venv" "$(shared_pipx_hint "$2")"
+        "$_packages_root"/*)
+            _package_dir="${_shared#"$_packages_root"/}"
+            _package_dir="$_packages_root/${_package_dir%%/*}"
+            if ! dirs_searchable_by_all "$@" || ! tree_usable_by_all "$_package_dir"; then
+                printf '%s is not readable and executable by other users, so they cannot run it; run: %s' "$_package_dir" "$("$_hint_fn" "$_package")"
                 return 1
             fi
             ;;
     esac
     return 0
+}
+
+# shared_tool_usable for pipx-installable tool $1 from package $2.
+pipx_tool_usable() {
+    shared_tool_usable "$1" shared_pipx_hint "$2" "$PIPX_SHARED_HOME/venvs" \
+        "$PIPX_SHARED_HOME" "$PIPX_SHARED_HOME/venvs"
 }
 
 # Test-only override, so the suite never inspects the real shared npm prefix.
@@ -121,25 +132,12 @@ shared_npm_hint() {
 
 SHARED_NODE_HINT="./install-deps-arch or ./install-deps-debian (installs node and npm for every user)"
 
-# Succeeds when npm-installable tool $1 (from package $2) is usable by every
-# user this install serves, including the node its `#!/usr/bin/env node`
-# entry point runs on. Otherwise fails as pipx_tool_usable does.
+# shared_tool_usable for npm-installable tool $1 from package $2, which also
+# needs the node its `#!/usr/bin/env node` entry point runs on to be usable.
 npm_tool_usable() {
-    has "$1" || return 1
+    shared_tool_usable "$1" shared_npm_hint "$2" "$NPM_SHARED_MODULES" \
+        "$NPM_SHARED_PREFIX/lib" "$NPM_SHARED_MODULES" || return 1
     $SYSTEM_INSTALL || return 0
-    if ! _shared=$(shared_command_path "$1"); then
-        printf 'installed only under %s, so other users cannot run it; run: %s' "$HOME" "$(shared_npm_hint "$2")"
-        return 1
-    fi
-    case "$_shared" in
-        "$NPM_SHARED_MODULES/$2"/*)
-            if ! dirs_searchable_by_all "$NPM_SHARED_PREFIX/lib" "$NPM_SHARED_MODULES" \
-                || ! tree_usable_by_all "$NPM_SHARED_MODULES/$2"; then
-                printf '%s is not readable and executable by other users, so they cannot run it; run: %s' "$NPM_SHARED_MODULES/$2" "$(shared_npm_hint "$2")"
-                return 1
-            fi
-            ;;
-    esac
     if ! _node=$(shared_command_path node); then
         printf 'needs node, which is not installed outside %s, so other users cannot run it; run: %s' "$HOME" "$SHARED_NODE_HINT"
         return 1
