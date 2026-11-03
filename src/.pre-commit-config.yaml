@@ -303,19 +303,29 @@ repos:
         files: \.(ps1|psm1|psd1)$
 
       # ── VALIDATE_BATS — run bats test suite ──────────────────────────────
-      # run-bats executes bats --recursive test/ from the repo root.
-      # _bats_file_qualifies in src/scripts/run-bats is the single definition
-      # of which files trigger the suite. No files: filter: the staged text
+      # run-bats runs only the bats files the passed-in files can affect, and
+      # falls back to bats --recursive test/ when a file cannot be narrowed
+      # down. In src/scripts/run-bats, _bats_file_qualifies is the single
+      # definition of which files count (shell scripts, by extension, shebang
+      # or shellcheck shell= directive, and src/.pre-commit-config.yaml);
+      # every other file is ignored, and run-bats exits 0 when none qualify.
+      # _bats_map_file maps a test/*.bats file to itself and a script to
+      # test/<name>.bats plus every .bats file under test/ that mentions its
+      # basename. The whole suite runs for a test helper or other non-.bats
+      # file under test/, src/.pre-commit-config.yaml, a .bats file outside
+      # test/ or no longer present, a file outside the repo, a script no test
+      # mentions, or when RUN_BATS_FULL=1. No files: filter: the staged text
       # files are passed in and run-bats decides, so a change to a script or
-      # test helper runs the suite, not only a change to a .bats file.
+      # test helper still runs tests, not only a change to a .bats file.
       # Safe as the machine-wide config: run-bats exits 0 at once when test/
       # holds no *.bats file (the hook shows Passed rather than Skipped).
       # A missing bats fails every commit, deliberately, as bats is a
       # required tool. require_serial: true stops pre-commit splitting the
-      # file list across parallel workers, so a normal commit gets one suite
+      # file list across parallel workers, so a normal commit gets one bats
       # run. pre-commit still chunks a very long file list by argument
-      # length, so a very large --all-files run can run the suite once per
-      # chunk that holds a qualifying file.
+      # length, so a very large --all-files run calls run-bats once per
+      # chunk: each chunk is narrowed on its own, and a chunk holding no
+      # qualifying file runs nothing.
       - id: bats
         name: run bats tests
         entry: run-bats
