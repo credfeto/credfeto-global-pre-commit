@@ -1,7 +1,8 @@
 #!/bin/bash
 # Install dependencies for credfeto-global-pre-commit on Debian / Ubuntu.
 # Safe to run multiple times: apt is idempotent, binary installs are skipped
-# if the tool is already present, and pipx upgrades already-installed packages.
+# if the tool is already present, Node.js is skipped when the shared copy is
+# already the latest LTS, and pipx and npm upgrade already-installed packages.
 #
 # Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
@@ -38,14 +39,11 @@ sudo apt-get install -y \
     gpg \
     pipx \
     parallel \
+    xz-utils \
     || die "apt-get install failed"
 
 # Ensure pipx is available even on older systems that lack the apt package.
-if ! has pipx; then
-    sudo apt-get install -y python3-pip || die "failed to install python3-pip"
-    python3 -m pip install --user pipx || die "failed to install pipx via pip"
-    python3 -m pipx ensurepath || die "pipx ensurepath failed"
-fi
+ensure_root_pipx
 
 # ansible-lint is in Ubuntu 22.04+ repos; fall back to pipx on older releases.
 info "ansible-lint"
@@ -75,9 +73,6 @@ for pkg in pre-commit-hooks sqlfluff cfn-lint; do
     pipx_ensure "$pkg"
 done
 
-# Ensure ~/.local/bin is on PATH for this session (pipx installs land there).
-export PATH="$HOME/.local/bin:$PATH"
-
 # ── nvm ───────────────────────────────────────────────────────────────────────
 # nvm is not in apt; use the official install script.
 info "nvm"
@@ -89,6 +84,11 @@ else
 fi
 
 # ── npm global packages ───────────────────────────────────────────────────────
+# The apt nodejs is older than the npm linters' engines allow, so node comes
+# from nodejs.org, shared in /usr/local like the linters, rather than from an
+# nvm Node under $HOME, which other users cannot run.
+info "Node.js (shared)"
+install_shared_node
 install_npm_globals
 
 # ── Binary releases from GitHub ───────────────────────────────────────────────
@@ -121,5 +121,4 @@ case "$ARCH_UNAME" in
 esac
 
 success "All dependencies installed."
-info "You may need to start a new shell for PATH changes (pipx) to take effect."
 info "Run ./install to register the global git hooks."

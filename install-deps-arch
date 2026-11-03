@@ -1,8 +1,8 @@
 #!/bin/bash
 # Install dependencies for credfeto-global-pre-commit on Arch Linux.
 # Safe to run multiple times: pacman --needed skips already-installed packages,
-# the release and go installs skip tools already present, and pipx upgrades
-# packages already installed.
+# the release and go installs skip tools already present, and pipx and npm
+# upgrade packages already installed.
 #
 # Expects Chaotic-AUR to be configured as a pacman repo, because some of the
 # pacman packages below are only available from it.
@@ -45,6 +45,8 @@ sudo pacman -S --needed --noconfirm \
     parallel \
     curl \
     nvm \
+    nodejs \
+    npm \
     sqlfluff \
     python-cfn-lint \
     || die "pacman install failed"
@@ -69,11 +71,9 @@ info "pipx packages"
 pipx_ensure pre-commit-hooks
 
 # ── npm global packages ───────────────────────────────────────────────────────
-# The pacman nvm package does not load nvm into the shell, so node stays off
-# PATH until the user sources its init script.
-install_npm_globals "add this to your shell rc (e.g. ~/.bashrc), open a new shell,
-  install a Node.js version with nvm, then re-run this script:
-  source /usr/share/nvm/init-nvm.sh"
+# Installed shared, on the pacman nodejs, rather than into an nvm Node under
+# $HOME, which other users cannot run.
+install_npm_globals
 
 # ── PowerShell ────────────────────────────────────────────────────────────────
 install_pwsh

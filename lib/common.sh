@@ -49,10 +49,46 @@ detect_arch() {
     esac
 }
 
-# Install a pipx package if missing, upgrade if already present.
+# Installs pipx with pip when it is not on PATH (e.g. no apt package for it).
+# Installed for root, because pipx_ensure runs it through sudo, which cannot
+# see a copy in this user's ~/.local/bin.
+ensure_root_pipx() {
+    has pipx && return 0
+    sudo apt-get install -y python3-pip || die "failed to install python3-pip"
+    sudo python3 -m pip install pipx || die "failed to install pipx via pip"
+}
+
+# Makes the tree at $1 readable by every user, and its directories and
+# owner-executable files usable by them, as root.
+make_tree_readable_by_all() {
+    sudo chmod -R a+rX "$1" || die "failed to make $1 readable by all users"
+}
+
+PIPX_SHARED_HOME=/opt/pipx
+
+# Runs pipx as root against the shared pipx home, so its apps land in
+# /usr/local/bin for every account rather than in the caller's ~/.local/bin,
+# which the system-wide hooks cannot reach for other users. The env-var form is
+# used rather than `pipx --global`, which older pipx releases lack. sudo keeps
+# the caller's umask, so 022 is set first or the venvs would be created
+# unreadable by other users.
+shared_pipx() {
+    (
+        umask 022
+        sudo env PIPX_HOME="$PIPX_SHARED_HOME" PIPX_BIN_DIR=/usr/local/bin \
+            PIPX_MAN_DIR=/usr/local/share/man pipx "$@"
+    )
+}
+
+# Install a pipx package into the shared pipx home if missing, upgrade if
+# already present. A per-user copy is never a reason to skip, because only the
+# shared copy is usable by every account. The shared home is then made
+# readable by all, which also repairs venvs an earlier run created under a
+# restrictive umask; pipx keeps an existing venv's modes.
 #   $1 = package name
 pipx_ensure() {
-    pipx install "$1" 2>/dev/null || pipx upgrade "$1" || die "failed to install $1"
+    shared_pipx install "$1" 2>/dev/null || shared_pipx upgrade "$1" || die "failed to install $1"
+    make_tree_readable_by_all "$PIPX_SHARED_HOME"
 }
 
 # Fetch the latest release tag from GitHub and install the binary to /usr/local/bin.
@@ -124,27 +160,75 @@ install_release_linters() {
         && install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
 }
 
-# Skipped when node is not on PATH, because nvm only puts it there once a
-# version has been installed and activated. The optional nvm setup hint is
-# added to the skip message only when NVM_DIR is unset: nvm's init scripts
-# export it, so an unset NVM_DIR means nvm itself was never loaded, rather than
-# just having no Node.js version active.
+# Test-only override, so the suite never inspects the real /usr/local.
+NPM_SHARED_PREFIX="${NPM_SHARED_PREFIX_TEST_OVERRIDE:-/usr/local}"
+
+# Installs the latest Node.js LTS from the official nodejs.org tarball into the
+# shared prefix, giving every account node and npm in /usr/local/bin. Used
+# where the distro nodejs is older than the npm linters' engines allow. Skips
+# when the shared copy is already that version and a real file; a copy
+# elsewhere on PATH, or a link there into nvm's under $HOME, is never a reason
+# to skip, because other users cannot run it, and the extraction replaces such
+# a link. tar runs as root, which would otherwise keep the archive's owner and
+# modes, so --no-same-owner and --no-same-permissions leave root ownership and
+# umask 022 modes instead.
+# Requires: detect_arch called beforehand (sets ARCH_UNAME).
+install_shared_node() {
+    local node_arch
+    case "$ARCH_UNAME" in
+        x86_64)  node_arch=x64 ;;
+        aarch64) node_arch=arm64 ;;
+    esac
+    local ver
+    ver=$(curl -sSf https://nodejs.org/dist/index.json \
+        | python3 -c "import json,sys; print(next(r['version'] for r in json.load(sys.stdin) if r['lts']))") \
+        || die "failed to fetch the latest Node.js LTS version"
+    if [ ! -L "$NPM_SHARED_PREFIX/bin/node" ] \
+        && [ "$("$NPM_SHARED_PREFIX/bin/node" --version 2>/dev/null)" = "$ver" ]; then
+        info "Node.js $ver already installed in $NPM_SHARED_PREFIX, skipping"
+        return
+    fi
+    local dist="node-${ver}-linux-${node_arch}"
+    info "Installing Node.js $ver into $NPM_SHARED_PREFIX..."
+    (
+        umask 022
+        tmp=$(mktemp -d) || die "failed to create a temporary directory for Node.js"
+        trap 'rm -rf "$tmp"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        curl -sSfL "https://nodejs.org/dist/$ver/$dist.tar.xz" -o "$tmp/$dist.tar.xz" \
+            || die "failed to download Node.js $ver"
+        curl -sSfL "https://nodejs.org/dist/$ver/SHASUMS256.txt" -o "$tmp/SHASUMS256.txt" \
+            || die "failed to download the Node.js $ver checksums"
+        (cd "$tmp" && grep " $dist.tar.xz\$" SHASUMS256.txt | sha256sum -c -) \
+            || die "Node.js $ver download failed checksum verification"
+        sudo tar -xJf "$tmp/$dist.tar.xz" -C "$NPM_SHARED_PREFIX" --strip-components=1 \
+            --no-same-owner --no-same-permissions \
+            "$dist/bin" "$dist/include" "$dist/lib" "$dist/share" \
+            || die "failed to install Node.js $ver"
+    ) || exit
+}
+
+# Installs the npm linters as root into the shared prefix, so their commands
+# land in /usr/local/bin for every account rather than in the caller's nvm
+# Node under $HOME, which the system-wide hooks cannot reach for other users.
+# --prefix fixes where they land whichever npm sudo finds, and a per-user copy
+# is never a reason to skip. --engine-strict makes a node too old for them
+# fail the install rather than only warn. Package scripts are not run, because
+# they would run as root. sudo keeps the caller's umask, so 022 is set first,
+# and the packages are then made readable by all, which also repairs a tree an
+# earlier run created under a restrictive umask.
 install_npm_globals() {
-    local nvm_setup_hint="${1:-}"
-    local skip_message="node not active in nvm, skipping npm global packages"
-    if has node; then
-        info "npm global packages"
-        npm install --global \
+    info "npm global packages (shared, $NPM_SHARED_PREFIX)"
+    (
+        umask 022
+        sudo npm install --global --prefix "$NPM_SHARED_PREFIX" --engine-strict --ignore-scripts \
             markdownlint-cli \
             eslint \
             stylelint \
-            stylelint-config-standard \
-            || die "npm global install failed"
-    elif [ -n "$nvm_setup_hint" ] && [ -z "${NVM_DIR:-}" ]; then
-        info "$skip_message; nvm is not loaded, so $nvm_setup_hint"
-    else
-        info "$skip_message"
-    fi
+            stylelint-config-standard
+    ) || die "npm global install failed"
+    make_tree_readable_by_all "$NPM_SHARED_PREFIX/lib/node_modules"
 }
 
 # composite-action-lint has no package or binary release, so it needs go.

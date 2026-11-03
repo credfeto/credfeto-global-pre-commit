@@ -43,6 +43,27 @@ A per-user install links the `run-*` wrappers already listed in the *Symlink sys
 
 `composite-action-lint` is not shipped in `src/scripts/`, so the hook cannot put it on `PATH`. A per-user install symlinks it from the Go bin directory into `$HOME/.local/bin`; a `--system` install must copy it (with `sudo install -m 0755`) into the system bin directory (`/usr/local/bin` by default) rather than symlink it, because a link into the installing user's home directory is unreadable for every other user.
 
+## pipx packages are always installed shared (MANDATORY)
+
+`install-deps-arch` and `install-deps-debian` install every pipx package through `pipx_ensure` in `lib/common.sh`, which runs pipx as root with `PIPX_HOME=/opt/pipx`, `PIPX_BIN_DIR=/usr/local/bin` and `PIPX_MAN_DIR=/usr/local/share/man` under `umask 022`, then runs `chmod -R a+rX /opt/pipx`. The rules that follow from this:
+
+1. Never call `pipx install` / `pipx upgrade` directly from an install script, and never install a pipx package into the caller's `~/.local/bin`, because a `--system` install serves every account and a per-user copy is unreachable for all of them but one.
+2. Use the env-var form, not `pipx --global`, because older pipx releases (e.g. the one in Ubuntu 22.04) do not support `--global`.
+3. Never skip the shared install because the command is already on `PATH`, because that copy may be a per-user one; re-running the script must leave every account able to run the tool with no manual step.
+4. Keep the `umask 022` and the `chmod -R a+rX`, because sudo keeps the caller's umask and pipx keeps an existing venv's modes, so only the `chmod` repairs a venv an earlier run created unreadable.
+5. When adding a pipx-installed tool, check it in `check-setup` with `pipx_tool_usable` rather than `has`, so `check-setup --system` fails a copy that only resolves under `$HOME`, or a shared venv other users cannot read, and gives the shared install command (`shared_pipx_hint`) as the fix.
+
+## npm packages are always installed shared (MANDATORY)
+
+`install-deps-arch` and `install-deps-debian` install every npm package through `install_npm_globals` in `lib/common.sh`, which runs `npm install --global --prefix /usr/local --engine-strict --ignore-scripts` as root under `umask 022`, then runs `chmod -R a+rX /usr/local/lib/node_modules`. The Node.js runtime is shared too: the `pacman` `nodejs` and `npm` packages on Arch, and on Debian / Ubuntu the latest nodejs.org LTS tarball, checksum-verified and unpacked into `/usr/local` by `install_shared_node`. The rules that follow from this:
+
+1. Never call `npm install --global` directly from an install script, and never install an npm package into the caller's nvm Node under `$HOME`, because a `--system` install serves every account and a per-user copy is unreachable for all of them but one.
+2. Never gate the shared install on `node` being on `PATH`, or skip it because the command already resolves, because that copy may be nvm's under `$HOME`; re-running the script must leave every account able to run the tool with no manual step.
+3. Keep the `umask 022` and the `chmod -R a+rX`, because sudo keeps the caller's umask, so only the `chmod` repairs a tree an earlier run created unreadable.
+4. Keep `--ignore-scripts`, because package scripts would run as root, and `--engine-strict`, so a node too old for a package fails the install instead of leaving a linter that only fails when a hook runs it.
+5. Never take Node.js from the Debian / Ubuntu `nodejs` package, because it is older than the linters' `engines` allow, and never link to an nvm Node, because other users cannot read `$HOME`.
+6. When adding an npm-installed tool, check it in `check-setup` with `npm_tool_usable` rather than `has`, so `check-setup --system` fails a copy that only resolves under `$HOME`, a shared package other users cannot read, or a tool whose `node` other users cannot run, and gives the shared install command (`shared_npm_hint`) as the fix.
+
 ## Purpose of `--all-files` mode (MANDATORY)
 
 `hooks/pre-commit --all-files` (invoked via the `pre-commit-check` wrapper) exists to detect, and wherever a fixer script exists for the problem silently *fix*, every issue across the whole tracked tree, with no commit in progress. It is the supported way to get a trustworthy "everything in the repo is clean" signal, e.g. as the mandatory pre-work baseline check before starting a task (see `ai/global/git.instructions.md`'s "Pre-Work Baseline Check"). A false "all checks passed" result from `--all-files` defeats that purpose for every consumer of this repo's hooks, so this is treated as a correctness bug, not a nice-to-have, whenever it happens.
