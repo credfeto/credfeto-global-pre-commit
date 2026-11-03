@@ -101,12 +101,15 @@ cd ~/.global-hooks
 ./install
 ```
 
+To install for every user on the machine instead, run `./install --system` (needs `sudo`).
+
 `install` will:
 
-1. Make all hook and script files executable
+1. Make all hook and script files executable, changing only files that are not executable already, so it also works from a read-only, root-owned copy
 2. Auto-detect the platform and run `install-deps-arch` or `install-deps-debian`
-3. Run `git config --global core.hooksPath <hooks-dir>`
-4. Symlink the `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, `run-bats`, and `run-pylint` wrapper scripts to `~/.local/bin` (not required for the hook, which puts `src/scripts` on `PATH` itself)
+3. Run `git config --global core.hooksPath <hooks-dir>` (`git config --system` with `--system`)
+4. Symlink the `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, `run-bats`, and `run-pylint` wrapper scripts to `~/.local/bin` (not required for the hook, which puts `src/scripts` on `PATH` itself), and symlink `composite-action-lint` there too if it is built in the Go bin directory (`$(go env GOPATH)/bin`)
+   - With `--system`: no `run-*` links are created, and `composite-action-lint` is copied into `/usr/local/bin` with mode `0755` rather than linked, so every user can run it
 5. Validate the `.pre-commit-config.yaml` schema (no managed environments to install, because every hook is `language: system`)
 6. Print a status table of every check showing which are active and which need a system tool installed
 

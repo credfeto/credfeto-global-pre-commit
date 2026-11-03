@@ -23,6 +23,14 @@ info() {
     fi
 }
 
+warn() {
+    if [ -t 2 ]; then
+        printf '\n\033[33m→\033[0m warning: %s\n' "$*" >&2
+    else
+        printf '\n→ warning: %s\n' "$*" >&2
+    fi
+}
+
 SYSTEM_INSTALL=false
 for _arg in "$@"; do
     case "$_arg" in
@@ -52,7 +60,28 @@ Remove it first with: git config --${_other_scope} --unset core.hooksPath"
 fi
 
 # ── Make everything executable ────────────────────────────────────────────────
-chmod +x \
+# A root-owned --system copy is normally executable already, so only files the
+# caller cannot execute are touched, and a --system install retries as root
+# when the caller is not allowed to change one. A listed file missing from the
+# checkout dies first, because the --system chmod hides its error and the sudo
+# retry would otherwise report it as a permission failure.
+make_executable() {
+    for _file in "$@"; do
+        [ -e "$_file" ] || die "$_file is missing from the checkout"
+        if [ -x "$_file" ]; then
+            continue
+        fi
+        if $SYSTEM_INSTALL; then
+            chmod +x "$_file" 2> /dev/null \
+                || sudo chmod +x "$_file" \
+                || die "Failed to make $_file executable, even with sudo"
+        else
+            chmod +x "$_file" || die "Failed to make $_file executable"
+        fi
+    done
+}
+
+make_executable \
     "$HOOKS_DIR/pre-commit" \
     "$HOOKS_DIR/pre-push" \
     "$SCRIPTS_DIR/buildtest" \
@@ -176,19 +205,37 @@ else
 fi
 
 # ── Symlink system-hook wrappers onto PATH ────────────────────────────────────
-# These are called by pre-commit's local system hooks.
-mkdir -p "$HOME/.local/bin"
-ln -sf "$SCRIPTS_DIR/run-eslint"           "$HOME/.local/bin/run-eslint"
-ln -sf "$SCRIPTS_DIR/run-stylelint"        "$HOME/.local/bin/run-stylelint"
-ln -sf "$SCRIPTS_DIR/run-psscriptanalyzer" "$HOME/.local/bin/run-psscriptanalyzer"
-ln -sf "$SCRIPTS_DIR/run-bats"             "$HOME/.local/bin/run-bats"
-ln -sf "$SCRIPTS_DIR/run-pylint"           "$HOME/.local/bin/run-pylint"
+# These are called by pre-commit's local system hooks. A --system install
+# links none of them, because the shared hook puts its own src/scripts on
+# PATH for every user.
+if ! $SYSTEM_INSTALL; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$SCRIPTS_DIR/run-eslint"           "$HOME/.local/bin/run-eslint"
+    ln -sf "$SCRIPTS_DIR/run-stylelint"        "$HOME/.local/bin/run-stylelint"
+    ln -sf "$SCRIPTS_DIR/run-psscriptanalyzer" "$HOME/.local/bin/run-psscriptanalyzer"
+    ln -sf "$SCRIPTS_DIR/run-bats"             "$HOME/.local/bin/run-bats"
+    ln -sf "$SCRIPTS_DIR/run-pylint"           "$HOME/.local/bin/run-pylint"
+fi
 
-# Go tools are installed to $GOPATH/bin, which may not be on PATH, so symlink them.
+# SYSTEM_BIN_DIR_TEST_OVERRIDE is a test-only escape hatch, so the tests never
+# write into the real /usr/local/bin; never set it in production shells.
+SYSTEM_BIN_DIR="${SYSTEM_BIN_DIR_TEST_OVERRIDE:-/usr/local/bin}"
+
+# Go tools are installed to $GOPATH/bin, which may not be on PATH. A --system
+# install copies them rather than linking, because a link into the installing
+# user's home directory is unreadable for every other user.
+# A failed copy only warns, because composite-action-lint is optional and
+# core.hooksPath is already set: check-setup then reports it missing.
 if command -v go > /dev/null 2>&1; then
     _gobin="$(go env GOPATH)/bin"
-    [ -f "$_gobin/composite-action-lint" ] && \
-        ln -sf "$_gobin/composite-action-lint" "$HOME/.local/bin/composite-action-lint"
+    if [ -f "$_gobin/composite-action-lint" ]; then
+        if $SYSTEM_INSTALL; then
+            sudo install -m 0755 "$_gobin/composite-action-lint" "$SYSTEM_BIN_DIR/composite-action-lint" \
+                || warn "Failed to install $_gobin/composite-action-lint into $SYSTEM_BIN_DIR"
+        else
+            ln -sf "$_gobin/composite-action-lint" "$HOME/.local/bin/composite-action-lint"
+        fi
+    fi
 fi
 
 # ── Report setup status ───────────────────────────────────────────────────────

@@ -8,25 +8,26 @@ This file covers the rules for adding and removing scripts in this repository.
 ## When adding a new script
 
 1. Create the script in the `src/scripts/` directory.
-2. Add `"$SCRIPTS_DIR/<script-name>" \` to the `chmod +x` block in `install`.
+2. Add `"$SCRIPTS_DIR/<script-name>" \` to the file list of the `make_executable` call in `install`.
 3. If the hook calls it, verify it's referenced correctly in `src/hooks/pre-commit` or `src/hooks/pre-push`.
 
 ## When removing or inlining a script
 
 1. Delete (or inline) the script file from `src/scripts/`.
-2. Remove the corresponding `"$SCRIPTS_DIR/<script-name>" \` line from the `chmod +x` block in `install`.
+2. Remove the corresponding `"$SCRIPTS_DIR/<script-name>" \` line from the file list of the `make_executable` call in `install`.
 3. Remove or update any calls to it in `src/hooks/pre-commit` or `src/hooks/pre-push`.
 
 ## Invariant to maintain
 
-The `chmod +x` list in `install` must exactly match the set of files that:
+The file list of the `make_executable` call in `install` must contain exactly these files, and nothing else:
 
-- Exist in `src/scripts/`, **and**
-- Are executable entry points (called by a hook or directly by a user).
+- Every executable entry point in `src/scripts/` (a script called by a hook or directly by a user), listed as `$SCRIPTS_DIR/<name>`.
+- Every hook in `src/hooks/` (`pre-commit` and `pre-push`), listed as `$HOOKS_DIR/<name>`.
+- Every root-level executable other than `install` itself (e.g. `check-setup`, `acceptance-test`), listed as `$REPO_DIR/<name>`. `install` is left out because it is the script that applies the list.
 
-Root-level executables (e.g. `acceptance-test`) use `$REPO_DIR/<name>` in the chmod block rather than `$SCRIPTS_DIR/<name>` — they do not go in `src/scripts/`.
+`install` is the only step that guarantees these files carry the executable bit, so a file missing from the list fails to run wherever that bit was lost, and a file in the list that is not an entry point (such as a sourced library under `src/scripts/lib/`) is made executable for no reason.
 
-Before committing any change that adds, removes, or renames a script, verify the `chmod +x` list is consistent with the actual contents of `src/scripts/`.
+Before committing any change that adds, removes, or renames a script, hook or root-level executable, verify the `make_executable` file list is consistent with the actual contents of `src/scripts/`, `src/hooks/` and the repository root.
 
 ## `language: system` wrappers invoked by bare name need no PATH symlink
 
@@ -34,11 +35,13 @@ Wrapper scripts referenced by a `language: system` hook in `src/.pre-commit-conf
 
 When adding a new `language: system` wrapper that is invoked by bare name (MANDATORY):
 
-1. Add it to the `chmod +x` block in `install` (see *When adding a new script*), because pre-commit can only run it if it is executable.
+1. Add it to the file list of the `make_executable` call in `install` (see *When adding a new script*), because pre-commit can only run it if it is executable.
 2. Do not add a symlink line for it to `install`, because the hook already puts it on `PATH`.
 3. Optionally add it to the consuming container images' (e.g. `credfeto-orchestrator`'s `development-full` / `development-agent`) build-time wrapper check. That check only confirms that the wrappers it names resolve; a wrapper it does not name is still reachable through `src/scripts/` on `PATH` and does not fail the image build.
 
-The `$HOME/.local/bin` links in the *Symlink system-hook wrappers onto PATH* block of `install` are legacy and not required for the hook; leave them as they are.
+A per-user install links the `run-*` wrappers already listed in the *Symlink system-hook wrappers onto PATH* block of `install` into `$HOME/.local/bin`; the hook does not need these links, which is why a new wrapper gets none (step 2 above). A `--system` install must create no wrapper links, because `src/hooks/pre-commit` prepends its own `src/scripts` to `PATH` for every user who commits through it.
+
+`composite-action-lint` is not shipped in `src/scripts/`, so the hook cannot put it on `PATH`. A per-user install symlinks it from the Go bin directory into `$HOME/.local/bin`; a `--system` install must copy it (with `sudo install -m 0755`) into the system bin directory (`/usr/local/bin` by default) rather than symlink it, because a link into the installing user's home directory is unreadable for every other user.
 
 ## Purpose of `--all-files` mode (MANDATORY)
 

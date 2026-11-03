@@ -4,8 +4,11 @@
 # umask is restrictive, because sudo keeps that umask, and one an earlier
 # install left unreadable must be repaired before the dependency step, which
 # runs git as the user. Only read bits are added, so other mode bits an admin
-# chose are kept. Also guards that install-deps-arch never calls an AUR helper
-# or makepkg, since everything it installs comes from pacman repos or releases.
+# chose are kept. Also covers making the listed files executable (with a sudo
+# retry for --system) and linking or copying the wrappers and
+# composite-action-lint for each install mode, and guards that
+# install-deps-arch never calls an AUR helper or makepkg, since everything it
+# installs comes from pacman repos or releases.
 #
 # Never runs the real installer or real sudo: install is copied into a temp
 # tree with stub dependency/setup scripts, and sudo and git are fakes on PATH
@@ -26,6 +29,7 @@ setup() {
 
     cp "${REPO_DIR}/install" "${STAGE}/install"
     cp -R "${REPO_DIR}/src" "${STAGE}/src"
+    local _stub
     for _stub in check-setup acceptance-test; do
         printf '#!/bin/sh\nexit 0\n' > "${STAGE}/${_stub}"
         chmod +x "${STAGE}/${_stub}"
@@ -44,6 +48,24 @@ EOF
 
     write_fake_sudo "${FAKE_BIN}"
 
+    # Logs each call, marked root when run through the fake sudo, and with
+    # FAKE_CHMOD_FAIL set refuses every non-root call as chmod does on a file
+    # the caller does not own; otherwise hands over to the real chmod.
+    export FAKE_REAL_CHMOD
+    FAKE_REAL_CHMOD="$(command -v chmod)"
+    cat > "${FAKE_BIN}/chmod" <<'EOF'
+#!/bin/sh
+_caller=user
+[ -z "${FAKE_SUDO_AS_ROOT:-}" ] || _caller=root
+[ -z "${FAKE_CHMOD_LOG:-}" ] || printf '%s %s\n' "$_caller" "$*" >> "$FAKE_CHMOD_LOG"
+if [ -n "${FAKE_CHMOD_FAIL:-}" ] && [ -z "${FAKE_SUDO_AS_ROOT:-}" ]; then
+    printf "chmod: changing permissions of '%s': Operation not permitted\n" "$2" >&2
+    exit 1
+fi
+exec "$FAKE_REAL_CHMOD" "$@"
+EOF
+    chmod +x "${FAKE_BIN}/chmod"
+
     # Models how real git reads the system config: the test user owns the
     # stand-in, so a non-root read is judged by its "other" read bit, as it
     # would be for a root-owned file. var GIT_CONFIG_SYSTEM prints the path
@@ -60,8 +82,10 @@ system_config_unreadable() {
     printf "fatal: unable to access '%s': Permission denied\n" "$FAKE_SYSTEM_GITCONFIG" >&2
 }
 case "$*" in
-    "config --global --get core.hooksPath")
+    "config --global --get core.hooksPath" | "config --system --get core.hooksPath")
         exit 1
+        ;;
+    "config --global core.hooksPath "*)
         ;;
     "config --get user.name")
         ! system_config_unreadable || exit 128
@@ -91,6 +115,23 @@ esac
 EOF
     chmod +x "${FAKE_BIN}/git"
 
+    # Stands in for the host's go, which is often on TEST_PATH, so no test
+    # depends on the host's Go bin directory. Its GOPATH has no tools until a
+    # test adds one.
+    export FAKE_GOPATH="${BATS_TEST_TMPDIR}/gopath"
+    mkdir -p "${FAKE_GOPATH}/bin"
+    cat > "${FAKE_BIN}/go" <<'EOF'
+#!/bin/sh
+[ "$*" = "env GOPATH" ] || exit 2
+printf '%s\n' "$FAKE_GOPATH"
+EOF
+    chmod +x "${FAKE_BIN}/go"
+
+    # Every install sees this, so a --system install never writes into the
+    # real /usr/local/bin.
+    export SYSTEM_BIN_DIR_TEST_OVERRIDE="${BATS_TEST_TMPDIR}/system-bin"
+    mkdir -p "${SYSTEM_BIN_DIR_TEST_OVERRIDE}"
+
     FAKE_OS_RELEASE="${BATS_TEST_TMPDIR}/os-release"
     printf 'ID=arch\n' > "${FAKE_OS_RELEASE}"
 
@@ -103,8 +144,23 @@ EOF
 # fake fail without exporting into its own shell.
 run_system_install() {
     umask 027
+    run_installer --system "$@"
+}
+
+# run_user_install [NAME=value ...]
+# As run_system_install, without --system.
+run_user_install() {
+    run_installer "" "$@"
+}
+
+# run_installer FLAG [NAME=value ...]
+# Runs the staged install in the fake environment, passing FLAG when it is
+# not empty.
+run_installer() {
+    local _flag="$1"
+    shift
     run env HOME="${BATS_TEST_TMPDIR}/home" PATH="${FAKE_BIN}:${TEST_PATH}" \
-        OS_RELEASE_TEST_OVERRIDE="${FAKE_OS_RELEASE}" "$@" "${STAGE}/install" --system
+        OS_RELEASE_TEST_OVERRIDE="${FAKE_OS_RELEASE}" "$@" "${STAGE}/install" ${_flag:+"${_flag}"}
 }
 
 # Writes the stand-in system config with the given content and mode.
@@ -256,6 +312,201 @@ system_config_has_hooks_path() {
     [[ "${output}" == *"Failed to make the system git config (${FAKE_SYSTEM_GITCONFIG}) world-readable"* ]]
 }
 
+@test "system install runs no chmod +x when every listed file is already executable" {
+    local _chmod_log="${BATS_TEST_TMPDIR}/chmod.log"
+    # Created empty so the no-match check below does not depend on some other
+    # chmod call having written the log.
+    : > "${_chmod_log}"
+
+    run_system_install FAKE_CHMOD_LOG="${_chmod_log}" FAKE_CHMOD_FAIL=1
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    # Exit 1 is no match; a missing or unreadable log exits 2 and fails.
+    run -1 grep -q -- ' +x ' "${_chmod_log}"
+    system_config_has_hooks_path
+}
+
+@test "system install retries a refused chmod +x with sudo and goes on to set core.hooksPath" {
+    local _chmod_log="${BATS_TEST_TMPDIR}/chmod.log"
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    local _script="${STAGE}/src/scripts/run-bats"
+    chmod -x "${_script}"
+
+    run_system_install FAKE_CHMOD_LOG="${_chmod_log}" FAKE_SUDO_LOG="${_sudo_log}" FAKE_CHMOD_FAIL=1
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    grep -Fxq "user +x ${_script}" "${_chmod_log}"
+    grep -Fxq "root +x ${_script}" "${_chmod_log}"
+    grep -Fxq "chmod +x ${_script}" "${_sudo_log}"
+    # Only the file that was not executable is changed.
+    [ "$(grep -c -- ' +x ' "${_chmod_log}")" -eq 2 ]
+    [ -x "${_script}" ]
+    system_config_has_hooks_path
+}
+
+@test "system install dies naming the file when the sudo chmod +x retry fails" {
+    local _script="${STAGE}/src/scripts/run-bats"
+    chmod -x "${_script}"
+
+    run_system_install FAKE_CHMOD_FAIL=1 FAKE_SUDO_FAIL_COMMAND=chmod
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Failed to make ${_script} executable, even with sudo"* ]]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+    [ ! -e "${FAKE_SYSTEM_GITCONFIG}" ]
+}
+
+@test "system install dies naming a listed file missing from the checkout without any chmod or sudo" {
+    local _chmod_log="${BATS_TEST_TMPDIR}/chmod.log"
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    local _script="${STAGE}/src/scripts/run-bats"
+    # Created empty so the emptiness check below does not depend on some other
+    # chmod call having written the log.
+    : > "${_chmod_log}"
+    rm "${_script}"
+
+    run_system_install FAKE_CHMOD_LOG="${_chmod_log}" FAKE_SUDO_LOG="${_sudo_log}" FAKE_CHMOD_FAIL=1
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"${_script} is missing from the checkout"* ]]
+    [[ "${output}" != *"even with sudo"* ]]
+    [ ! -s "${_chmod_log}" ]
+    [ ! -e "${_sudo_log}" ]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+    [ ! -e "${FAKE_SYSTEM_GITCONFIG}" ]
+}
+
+@test "per-user install dies naming the file when chmod +x fails" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    local _script="${STAGE}/src/scripts/run-bats"
+    chmod -x "${_script}"
+
+    run_user_install FAKE_CHMOD_FAIL=1 FAKE_SUDO_LOG="${_sudo_log}"
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Operation not permitted"* ]]
+    [[ "${output}" == *"Failed to make ${_script} executable"* ]]
+    [[ "${output}" != *"even with sudo"* ]]
+    [ ! -e "${_sudo_log}" ]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+WRAPPER_LINKS="run-eslint run-stylelint run-psscriptanalyzer run-bats run-pylint"
+
+# Prints a PATH holding the fakes and only the host tools the installer and
+# its stubs need, so go is missing even when the host keeps it in /usr/bin.
+path_without_go() {
+    local _dir="${BATS_TEST_TMPDIR}/no-go-bin"
+    local _tool
+    mkdir -p "${_dir}"
+    for _tool in "${FAKE_BIN}"/*; do
+        [ "$(basename "${_tool}")" = go ] || ln -s "${_tool}" "${_dir}/"
+    done
+    for _tool in cat cut dirname grep install ln mkdir stat tr true; do
+        link_host_tool "${_tool}" "${_dir}" || return 1
+    done
+    printf '%s' "${_dir}"
+}
+
+add_fake_composite_action_lint() {
+    printf '#!/bin/sh\nexit 0\n' > "${FAKE_GOPATH}/bin/composite-action-lint"
+    chmod 0700 "${FAKE_GOPATH}/bin/composite-action-lint"
+}
+
+@test "system install links no wrappers into the user's bin directory" {
+    run_system_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _link
+    for _link in ${WRAPPER_LINKS}; do
+        [ ! -e "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}" ]
+        [ ! -L "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}" ]
+    done
+}
+
+@test "per-user install links the wrappers into the user's bin directory" {
+    run_user_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _link
+    for _link in ${WRAPPER_LINKS}; do
+        [ "$(readlink "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}")" = "${STAGE}/src/scripts/${_link}" ]
+    done
+}
+
+@test "per-user install links composite-action-lint into the user's bin directory" {
+    add_fake_composite_action_lint
+
+    run_user_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "$(readlink "${BATS_TEST_TMPDIR}/home/.local/bin/composite-action-lint")" = "${FAKE_GOPATH}/bin/composite-action-lint" ]
+}
+
+@test "system install copies composite-action-lint into the system bin directory with mode 0755" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    local _target="${SYSTEM_BIN_DIR_TEST_OVERRIDE}/composite-action-lint"
+    add_fake_composite_action_lint
+
+    run_system_install FAKE_SUDO_LOG="${_sudo_log}"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    grep -Fxq "install -m 0755 ${FAKE_GOPATH}/bin/composite-action-lint ${_target}" "${_sudo_log}"
+    [ ! -L "${_target}" ]
+    [ "$(stat -c %a "${_target}")" = "755" ]
+    [ ! -e "${BATS_TEST_TMPDIR}/home/.local/bin/composite-action-lint" ]
+}
+
+@test "system install installs nothing when go has no composite-action-lint" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    # Created empty so the no-match check below does not depend on some other
+    # sudo call having written the log.
+    : > "${_sudo_log}"
+
+    run_system_install FAKE_SUDO_LOG="${_sudo_log}"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    # Exit 1 is no match; a missing or unreadable log exits 2 and fails.
+    run -1 grep -q '^install ' "${_sudo_log}"
+    [ -z "$(ls -A "${SYSTEM_BIN_DIR_TEST_OVERRIDE}")" ]
+}
+
+@test "system install installs nothing and succeeds when go is missing" {
+    local _sudo_log="${BATS_TEST_TMPDIR}/sudo.log"
+    # Created empty so the no-match check below does not depend on some other
+    # sudo call having written the log.
+    : > "${_sudo_log}"
+    add_fake_composite_action_lint
+
+    # Assigned on its own so a missing host tool fails the test here; inside
+    # the run_system_install arguments its exit status would be ignored, and
+    # declared separately because `local` would mask that status too.
+    local _path_without_go
+    _path_without_go="$(path_without_go)"
+
+    run_system_install FAKE_SUDO_LOG="${_sudo_log}" PATH="${_path_without_go}"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    system_config_has_hooks_path
+    # Exit 1 is no match; a missing or unreadable log exits 2 and fails.
+    run -1 grep -q '^install ' "${_sudo_log}"
+    [ -z "$(ls -A "${SYSTEM_BIN_DIR_TEST_OVERRIDE}")" ]
+}
+
+@test "system install warns naming composite-action-lint and carries on to check-setup when the sudo install fails" {
+    local _check_setup_marker="${BATS_TEST_TMPDIR}/check-setup.ran"
+    add_fake_composite_action_lint
+    printf '#!/bin/sh\n: > "%s"\n' "${_check_setup_marker}" > "${STAGE}/check-setup"
+
+    run_system_install FAKE_SUDO_FAIL_COMMAND=install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"warning: Failed to install ${FAKE_GOPATH}/bin/composite-action-lint into ${SYSTEM_BIN_DIR_TEST_OVERRIDE}"* ]]
+    [ ! -e "${SYSTEM_BIN_DIR_TEST_OVERRIDE}/composite-action-lint" ]
+    system_config_has_hooks_path
+    [ -e "${_check_setup_marker}" ]
+}
+
 @test "system install skips the dependency step on an unrecognised distro" {
     printf 'ID=fedora\n' > "${FAKE_OS_RELEASE}"
 
@@ -297,6 +548,7 @@ non_comment_lines() {
 }
 
 @test "install-deps-arch never invokes an AUR helper or makepkg" {
+    local _code
     _code="$(non_comment_lines "${REPO_DIR}/install-deps-arch")"
 
     [ -n "${_code}" ]

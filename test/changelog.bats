@@ -108,20 +108,20 @@ FAKE_DOTNET_EOF
 }
 
 # Runs check-changelog inside "$1" with the fake dotnet from "$2" prepended
-# to TEST_PATH. Sets $status and $output via bats run.
+# to TEST_PATH, passing any further arguments on to check-changelog. Sets
+# $status and $output via bats run.
 run_check_changelog() {
     local _repo="$1" _fake_bin="$2"
-    run bash -c 'cd "$1" && env PATH="$2:$3" sh "$4"' \
-        _ "${_repo}" "${_fake_bin}" "${TEST_PATH}" "${CHECK_CHANGELOG}"
+    shift 2
+    run bash -c 'cd "$1" && env PATH="$2:$3" sh "${@:4}"' \
+        _ "${_repo}" "${_fake_bin}" "${TEST_PATH}" "${CHECK_CHANGELOG}" "$@"
 }
 
 # Same as run_check_changelog, but passes --all-files: targets every tracked
 # CHANGELOG.md (git ls-files) instead of only staged ones, and runs
 # --lint --fix, staging any change (see src/scripts/check-changelog).
 run_check_changelog_all_files() {
-    local _repo="$1" _fake_bin="$2"
-    run bash -c 'cd "$1" && env PATH="$2:$3" sh "$4" --all-files' \
-        _ "${_repo}" "${_fake_bin}" "${TEST_PATH}" "${CHECK_CHANGELOG}"
+    run_check_changelog "$1" "$2" --all-files
 }
 
 setup() {
