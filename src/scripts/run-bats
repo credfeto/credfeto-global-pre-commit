@@ -113,6 +113,7 @@ _bats_map_file() {
 # An empty _bats_targets means the whole suite runs: no arguments,
 # --all-files, RUN_BATS_FULL=1, or a file that cannot be narrowed down.
 if [ "$#" -gt 0 ]; then
+    _bats_narrow=0
     if [ "$1" = "--all-files" ]; then
         # git ls-files prints repo-root-relative paths, so read them from
         # REPO_ROOT whatever the caller's cwd. -z gives each path verbatim:
@@ -122,25 +123,22 @@ if [ "$#" -gt 0 ]; then
         mapfile -d '' -t _bats_candidates < <(git ls-files -z)
     else
         _bats_candidates=("$@")
+        [ "${RUN_BATS_FULL:-}" = 1 ] || _bats_narrow=1
     fi
 
-    _bats_any_qualifies() {
-        local file
-        for file in "${_bats_candidates[@]}"; do
-            _bats_file_qualifies "$file" && return 0
-        done
-        return 1
-    }
-    _bats_any_qualifies || exit 0
-
-    if [ "$1" != "--all-files" ] && [ "${RUN_BATS_FULL:-}" != 1 ]; then
-        for _bats_file in "${_bats_candidates[@]}"; do
-            _bats_file_qualifies "$_bats_file" || continue
-            _bats_map_file "$_bats_file" && continue
-            _bats_targets=()
-            break
-        done
-    fi
+    # One pass: the first qualifying file is enough when the whole suite runs
+    # anyway, and a file that cannot be narrowed down falls back to it (that
+    # file qualified, so the suite still runs).
+    _bats_qualified=0
+    for _bats_file in "${_bats_candidates[@]}"; do
+        _bats_file_qualifies "$_bats_file" || continue
+        _bats_qualified=1
+        [ "$_bats_narrow" = 1 ] || break
+        _bats_map_file "$_bats_file" && continue
+        _bats_targets=()
+        break
+    done
+    [ "$_bats_qualified" = 1 ] || exit 0
 fi
 
 # Sweep stale bats-run dirs from /tmp: removes litter left by hard-killed
