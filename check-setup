@@ -8,7 +8,8 @@
 #   1  the config failed to validate OR one or more tools are missing
 #
 # Run standalone at any time, or automatically at the end of ./install.
-# Pass --system when the hooks were installed system-wide (cosmetic only).
+# Pass --system when the hooks were installed system-wide: the pipx-installed
+# tools must then be runnable by every user, not only from this user's $HOME.
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$REPO_DIR/src/hooks"
@@ -31,6 +32,68 @@ die() {
 }
 
 has() { command -v "$1" > /dev/null 2>&1; }
+
+# Test-only override, so the suite never inspects the real shared pipx home.
+PIPX_SHARED_HOME="${PIPX_SHARED_HOME_TEST_OVERRIDE:-/opt/pipx}"
+
+# The command install-deps-arch/-debian's pipx_ensure runs, for package $1.
+shared_pipx_hint() {
+    printf "(umask 022 && sudo env PIPX_HOME=%s PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install %s) && sudo chmod -R a+rX %s" \
+        "$PIPX_SHARED_HOME" "$1" "$PIPX_SHARED_HOME"
+}
+
+HOME_REAL=$(readlink -f "$HOME" 2>/dev/null || printf '%s' "$HOME")
+
+is_under_home() {
+    case "$1" in
+        "$HOME"/*|"$HOME_REAL"/*) return 0 ;;
+    esac
+    return 1
+}
+
+# Prints the resolved path of the first copy of $1 on PATH that does not live
+# under $HOME, failing when every copy does (or there is none).
+shared_command_path() {
+    _saved_ifs=$IFS
+    IFS=:
+    for _dir in $PATH; do
+        [ -n "$_dir" ] || _dir=.
+        [ -f "$_dir/$1" ] && [ -x "$_dir/$1" ] || continue
+        _real=$(readlink -f "$_dir/$1") || continue
+        if ! is_under_home "$_real"; then
+            IFS=$_saved_ifs
+            printf '%s\n' "$_real"
+            return 0
+        fi
+    done
+    IFS=$_saved_ifs
+    return 1
+}
+
+# Succeeds when pipx-installable tool $1 (from package $2) is usable by every
+# user this install serves. Otherwise fails, printing why when it is installed
+# but unusable by other users, and nothing when it is not installed at all.
+# Without --system only this user matters, so being on PATH is enough.
+pipx_tool_usable() {
+    has "$1" || return 1
+    $SYSTEM_INSTALL || return 0
+    if ! _shared=$(shared_command_path "$1"); then
+        printf 'installed only under %s, so other users cannot run it; run: %s' "$HOME" "$(shared_pipx_hint "$2")"
+        return 1
+    fi
+    case "$_shared" in
+        "$PIPX_SHARED_HOME"/venvs/*)
+            _venv="${_shared#"$PIPX_SHARED_HOME"/venvs/}"
+            _venv="$PIPX_SHARED_HOME/venvs/${_venv%%/*}"
+            if [ -n "$(find "$PIPX_SHARED_HOME" "$PIPX_SHARED_HOME/venvs" -prune ! -perm -o=x -print 2>/dev/null)" ] \
+                || [ -n "$(find "$_venv" \( -type d ! -perm -o=rx \) -o \( -type f ! -perm -o=r \) -o \( -type f -perm -u=x ! -perm -o=x \) 2>/dev/null | head -1)" ]; then
+                printf '%s is not readable and executable by other users, so they cannot run it; run: %s' "$_venv" "$(shared_pipx_hint "$2")"
+                return 1
+            fi
+            ;;
+    esac
+    return 0
+}
 
 # Count of failed checks (invalid config or missing tool).  Any non-zero total
 # makes the script exit 1.
@@ -123,16 +186,20 @@ else
     cross "T-SQL lint — dotnet tsqllint (*.sql)"    "dotnet not installed"
 fi
 
-if has sqlfluff; then
+SQLFLUFF_OK=false
+if SQLFLUFF_PROBLEM=$(pipx_tool_usable sqlfluff sqlfluff); then
+    SQLFLUFF_OK=true
     skip  "SQL style — sqlfluff (*.sql)"            "$(sqlfluff --version 2>/dev/null)"
 else
-    cross "SQL style — sqlfluff (*.sql)"            "not installed"
+    cross "SQL style — sqlfluff (*.sql)"            "${SQLFLUFF_PROBLEM:-not installed}"
 fi
 
-if has cfn-lint; then
+CFN_LINT_OK=false
+if CFN_LINT_PROBLEM=$(pipx_tool_usable cfn-lint cfn-lint); then
+    CFN_LINT_OK=true
     skip  "CloudFormation — cfn-lint"               "$(cfn-lint --version 2>/dev/null)"
 else
-    cross "CloudFormation — cfn-lint"               "not installed"
+    cross "CloudFormation — cfn-lint"               "${CFN_LINT_PROBLEM:-not installed}"
 fi
 
 if has pre-commit; then
@@ -149,10 +216,12 @@ echo ""
 
 # pre-commit-hooks ships ~20 small individual binaries (check-merge-conflict,
 # end-of-file-fixer, etc.). Probe a representative one rather than all 13.
-if has check-merge-conflict; then
-    skip  "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks (pip)"
+PRE_COMMIT_HOOKS_OK=false
+if PRE_COMMIT_HOOKS_PROBLEM=$(pipx_tool_usable check-merge-conflict pre-commit-hooks); then
+    PRE_COMMIT_HOOKS_OK=true
+    skip  "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks (pipx)"
 else
-    cross "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks not installed — run: pip install pre-commit-hooks"
+    cross "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks ${PRE_COMMIT_HOOKS_PROBLEM:-not installed — run: $(shared_pipx_hint pre-commit-hooks)}"
 fi
 
 if has shellcheck; then
@@ -179,10 +248,12 @@ else
     cross "VALIDATE_MD — markdownlint       (system)" "not installed"
 fi
 
-if has ansible-lint; then
+ANSIBLE_LINT_OK=false
+if ANSIBLE_LINT_PROBLEM=$(pipx_tool_usable ansible-lint ansible-lint); then
+    ANSIBLE_LINT_OK=true
     skip  "VALIDATE_ANSIBLE — ansible-lint  (system)" "$(ansible-lint --version 2>/dev/null | head -1)"
 else
-    cross "VALIDATE_ANSIBLE — ansible-lint  (system)" "not installed"
+    cross "VALIDATE_ANSIBLE — ansible-lint  (system)" "${ANSIBLE_LINT_PROBLEM:-not installed}"
 fi
 
 # System hooks (tool must be on PATH)
@@ -204,10 +275,12 @@ else
     cross "VALIDATE_GITHUB_ACTIONS actions  — composite-action-lint (system)" "not installed"
 fi
 
-if has pylint; then
+PYLINT_OK=false
+if PYLINT_PROBLEM=$(pipx_tool_usable pylint pylint); then
+    PYLINT_OK=true
     skip  "VALIDATE_PYTHON_PYLINT — pylint  (system)" "$(pylint --version 2>/dev/null | head -1)"
 else
-    cross "VALIDATE_PYTHON_PYLINT — pylint  (system)" "not installed"
+    cross "VALIDATE_PYTHON_PYLINT — pylint  (system)" "${PYLINT_PROBLEM:-not installed}"
 fi
 
 if has stylelint; then
@@ -266,19 +339,19 @@ fi
 
 # ── Optional tool install hints ───────────────────────────────────────────────
 MISSING_SYSTEM=""
-has check-merge-conflict || MISSING_SYSTEM="$MISSING_SYSTEM pre-commit-hooks"
+$PRE_COMMIT_HOOKS_OK      || MISSING_SYSTEM="$MISSING_SYSTEM pre-commit-hooks"
 has shellcheck    || MISSING_SYSTEM="$MISSING_SYSTEM shellcheck"
 has yamllint      || MISSING_SYSTEM="$MISSING_SYSTEM yamllint"
 has flake8        || MISSING_SYSTEM="$MISSING_SYSTEM flake8"
 has markdownlint  || MISSING_SYSTEM="$MISSING_SYSTEM markdownlint"
-has ansible-lint  || MISSING_SYSTEM="$MISSING_SYSTEM ansible-lint"
+$ANSIBLE_LINT_OK  || MISSING_SYSTEM="$MISSING_SYSTEM ansible-lint"
 has trufflehog    || MISSING_SYSTEM="$MISSING_SYSTEM trufflehog"
-has sqlfluff      || MISSING_SYSTEM="$MISSING_SYSTEM sqlfluff"
-has cfn-lint      || MISSING_SYSTEM="$MISSING_SYSTEM cfn-lint"
+$SQLFLUFF_OK      || MISSING_SYSTEM="$MISSING_SYSTEM sqlfluff"
+$CFN_LINT_OK      || MISSING_SYSTEM="$MISSING_SYSTEM cfn-lint"
 has hadolint      || MISSING_SYSTEM="$MISSING_SYSTEM hadolint"
 has actionlint             || MISSING_SYSTEM="$MISSING_SYSTEM actionlint"
 has composite-action-lint  || MISSING_SYSTEM="$MISSING_SYSTEM composite-action-lint"
-has pylint        || MISSING_SYSTEM="$MISSING_SYSTEM pylint"
+$PYLINT_OK        || MISSING_SYSTEM="$MISSING_SYSTEM pylint"
 has stylelint     || MISSING_SYSTEM="$MISSING_SYSTEM stylelint"
 has dotenv-linter || MISSING_SYSTEM="$MISSING_SYSTEM dotenv-linter"
 has eslint        || MISSING_SYSTEM="$MISSING_SYSTEM eslint"
@@ -291,22 +364,22 @@ has parallel      || MISSING_SYSTEM="$MISSING_SYSTEM parallel"
 if [ -n "$MISSING_SYSTEM" ]; then
     echo ""
     echo "To install missing system tools:"
-    has check-merge-conflict || echo "  pre-commit-hooks: pip install pre-commit-hooks  # provides ~20 individual check-* / end-of-file-fixer / etc. bins"
+    $PRE_COMMIT_HOOKS_OK || echo "  pre-commit-hooks: $(shared_pipx_hint pre-commit-hooks)  # provides ~20 individual check-* / end-of-file-fixer / etc. bins"
     has shellcheck    || echo "  shellcheck:     apt install shellcheck  # or brew install shellcheck"
     has yamllint      || echo "  yamllint:       pip install yamllint  # or apt install yamllint"
     has flake8        || echo "  flake8:         pip install flake8    # or apt install flake8"
     has markdownlint  || echo "  markdownlint:   npm install -g markdownlint-cli"
-    has ansible-lint  || echo "  ansible-lint:   pip install ansible-lint  # or apt install ansible-lint"
+    $ANSIBLE_LINT_OK  || echo "  ansible-lint:   $(shared_pipx_hint ansible-lint)  # or apt install ansible-lint"
     has trufflehog    || echo "  trufflehog:     curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin"
     has hadolint      || echo "  hadolint:       brew install hadolint  # or https://github.com/hadolint/hadolint/releases"
     has actionlint             || echo "  actionlint:             brew install actionlint  # or https://github.com/rhysd/actionlint/releases"
     has composite-action-lint  || echo "  composite-action-lint:  go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest"
-    has pylint        || echo "  pylint:         pip install pylint"
+    $PYLINT_OK        || echo "  pylint:         $(shared_pipx_hint pylint)"
     has stylelint     || echo "  stylelint:      npm install -g stylelint stylelint-config-standard"
     has dotenv-linter || echo "  dotenv-linter:  https://github.com/dotenv-linter/dotenv-linter/releases"
     has eslint        || echo "  eslint:         npm install -g eslint"
-    has sqlfluff      || echo "  sqlfluff:       pip install sqlfluff"
-    has cfn-lint      || echo "  cfn-lint:       pip install cfn-lint"
+    $SQLFLUFF_OK      || echo "  sqlfluff:       $(shared_pipx_hint sqlfluff)"
+    $CFN_LINT_OK      || echo "  cfn-lint:       $(shared_pipx_hint cfn-lint)"
     has xmllint       || echo "  xmllint:        apt install libxml2-utils  # or brew install libxml2"
     $PWSH_OK          || echo "  pwsh:           run ./install-deps-arch or ./install-deps-debian (installs as a local dotnet tool + PSScriptAnalyzer module)"
     has bats          || echo "  bats:           apt install bats  # or pacman -S bash-bats"

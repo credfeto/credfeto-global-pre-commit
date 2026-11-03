@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # Acceptance tests for the install helpers in lib/common.sh shared by
 # install-deps-arch and install-deps-debian: install_release_linters,
-# install_npm_globals, install_composite_action_lint, install_pwsh and
-# install_cscleanup.
+# install_npm_globals, install_composite_action_lint, install_pwsh,
+# install_cscleanup, ensure_root_pipx and pipx_ensure.
 #
 # Never installs anything: each helper runs in a bash whose PATH holds only
 # fakes, so the host's own node, npm, go or dotnet can never be found,
@@ -66,6 +66,35 @@ EOF
     # The installed-tool check pipes `dotnet tool list` through awk, which the
     # fakes-only PATH would otherwise hide.
     link_host_tool awk "${FAKE_BIN}"
+}
+
+# write_pipx_fakes
+# Writes a fake sudo (see write_fake_sudo) that records each call, a fake pipx
+# that records its arguments, the pipx location variables it sees and its
+# umask, and a fake chmod that only records, so nothing is ever written to the
+# shared pipx home. pipx fails the subcommands listed in FAKE_PIPX_FAIL
+# (e.g. "install upgrade"); chmod fails when FAKE_CHMOD_FAIL is set.
+write_pipx_fakes() {
+    write_fake_sudo "${FAKE_BIN}"
+    export FAKE_SUDO_LOG="${CALL_LOG}"
+    cat > "${FAKE_BIN}/pipx" <<'EOF'
+#!/bin/sh
+printf 'pipx %s PIPX_HOME=%s PIPX_BIN_DIR=%s PIPX_MAN_DIR=%s umask=%s root=%s\n' \
+    "$*" "${PIPX_HOME:-}" "${PIPX_BIN_DIR:-}" "${PIPX_MAN_DIR:-}" "$(umask)" "${FAKE_SUDO_AS_ROOT:-}" \
+    >> "$CALL_LOG"
+case " ${FAKE_PIPX_FAIL:-} " in
+    *" $1 "*) exit 1 ;;
+esac
+exit 0
+EOF
+    chmod +x "${FAKE_BIN}/pipx"
+    cat > "${FAKE_BIN}/chmod" <<'EOF'
+#!/bin/sh
+printf 'chmod %s root=%s\n' "$*" "${FAKE_SUDO_AS_ROOT:-}" >> "$CALL_LOG"
+[ -z "${FAKE_CHMOD_FAIL:-}" ]
+EOF
+    "$(type -P chmod)" +x "${FAKE_BIN}/chmod"
+    link_host_tool env "${FAKE_BIN}"
 }
 
 # write_present_fake <command>
@@ -316,4 +345,123 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
     [[ "${stderr}" == *"warning: dotnet not found, skipping pwsh install"* ]]
     [[ "${output}" != *"warning:"* ]]
     [ -z "$(calls)" ]
+}
+
+@test "pipx_ensure installs into the shared pipx home as root with umask 022, then opens it to all users" {
+    write_pipx_fakes
+
+    umask 077
+    run_helper pipx_ensure "" pre-commit-hooks
+    umask 022
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _expected
+    _expected="env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install pre-commit-hooks
+pipx install pre-commit-hooks PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man umask=0022 root=1
+chmod -R a+rX /opt/pipx
+chmod -R a+rX /opt/pipx root=1"
+    [ "$(calls)" = "${_expected}" ] || fail_test "unexpected calls: $(calls)"
+}
+
+@test "pipx_ensure installs the shared copy even when a per-user copy is already on PATH" {
+    write_pipx_fakes
+    mkdir -p "${FAKE_HOME}/.local/bin"
+    printf '#!/bin/sh\nexit 0\n' > "${FAKE_HOME}/.local/bin/check-merge-conflict"
+    "$(type -P chmod)" +x "${FAKE_HOME}/.local/bin/check-merge-conflict"
+
+    run_helper pipx_ensure "${FAKE_HOME}/.local/bin" pre-commit-hooks
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"pipx install pre-commit-hooks PIPX_HOME=/opt/pipx "* ]] \
+        || fail_test "shared install not run: $(calls)"
+}
+
+@test "pipx_ensure upgrades the shared copy when the install fails because it is already installed" {
+    write_pipx_fakes
+
+    FAKE_PIPX_FAIL=install run_helper pipx_ensure "" sqlfluff
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"pipx upgrade sqlfluff PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man umask=0022 root=1"* ]] \
+        || fail_test "shared upgrade not run: $(calls)"
+    [[ "$(calls)" == *"chmod -R a+rX /opt/pipx root=1"* ]]
+}
+
+@test "pipx_ensure fails, without opening the shared home, when both install and upgrade fail" {
+    write_pipx_fakes
+
+    FAKE_PIPX_FAIL="install upgrade" run_helper pipx_ensure "" cfn-lint
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install cfn-lint"* ]]
+    [[ "$(calls)" != *"chmod"* ]]
+}
+
+@test "pipx_ensure fails when the shared pipx home cannot be made readable by all users" {
+    write_pipx_fakes
+
+    FAKE_CHMOD_FAIL=1 run_helper pipx_ensure "" pylint
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to make /opt/pipx readable by all users"* ]]
+}
+
+# write_root_pipx_fakes
+# Writes a fake sudo that records each call and fakes for apt-get and python3
+# that only record, failing when their name is FAKE_ROOT_PIPX_FAIL.
+write_root_pipx_fakes() {
+    write_fake_sudo "${FAKE_BIN}"
+    export FAKE_SUDO_LOG="${CALL_LOG}"
+    local _tool
+    for _tool in apt-get python3; do
+        cat > "${FAKE_BIN}/${_tool}" <<EOF
+#!/bin/sh
+printf '${_tool} %s root=%s\\n' "\$*" "\${FAKE_SUDO_AS_ROOT:-}" >> "\$CALL_LOG"
+[ "\${FAKE_ROOT_PIPX_FAIL:-}" != "${_tool}" ]
+EOF
+        chmod +x "${FAKE_BIN}/${_tool}"
+    done
+}
+
+@test "ensure_root_pipx does nothing when pipx is already on PATH" {
+    write_root_pipx_fakes
+    write_present_fake pipx
+
+    run_helper ensure_root_pipx
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ -z "$(calls)" ] || fail_test "unexpected calls: $(calls)"
+}
+
+@test "ensure_root_pipx installs pip, then pipx with pip, as root when pipx is missing" {
+    write_root_pipx_fakes
+
+    run_helper ensure_root_pipx
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    local _expected
+    _expected="apt-get install -y python3-pip
+apt-get install -y python3-pip root=1
+python3 -m pip install pipx
+python3 -m pip install pipx root=1"
+    [ "$(calls)" = "${_expected}" ] || fail_test "unexpected calls: $(calls)"
+}
+
+@test "ensure_root_pipx fails, without running pip, when python3-pip cannot be installed" {
+    write_root_pipx_fakes
+
+    FAKE_ROOT_PIPX_FAIL=apt-get run_helper ensure_root_pipx
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install python3-pip"* ]]
+    [[ "$(calls)" != *"python3 "* ]]
+}
+
+@test "ensure_root_pipx fails when pip cannot install pipx" {
+    write_root_pipx_fakes
+
+    FAKE_ROOT_PIPX_FAIL=python3 run_helper ensure_root_pipx
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install pipx via pip"* ]]
 }
