@@ -110,8 +110,8 @@ _bats_map_file() {
     [ "$found" = 1 ]
 }
 
-_bats_full=1
-
+# An empty _bats_targets means the whole suite runs: no arguments,
+# --all-files, RUN_BATS_FULL=1, or a file that cannot be narrowed down.
 if [ "$#" -gt 0 ]; then
     if [ "$1" = "--all-files" ]; then
         # git ls-files prints repo-root-relative paths, so read them from
@@ -134,11 +134,10 @@ if [ "$#" -gt 0 ]; then
     _bats_any_qualifies || exit 0
 
     if [ "$1" != "--all-files" ] && [ "${RUN_BATS_FULL:-}" != 1 ]; then
-        _bats_full=0
         for _bats_file in "${_bats_candidates[@]}"; do
             _bats_file_qualifies "$_bats_file" || continue
             _bats_map_file "$_bats_file" && continue
-            _bats_full=1
+            _bats_targets=()
             break
         done
     fi
@@ -235,8 +234,8 @@ if command -v parallel > /dev/null 2>&1; then
     [ "$CPU_COUNT" -gt 1 ] && BATS_JOBS_ARGS=(--jobs "$CPU_COUNT")
 fi
 
-if [ "$_bats_full" = 1 ] || [ "${#_bats_targets[@]}" -eq 0 ]; then
-    exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure --recursive "$REPO_ROOT/test"
+if [ "${#_bats_targets[@]}" -gt 0 ]; then
+    exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure "${_bats_targets[@]}"
 fi
 
-exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure "${_bats_targets[@]}"
+exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure --recursive "$REPO_ROOT/test"
