@@ -58,6 +58,12 @@ ensure_root_pipx() {
     sudo python3 -m pip install pipx || die "failed to install pipx via pip"
 }
 
+# Makes the tree at $1 readable by every user, and its directories and
+# owner-executable files usable by them, as root.
+make_tree_readable_by_all() {
+    sudo chmod -R a+rX "$1" || die "failed to make $1 readable by all users"
+}
+
 PIPX_SHARED_HOME=/opt/pipx
 
 # Runs pipx as root against the shared pipx home, so its apps land in
@@ -82,8 +88,7 @@ shared_pipx() {
 #   $1 = package name
 pipx_ensure() {
     shared_pipx install "$1" 2>/dev/null || shared_pipx upgrade "$1" || die "failed to install $1"
-    sudo chmod -R a+rX "$PIPX_SHARED_HOME" \
-        || die "failed to make $PIPX_SHARED_HOME readable by all users"
+    make_tree_readable_by_all "$PIPX_SHARED_HOME"
 }
 
 # Fetch the latest release tag from GitHub and install the binary to /usr/local/bin.
@@ -223,8 +228,7 @@ install_npm_globals() {
             stylelint \
             stylelint-config-standard
     ) || die "npm global install failed"
-    sudo chmod -R a+rX "$NPM_SHARED_PREFIX/lib/node_modules" \
-        || die "failed to make $NPM_SHARED_PREFIX/lib/node_modules readable by all users"
+    make_tree_readable_by_all "$NPM_SHARED_PREFIX/lib/node_modules"
 }
 
 # composite-action-lint has no package or binary release, so it needs go.
