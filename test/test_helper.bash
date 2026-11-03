@@ -184,6 +184,16 @@ link_host_tool() {
     ln -s "${_real}" "$2/$1"
 }
 
+# write_tool <dir> <command> [body]
+# Writes a stand-in executable <dir>/<command>, readable by every user, whose
+# script runs <body> (default: exit 0). The host chmod is used, because some
+# suites put a fake chmod on PATH.
+write_tool() {
+    mkdir -p "$1"
+    printf '#!/bin/sh\n%s\n' "${3:-exit 0}" > "$1/$2"
+    "$(type -P chmod)" 0755 "$1/$2"
+}
+
 # write_fake_sudo <dir>
 # Writes a fake sudo to "<dir>/sudo" that never elevates. It appends each
 # call's arguments to $FAKE_SUDO_LOG when that is set, fails when the command
