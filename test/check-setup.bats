@@ -62,14 +62,6 @@ run_check_setup_system() {
     run env HOME="${FAKE_HOME}" PATH="${FAKE_BIN}" "$@" "${REPO_DIR}/check-setup" --system
 }
 
-# write_tool <dir> <command>
-# Writes a do-nothing executable <dir>/<command>, readable by every user.
-write_tool() {
-    mkdir -p "$1"
-    printf '#!/bin/sh\nexit 0\n' > "$1/$2"
-    chmod 0755 "$1/$2"
-}
-
 # write_shared_pipx_tool <package> <command>
 # Lays out a pipx venv for <package> under a stand-in for the shared pipx home
 # (outside HOME) and links <command> into a stand-in shared bin directory,

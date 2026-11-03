@@ -172,9 +172,7 @@ printf 'tar %s root=%s umask=%s\n' "$*" "${FAKE_SUDO_AS_ROOT:-}" "$(umask)" >> "
 EOF
     chmod +x "${FAKE_BIN}/curl" "${FAKE_BIN}/tar"
     if [ -n "$1" ]; then
-        mkdir -p "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin"
-        printf '#!/bin/sh\necho %s\n' "$1" > "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin/node"
-        chmod +x "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin/node"
+        write_tool "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin" node "echo $1"
     fi
     local _tool
     for _tool in python3 mktemp rm grep sha256sum cut dirname; do
@@ -185,8 +183,7 @@ EOF
 # write_present_fake <command>
 # Writes a fake that only exists, so the helper sees the command as installed.
 write_present_fake() {
-    printf '#!/bin/sh\nexit 0\n' > "${FAKE_BIN}/$1"
-    chmod +x "${FAKE_BIN}/$1"
+    write_tool "${FAKE_BIN}" "$1"
 }
 
 # run_helper [--separate-stderr] <helper> [extra PATH entry] [helper args...]
@@ -270,9 +267,7 @@ chmod -R a+rX ${_prefix}/lib/node_modules root=1"
 
 @test "install_npm_globals installs the shared copies even when per-user nvm copies are already on PATH" {
     write_npm_fakes
-    mkdir -p "${NVM_BIN}"
-    printf '#!/bin/sh\nexit 0\n' > "${NVM_BIN}/eslint"
-    "$(type -P chmod)" +x "${NVM_BIN}/eslint"
+    write_tool "${NVM_BIN}" eslint
 
     run_helper install_npm_globals "${NVM_BIN}"
 
@@ -340,9 +335,7 @@ chmod -R a+rX ${_prefix}/lib/node_modules root=1"
 
 @test "install_shared_node upgrades an older shared node even when the latest LTS is on PATH under HOME" {
     write_node_fakes v22.9.0
-    mkdir -p "${NVM_BIN}"
-    printf '#!/bin/sh\necho v24.2.0\n' > "${NVM_BIN}/node"
-    "$(type -P chmod)" +x "${NVM_BIN}/node"
+    write_tool "${NVM_BIN}" node "echo v24.2.0"
 
     ARCH_UNAME=x86_64 run_helper install_shared_node "${NVM_BIN}"
 
@@ -352,9 +345,8 @@ chmod -R a+rX ${_prefix}/lib/node_modules root=1"
 
 @test "install_shared_node replaces a shared node that links to the latest LTS under HOME" {
     write_node_fakes ""
-    mkdir -p "${NVM_BIN}" "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin"
-    printf '#!/bin/sh\necho v24.2.0\n' > "${NVM_BIN}/node"
-    "$(type -P chmod)" +x "${NVM_BIN}/node"
+    mkdir -p "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin"
+    write_tool "${NVM_BIN}" node "echo v24.2.0"
     ln -s "${NVM_BIN}/node" "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin/node"
 
     ARCH_UNAME=x86_64 run_helper install_shared_node
@@ -449,8 +441,7 @@ node_temp_removed() {
 @test "install_shared_node dies before downloading when no temp dir can be created" {
     write_node_fakes ""
     rm "${FAKE_BIN}/mktemp"
-    printf '#!/bin/sh\nexit 1\n' > "${FAKE_BIN}/mktemp"
-    chmod +x "${FAKE_BIN}/mktemp"
+    write_tool "${FAKE_BIN}" mktemp "exit 1"
 
     ARCH_UNAME=x86_64 run_helper install_shared_node
 
@@ -630,9 +621,7 @@ chmod -R a+rX /opt/pipx root=1"
 
 @test "pipx_ensure installs the shared copy even when a per-user copy is already on PATH" {
     write_pipx_fakes
-    mkdir -p "${FAKE_HOME}/.local/bin"
-    printf '#!/bin/sh\nexit 0\n' > "${FAKE_HOME}/.local/bin/check-merge-conflict"
-    "$(type -P chmod)" +x "${FAKE_HOME}/.local/bin/check-merge-conflict"
+    write_tool "${FAKE_HOME}/.local/bin" check-merge-conflict
 
     run_helper pipx_ensure "${FAKE_HOME}/.local/bin" pre-commit-hooks
 
