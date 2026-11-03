@@ -82,22 +82,16 @@ write_shared_pipx_tool() {
     ln -s "${SHARED_PIPX_HOME}/venvs/$1/bin/$2" "${SHARED_BIN}/$2"
 }
 
-pre_commit_hooks_line() {
-    printf '%s\n' "${output}" | grep 'VALIDATE_JSON/XML/YAML/TOML syntax'
-}
-
-eslint_line() {
-    printf '%s\n' "${output}" | grep 'VALIDATE_TYPESCRIPT_ES'
-}
-
-cscleanup_line() {
-    printf '%s\n' "${output}" | grep 'cscleanup (\*.cs)'
+# output_line <pattern>
+# Prints the line(s) of the last run's output matching the grep <pattern>.
+output_line() {
+    printf '%s\n' "${output}" | grep -- "$1"
 }
 
 @test "check-setup reports cscleanup installed as a local tool in the HOME manifest" {
     run_check_setup FAKE_LOCAL_CSCLEANUP=1
     local _line
-    _line="$(cscleanup_line)"
+    _line="$(output_line 'cscleanup (\*.cs)')"
 
     [[ "${_line}" == *"v1.2.3"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -108,7 +102,7 @@ cscleanup_line() {
 @test "check-setup reports cscleanup installed when it is only a global tool" {
     run_check_setup FAKE_GLOBAL_CSCLEANUP=1
     local _line
-    _line="$(cscleanup_line)"
+    _line="$(output_line 'cscleanup (\*.cs)')"
 
     [[ "${_line}" == *"v9.9.9"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -119,7 +113,7 @@ cscleanup_line() {
 @test "check-setup gives the local-install hint when cscleanup is neither a local nor a global tool" {
     run_check_setup
     local _line
-    _line="$(cscleanup_line)"
+    _line="$(output_line 'cscleanup (\*.cs)')"
 
     [[ "${_line}" == *"not installed"*"dotnet tool install Credfeto.DotNet.Repo.Formatter"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -133,7 +127,7 @@ cscleanup_line() {
 
     run_check_setup_system PATH="${FAKE_HOME}/.local/bin:${FAKE_BIN}"
     local _line
-    _line="$(pre_commit_hooks_line)"
+    _line="$(output_line 'VALIDATE_JSON/XML/YAML/TOML syntax')"
 
     [[ "${_line}" == *"installed only under ${FAKE_HOME}, so other users cannot run it"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -149,7 +143,7 @@ cscleanup_line() {
 
     run_check_setup PATH="${FAKE_HOME}/.local/bin:${FAKE_BIN}"
     local _line
-    _line="$(pre_commit_hooks_line)"
+    _line="$(output_line 'VALIDATE_JSON/XML/YAML/TOML syntax')"
 
     [[ "${_line}" == *"pre-commit-hooks (pipx)"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -162,7 +156,7 @@ cscleanup_line() {
 
     run_check_setup_system PATH="${FAKE_HOME}/.local/bin:${FAKE_BIN}"
     local _line
-    _line="$(printf '%s\n' "${output}" | grep 'SQL style')"
+    _line="$(output_line 'SQL style')"
 
     [[ "${_line}" == *"installed only under ${FAKE_HOME}, so other users cannot run it"*"pipx install sqlfluff"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -175,7 +169,7 @@ cscleanup_line() {
     run_check_setup_system PATH="${FAKE_HOME}/.local/bin:${SHARED_BIN}:${FAKE_BIN}" \
         PIPX_SHARED_HOME_TEST_OVERRIDE="${SHARED_PIPX_HOME}"
     local _line
-    _line="$(pre_commit_hooks_line)"
+    _line="$(output_line 'VALIDATE_JSON/XML/YAML/TOML syntax')"
 
     [[ "${_line}" == *"pre-commit-hooks (pipx)"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -190,7 +184,7 @@ cscleanup_line() {
     run_check_setup_system PATH="${SHARED_BIN}:${FAKE_BIN}" \
         PIPX_SHARED_HOME_TEST_OVERRIDE="${SHARED_PIPX_HOME}"
     local _line
-    _line="$(pre_commit_hooks_line)"
+    _line="$(output_line 'VALIDATE_JSON/XML/YAML/TOML syntax')"
 
     [[ "${_line}" == *"${SHARED_PIPX_HOME}/venvs/pre-commit-hooks is not readable and executable by other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -207,7 +201,7 @@ cscleanup_line() {
         PIPX_SHARED_HOME_TEST_OVERRIDE="${SHARED_PIPX_HOME}"
     chmod 0755 "${SHARED_PIPX_HOME}/venvs"
     local _line
-    _line="$(pre_commit_hooks_line)"
+    _line="$(output_line 'VALIDATE_JSON/XML/YAML/TOML syntax')"
 
     [[ "${_line}" == *"is not readable and executable by other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -229,7 +223,7 @@ cscleanup_line() {
     run_check_setup_system PATH="${SHARED_BIN}:${FAKE_BIN}" \
         PIPX_SHARED_HOME_TEST_OVERRIDE="${SHARED_PIPX_HOME}"
     local _line
-    _line="$(pre_commit_hooks_line)"
+    _line="$(output_line 'VALIDATE_JSON/XML/YAML/TOML syntax')"
 
     [[ "${_line}" == *"is not readable and executable by other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -258,7 +252,7 @@ cscleanup_line() {
     run_check_setup_system PATH="${SHARED_BIN}:${FAKE_BIN}" \
         PIPX_SHARED_HOME_TEST_OVERRIDE="${BATS_TEST_TMPDIR}/opt/pipx"
     local _line
-    _line="$(printf '%s\n' "${output}" | grep 'VALIDATE_PYTHON_PYLINT')"
+    _line="$(output_line 'VALIDATE_PYTHON_PYLINT')"
 
     [[ "${_line}" != *"not installed"* && "${_line}" != *"other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -289,7 +283,7 @@ write_shared_npm_tool() {
 
     run_check_setup_system PATH="${_nvm_bin}:${FAKE_BIN}"
     local _line
-    _line="$(eslint_line)"
+    _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
 
     [[ "${_line}" == *"installed only under ${FAKE_HOME}, so other users cannot run it"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -307,9 +301,9 @@ write_shared_npm_tool() {
 
     run_check_setup_system PATH="${_nvm_bin}:${FAKE_BIN}"
 
-    [[ "$(printf '%s\n' "${output}" | grep 'VALIDATE_MD')" == *"installed only under ${FAKE_HOME}"*"--ignore-scripts markdownlint-cli)"* ]] \
+    [[ "$(output_line 'VALIDATE_MD')" == *"installed only under ${FAKE_HOME}"*"--ignore-scripts markdownlint-cli)"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
-    [[ "$(printf '%s\n' "${output}" | grep 'VALIDATE_CSS')" == *"installed only under ${FAKE_HOME}"*"--ignore-scripts stylelint)"* ]] \
+    [[ "$(output_line 'VALIDATE_CSS')" == *"installed only under ${FAKE_HOME}"*"--ignore-scripts stylelint)"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
     [[ "${output}" == *"  stylelint:      (umask 022 && sudo npm install --global --prefix /usr/local --engine-strict --ignore-scripts stylelint stylelint-config-standard)"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -341,7 +335,7 @@ write_shared_npm_tool() {
     run_check_setup_system PATH="${_nvm_bin}:${SHARED_BIN}:${FAKE_BIN}" \
         NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
     local _line
-    _line="$(eslint_line)"
+    _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
 
     [[ "${_line}" != *"not installed"* && "${_line}" != *"other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -356,7 +350,7 @@ write_shared_npm_tool() {
     run_check_setup_system PATH="${SHARED_BIN}:${FAKE_BIN}" \
         NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
     local _line
-    _line="$(eslint_line)"
+    _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
 
     [[ "${_line}" == *"${SHARED_NPM_PREFIX}/lib/node_modules/eslint is not readable and executable by other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -373,7 +367,7 @@ write_shared_npm_tool() {
         NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
     chmod 0755 "${SHARED_NPM_PREFIX}/lib/node_modules"
     local _line
-    _line="$(eslint_line)"
+    _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
 
     [[ "${_line}" == *"is not readable and executable by other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -388,7 +382,7 @@ write_shared_npm_tool() {
     run_check_setup_system PATH="${SHARED_BIN}:${_nvm_bin}:${FAKE_BIN}" \
         NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
     local _line
-    _line="$(eslint_line)"
+    _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
 
     [[ "${_line}" == *"needs node, which is not installed outside ${FAKE_HOME}, so other users cannot run it; run: ./install-deps-arch or ./install-deps-debian"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -402,7 +396,7 @@ write_shared_npm_tool() {
     run_check_setup_system PATH="${SHARED_BIN}:${FAKE_BIN}" \
         NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
     local _line
-    _line="$(eslint_line)"
+    _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
 
     [[ "${_line}" == *"needs node, but ${SHARED_BIN}/node is not readable and executable by other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -416,7 +410,7 @@ write_shared_npm_tool() {
     run_check_setup_system PATH="${_usr_bin}:${FAKE_BIN}" \
         NPM_SHARED_PREFIX_TEST_OVERRIDE="${BATS_TEST_TMPDIR}/usr/local"
     local _line
-    _line="$(eslint_line)"
+    _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
 
     [[ "${_line}" != *"not installed"* && "${_line}" != *"other users"* && "${_line}" != *"needs node"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
