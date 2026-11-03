@@ -7,14 +7,11 @@
 #   run-bats               run the whole suite unconditionally (for callers
 #                          that filter files themselves, e.g. a
 #                          pass_filenames: false hook)
-# With named files, a staged .bats file under test/ runs itself and a script
-# runs test/<name>.bats plus every .bats file that mentions its path or
-# basename. Anything that cannot be narrowed down safely runs the whole suite:
-# a test helper or other non-.bats file under test/, src/.pre-commit-config.yaml,
-# a .bats file outside test/, a file outside the repo, or a script no test
-# mentions. RUN_BATS_FULL=1 always runs the whole suite. Exits 0 without
-# running when test/ holds no *.bats file, so the hook is a cheap no-op in
-# repos without a bats suite.
+# When a qualifying file cannot be narrowed down, or RUN_BATS_FULL=1 is set,
+# the whole suite runs instead; run-bats exits 0 without running when test/
+# holds no *.bats file. README.md, "Bats test selection (run-bats)", is the
+# full and authoritative description of which files qualify and which tests
+# they run.
 # Must be bash (not sh) so that export -f can propagate bats_readlinkf to the
 # inner bats process (needed on platforms where the bats wrapper does not export it).
 
