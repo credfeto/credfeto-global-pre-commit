@@ -496,7 +496,7 @@ fi
 if has_cmd dotnet; then
     _DOTNET_BIN=$(command -v dotnet)
     _DOTNET_REAL=$(readlink -f "$_DOTNET_BIN" 2>/dev/null || echo "$_DOTNET_BIN")
-    if [ "$_DOTNET_REAL" != "/usr/share/dotnet/dotnet" ]; then
+    if [ "$_DOTNET_REAL" != "$(readlink -f /usr/share/dotnet/dotnet)" ]; then
         die "Corrupt environment: dotnet resolves to ${_DOTNET_REAL} but must be at /usr/share/dotnet/dotnet"
     fi
 fi

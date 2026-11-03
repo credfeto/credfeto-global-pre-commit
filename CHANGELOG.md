@@ -144,6 +144,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - hadolint now installs on aarch64 (install-deps-debian requested a release asset that does not exist; hadolint publishes arm64)
 - pre-commit: only run sqlfluff fix on staged SQL files in commit mode and fail if a staged SQL file has unstaged changes, so unstaged SQL is no longer swept into the commit (#258)
 - pre-commit: fail the hook when re-staging sqlfluff fixes (git diff/git add) fails instead of committing unfixed SQL (#257)
+- Pre-commit dotnet install-location check accepts a symlinked /usr/share/dotnet (#284)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
