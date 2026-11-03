@@ -40,7 +40,9 @@ fi
 # it from TEST_PATH so those tests are not aborted by the environment check.
 # Tests that specifically exercise the dotnet-path validation supply their own
 # controlled PATH and do not use TEST_PATH.
-_EXPECTED_DOTNET="/usr/share/dotnet/dotnet"
+# The expected path is canonicalised exactly as the hook does, so a symlinked
+# /usr/share/dotnet (e.g. -> dotnet-<timestamp>) counts as the correct location.
+_EXPECTED_DOTNET="$(readlink -f /usr/share/dotnet/dotnet 2>/dev/null || echo /usr/share/dotnet/dotnet)"
 _ACTUAL_DOTNET_BIN="$(command -v dotnet 2>/dev/null || true)"
 _ACTUAL_DOTNET_REAL="$(readlink -f "${_ACTUAL_DOTNET_BIN}" 2>/dev/null || echo "${_ACTUAL_DOTNET_BIN}")"
 if [ -n "${_ACTUAL_DOTNET_BIN}" ] && [ "${_ACTUAL_DOTNET_REAL}" != "${_EXPECTED_DOTNET}" ]; then
