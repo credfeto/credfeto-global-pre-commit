@@ -49,10 +49,41 @@ detect_arch() {
     esac
 }
 
-# Install a pipx package if missing, upgrade if already present.
+# Installs pipx with pip when it is not on PATH (e.g. no apt package for it).
+# Installed for root, because pipx_ensure runs it through sudo, which cannot
+# see a copy in this user's ~/.local/bin.
+ensure_root_pipx() {
+    has pipx && return 0
+    sudo apt-get install -y python3-pip || die "failed to install python3-pip"
+    sudo python3 -m pip install pipx || die "failed to install pipx via pip"
+}
+
+PIPX_SHARED_HOME=/opt/pipx
+
+# Runs pipx as root against the shared pipx home, so its apps land in
+# /usr/local/bin for every account rather than in the caller's ~/.local/bin,
+# which the system-wide hooks cannot reach for other users. The env-var form is
+# used rather than `pipx --global`, which older pipx releases lack. sudo keeps
+# the caller's umask, so 022 is set first or the venvs would be created
+# unreadable by other users.
+shared_pipx() {
+    (
+        umask 022
+        sudo env PIPX_HOME="$PIPX_SHARED_HOME" PIPX_BIN_DIR=/usr/local/bin \
+            PIPX_MAN_DIR=/usr/local/share/man pipx "$@"
+    )
+}
+
+# Install a pipx package into the shared pipx home if missing, upgrade if
+# already present. A per-user copy is never a reason to skip, because only the
+# shared copy is usable by every account. The shared home is then made
+# readable by all, which also repairs venvs an earlier run created under a
+# restrictive umask; pipx keeps an existing venv's modes.
 #   $1 = package name
 pipx_ensure() {
-    pipx install "$1" 2>/dev/null || pipx upgrade "$1" || die "failed to install $1"
+    shared_pipx install "$1" 2>/dev/null || shared_pipx upgrade "$1" || die "failed to install $1"
+    sudo chmod -R a+rX "$PIPX_SHARED_HOME" \
+        || die "failed to make $PIPX_SHARED_HOME readable by all users"
 }
 
 # Fetch the latest release tag from GitHub and install the binary to /usr/local/bin.

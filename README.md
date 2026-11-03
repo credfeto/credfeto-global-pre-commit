@@ -38,7 +38,7 @@ helper is needed and nothing is built with `makepkg`.
 | -------- | ---------- |
 | `pacman` | `git`, `bats`, `go`, `pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `python-pipx`, `trivy`, `parallel`, `curl`, `nvm`, `sqlfluff`, `python-cfn-lint` |
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
-| `pipx` | `pre-commit-hooks` (no AUR package exists) |
+| `pipx` (shared, see below) | `pre-commit-hooks` (no AUR package exists) |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint` |
@@ -62,9 +62,9 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 | Source | Packages |
 | -------- | ---------- |
 | `apt` | `git`, `bats`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx`, `parallel` |
-| `apt` (fallback: `pipx`) | `ansible-lint`, `python3-pylint` (`pylint` from `pipx`), installed via `pipx` on releases where the `apt` package is unavailable |
+| `apt` (fallback: shared `pipx`) | `ansible-lint`, `python3-pylint` (`pylint` from `pipx`), installed via `pipx` on releases where the `apt` package is unavailable |
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
-| `pipx` | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
+| `pipx` (shared, see below) | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
 | `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint`, skipped with a warning if `go` is not on `PATH` |
@@ -88,8 +88,18 @@ binary download.
   SDK uses; one is created if neither exists), with the `PSScriptAnalyzer` module
   alongside `pwsh`. They run as `dotnet pwsh` and `dotnet cscleanup` from any directory
   under `$HOME` and need no `PATH` change.
-- `pipx` installs console scripts into `~/.local/bin/` (XDG-compliant).
-  Ensure `~/.local/bin` is on `PATH` (most modern distributions include it by default).
+- `pipx` packages are installed once for every account, not per user: as root, with
+  `PIPX_HOME=/opt/pipx`, `PIPX_BIN_DIR=/usr/local/bin` and
+  `PIPX_MAN_DIR=/usr/local/share/man`, under `umask 022`, after which `/opt/pipx` is
+  made readable by all users (`chmod -R a+rX`). This is what lets `./install --system`
+  hooks run the `pre-commit-hooks` tools (`check-merge-conflict`, `end-of-file-fixer`,
+  ...) for every user. A copy already in your own `~/.local/bin` is left alone and does
+  not stop the shared install; re-running the script repairs a shared install that other
+  users cannot read. To install one package by hand the same way:
+
+  ```sh
+  (umask 022 && sudo env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install pre-commit-hooks) && sudo chmod -R a+rX /opt/pipx
+  ```
 
 ---
 
@@ -112,6 +122,7 @@ To install for every user on the machine instead, run `./install --system` (need
    - With `--system`: no `run-*` links are created, and `composite-action-lint` is copied into `/usr/local/bin` with mode `0755` rather than linked, so every user can run it
 5. Validate the `.pre-commit-config.yaml` schema (no managed environments to install, because every hook is `language: system`)
 6. Print a status table of every check showing which are active and which need a system tool installed
+   - With `--system`: a `pipx` tool (`pre-commit-hooks`, `sqlfluff`, `cfn-lint`, `pylint`, `ansible-lint`) found only under `$HOME`, or whose shared `/opt/pipx` venv other users cannot read, is marked as failing, because other users cannot run it
 
 `pre-commit` must be installed for linting to run (`pip install pre-commit`).
 
@@ -160,8 +171,8 @@ Conditional (triggered by file type + tool availability):
 
 To install missing tools:
   trufflehog:  curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
-  sqlfluff:    pip install sqlfluff
-  cfn-lint:    pip install cfn-lint
+  sqlfluff:    (umask 022 && sudo env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install sqlfluff) && sudo chmod -R a+rX /opt/pipx
+  cfn-lint:    (umask 022 && sudo env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install cfn-lint) && sudo chmod -R a+rX /opt/pipx
 ```
 
 ### Re-running after updates

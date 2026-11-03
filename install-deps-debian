@@ -41,11 +41,7 @@ sudo apt-get install -y \
     || die "apt-get install failed"
 
 # Ensure pipx is available even on older systems that lack the apt package.
-if ! has pipx; then
-    sudo apt-get install -y python3-pip || die "failed to install python3-pip"
-    python3 -m pip install --user pipx || die "failed to install pipx via pip"
-    python3 -m pipx ensurepath || die "pipx ensurepath failed"
-fi
+ensure_root_pipx
 
 # ansible-lint is in Ubuntu 22.04+ repos; fall back to pipx on older releases.
 info "ansible-lint"
@@ -74,9 +70,6 @@ info "pipx packages"
 for pkg in pre-commit-hooks sqlfluff cfn-lint; do
     pipx_ensure "$pkg"
 done
-
-# Ensure ~/.local/bin is on PATH for this session (pipx installs land there).
-export PATH="$HOME/.local/bin:$PATH"
 
 # ── nvm ───────────────────────────────────────────────────────────────────────
 # nvm is not in apt; use the official install script.
@@ -121,5 +114,4 @@ case "$ARCH_UNAME" in
 esac
 
 success "All dependencies installed."
-info "You may need to start a new shell for PATH changes (pipx) to take effect."
 info "Run ./install to register the global git hooks."
