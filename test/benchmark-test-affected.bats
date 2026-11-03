@@ -95,7 +95,6 @@ WIDGETS_BENCH_REL="Foo.Widgets.Benchmark.Tests/Foo.Widgets.Benchmark.Tests.cspro
 
 @test "solution outside any git repository runs every benchmark" {
     local T="${BATS_TEST_TMPDIR}/standalone"
-    mkdir -p "${T}/src"
     write_fixture "${T}"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
