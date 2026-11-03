@@ -115,7 +115,6 @@ setup() {
 }
 
 @test "run-bats with src/.pre-commit-config.yaml runs the full suite" {
-    mkdir -p "${T}/src"
     printf 'repos: []\n' > "${T}/src/.pre-commit-config.yaml"
     run_affected "${T}" src/.pre-commit-config.yaml
     assert_ran_full_suite "${status}" "${output}"
