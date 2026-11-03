@@ -2,8 +2,9 @@
 # Acceptance tests for check-setup's cscleanup detection: cscleanup counts as
 # installed when it is a local dotnet tool in the $HOME manifest or, failing
 # that, a global dotnet tool; when it is neither, the local-install hint shows.
-# Also covers the pipx tools under --system: a copy that only resolves under
-# $HOME, or a shared venv other users cannot read, is reported as failing.
+# Also covers the pipx and npm tools under --system: a copy that only resolves
+# under $HOME, a shared venv or npm package other users cannot read, or an npm
+# tool whose node other users cannot run, is reported as failing.
 #
 # Runs check-setup with a PATH holding only a fake dotnet and the few
 # utilities check-setup itself needs, and a per-test HOME, so the host's own
@@ -83,6 +84,10 @@ write_shared_pipx_tool() {
 
 pre_commit_hooks_line() {
     printf '%s\n' "${output}" | grep 'VALIDATE_JSON/XML/YAML/TOML syntax'
+}
+
+eslint_line() {
+    printf '%s\n' "${output}" | grep 'VALIDATE_TYPESCRIPT_ES'
 }
 
 cscleanup_line() {
@@ -258,5 +263,170 @@ cscleanup_line() {
     [[ "${_line}" != *"not installed"* && "${_line}" != *"other users"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
     [[ "${output}" != *"  pylint: "* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+# write_shared_npm_tool <package> <command>
+# Lays out <package> under a stand-in for the shared npm prefix's
+# lib/node_modules (outside HOME), links <command> to it from the prefix's bin
+# directory, and puts a readable node there too, returning the prefix in
+# SHARED_NPM_PREFIX and its bin directory in SHARED_BIN.
+write_shared_npm_tool() {
+    SHARED_NPM_PREFIX="${BATS_TEST_TMPDIR}/usr/local"
+    SHARED_BIN="${SHARED_NPM_PREFIX}/bin"
+    write_tool "${SHARED_NPM_PREFIX}/lib/node_modules/$1/bin" "$2.js"
+    printf '{"name": "%s"}\n' "$1" > "${SHARED_NPM_PREFIX}/lib/node_modules/$1/package.json"
+    chmod -R a+rX "${SHARED_NPM_PREFIX}"
+    mkdir -p "${SHARED_BIN}"
+    ln -s "../lib/node_modules/$1/bin/$2.js" "${SHARED_BIN}/$2"
+    write_tool "${SHARED_BIN}" node
+}
+
+@test "check-setup --system fails an npm linter that is only under HOME, giving the shared npm install command" {
+    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
+    write_tool "${_nvm_bin}" eslint
+    write_tool "${_nvm_bin}" node
+
+    run_check_setup_system PATH="${_nvm_bin}:${FAKE_BIN}"
+    local _line
+    _line="$(eslint_line)"
+
+    [[ "${_line}" == *"installed only under ${FAKE_HOME}, so other users cannot run it"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${_line}" == *"(umask 022 && sudo npm install --global --prefix /usr/local --engine-strict --ignore-scripts eslint) && sudo chmod -R a+rX /usr/local/lib/node_modules"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${output}" == *"  eslint:         (umask 022 && sudo npm install --global --prefix /usr/local --engine-strict --ignore-scripts eslint)"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [ "${status}" -ne 0 ]
+}
+
+@test "check-setup --system fails markdownlint and stylelint copies that are only under HOME" {
+    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
+    write_tool "${_nvm_bin}" markdownlint
+    write_tool "${_nvm_bin}" stylelint
+
+    run_check_setup_system PATH="${_nvm_bin}:${FAKE_BIN}"
+
+    [[ "$(printf '%s\n' "${output}" | grep 'VALIDATE_MD')" == *"installed only under ${FAKE_HOME}"*"--ignore-scripts markdownlint-cli)"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "$(printf '%s\n' "${output}" | grep 'VALIDATE_CSS')" == *"installed only under ${FAKE_HOME}"*"--ignore-scripts stylelint)"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${output}" == *"  stylelint:      (umask 022 && sudo npm install --global --prefix /usr/local --engine-strict --ignore-scripts stylelint stylelint-config-standard)"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup accepts every npm linter under HOME for a per-user install, giving no install hint for them" {
+    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
+    local _tool
+    for _tool in markdownlint stylelint eslint; do
+        write_tool "${_nvm_bin}" "${_tool}"
+    done
+
+    run_check_setup PATH="${_nvm_bin}:${FAKE_BIN}"
+
+    for _tool in markdownlint stylelint eslint; do
+        [[ "${output}" != *"  ${_tool}: "* ]] \
+            || fail_with_run_output "${status}" "${output}" "any"
+    done
+    [[ "$(printf '%s\n' "${output}" | grep -E 'VALIDATE_MD|VALIDATE_CSS|VALIDATE_TYPESCRIPT_ES')" != *"not installed"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system accepts a readable shared npm linter even when a per-user copy comes first on PATH" {
+    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
+    write_tool "${_nvm_bin}" eslint
+    write_tool "${_nvm_bin}" node
+    write_shared_npm_tool eslint eslint
+
+    run_check_setup_system PATH="${_nvm_bin}:${SHARED_BIN}:${FAKE_BIN}" \
+        NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
+    local _line
+    _line="$(eslint_line)"
+
+    [[ "${_line}" != *"not installed"* && "${_line}" != *"other users"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${output}" != *"  eslint: "* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system fails a shared npm package that other users cannot read" {
+    write_shared_npm_tool eslint eslint
+    chmod 0640 "${SHARED_NPM_PREFIX}/lib/node_modules/eslint/package.json"
+
+    run_check_setup_system PATH="${SHARED_BIN}:${FAKE_BIN}" \
+        NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
+    local _line
+    _line="$(eslint_line)"
+
+    [[ "${_line}" == *"${SHARED_NPM_PREFIX}/lib/node_modules/eslint is not readable and executable by other users"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${_line}" == *"sudo chmod -R a+rX ${SHARED_NPM_PREFIX}/lib/node_modules"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [ "${status}" -ne 0 ]
+}
+
+@test "check-setup --system fails a shared npm prefix whose node_modules directory other users cannot enter" {
+    write_shared_npm_tool eslint eslint
+    chmod 0750 "${SHARED_NPM_PREFIX}/lib/node_modules"
+
+    run_check_setup_system PATH="${SHARED_BIN}:${FAKE_BIN}" \
+        NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
+    chmod 0755 "${SHARED_NPM_PREFIX}/lib/node_modules"
+    local _line
+    _line="$(eslint_line)"
+
+    [[ "${_line}" == *"is not readable and executable by other users"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system fails a shared npm linter whose node is only under HOME" {
+    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
+    write_shared_npm_tool eslint eslint
+    rm "${SHARED_BIN}/node"
+    write_tool "${_nvm_bin}" node
+
+    run_check_setup_system PATH="${SHARED_BIN}:${_nvm_bin}:${FAKE_BIN}" \
+        NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
+    local _line
+    _line="$(eslint_line)"
+
+    [[ "${_line}" == *"needs node, which is not installed outside ${FAKE_HOME}, so other users cannot run it; run: ./install-deps-arch or ./install-deps-debian"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [ "${status}" -ne 0 ]
+}
+
+@test "check-setup --system fails a shared npm linter whose shared node other users cannot execute" {
+    write_shared_npm_tool eslint eslint
+    chmod 0744 "${SHARED_BIN}/node"
+
+    run_check_setup_system PATH="${SHARED_BIN}:${FAKE_BIN}" \
+        NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
+    local _line
+    _line="$(eslint_line)"
+
+    [[ "${_line}" == *"needs node, but ${SHARED_BIN}/node is not readable and executable by other users"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system accepts a shared npm linter installed outside the shared npm prefix" {
+    local _usr_bin="${BATS_TEST_TMPDIR}/usr/bin"
+    write_tool "${_usr_bin}" eslint
+    write_tool "${_usr_bin}" node
+
+    run_check_setup_system PATH="${_usr_bin}:${FAKE_BIN}" \
+        NPM_SHARED_PREFIX_TEST_OVERRIDE="${BATS_TEST_TMPDIR}/usr/local"
+    local _line
+    _line="$(eslint_line)"
+
+    [[ "${_line}" != *"not installed"* && "${_line}" != *"other users"* && "${_line}" != *"needs node"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup gives the shared npm install commands for missing npm linters" {
+    run_check_setup
+
+    [[ "${output}" == *"  markdownlint:   (umask 022 && sudo npm install --global --prefix /usr/local --engine-strict --ignore-scripts markdownlint-cli) && sudo chmod -R a+rX /usr/local/lib/node_modules"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${output}" != *"npm install -g "* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
 }

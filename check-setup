@@ -8,8 +8,9 @@
 #   1  the config failed to validate OR one or more tools are missing
 #
 # Run standalone at any time, or automatically at the end of ./install.
-# Pass --system when the hooks were installed system-wide: the pipx-installed
-# tools must then be runnable by every user, not only from this user's $HOME.
+# Pass --system when the hooks were installed system-wide: the pipx- and
+# npm-installed tools must then be runnable by every user, not only from this
+# user's $HOME.
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$REPO_DIR/src/hooks"
@@ -70,6 +71,18 @@ shared_command_path() {
     return 1
 }
 
+# Succeeds when every user can enter each of the directories given.
+dirs_searchable_by_all() {
+    [ -z "$(find "$@" -prune ! -perm -o=x -print 2>/dev/null)" ]
+}
+
+# Succeeds when every user can use the file or directory tree $1: directories
+# readable and searchable, files readable, and owner-executable files
+# executable by all.
+tree_usable_by_all() {
+    [ -z "$(find "$1" \( -type d ! -perm -o=rx \) -o \( -type f ! -perm -o=r \) -o \( -type f -perm -u=x ! -perm -o=x \) 2>/dev/null | head -1)" ]
+}
+
 # Succeeds when pipx-installable tool $1 (from package $2) is usable by every
 # user this install serves. Otherwise fails, printing why when it is installed
 # but unusable by other users, and nothing when it is not installed at all.
@@ -85,13 +98,56 @@ pipx_tool_usable() {
         "$PIPX_SHARED_HOME"/venvs/*)
             _venv="${_shared#"$PIPX_SHARED_HOME"/venvs/}"
             _venv="$PIPX_SHARED_HOME/venvs/${_venv%%/*}"
-            if [ -n "$(find "$PIPX_SHARED_HOME" "$PIPX_SHARED_HOME/venvs" -prune ! -perm -o=x -print 2>/dev/null)" ] \
-                || [ -n "$(find "$_venv" \( -type d ! -perm -o=rx \) -o \( -type f ! -perm -o=r \) -o \( -type f -perm -u=x ! -perm -o=x \) 2>/dev/null | head -1)" ]; then
+            if ! dirs_searchable_by_all "$PIPX_SHARED_HOME" "$PIPX_SHARED_HOME/venvs" \
+                || ! tree_usable_by_all "$_venv"; then
                 printf '%s is not readable and executable by other users, so they cannot run it; run: %s' "$_venv" "$(shared_pipx_hint "$2")"
                 return 1
             fi
             ;;
     esac
+    return 0
+}
+
+# Test-only override, so the suite never inspects the real shared npm prefix.
+NPM_SHARED_PREFIX="${NPM_SHARED_PREFIX_TEST_OVERRIDE:-/usr/local}"
+NPM_SHARED_MODULES="$NPM_SHARED_PREFIX/lib/node_modules"
+
+# The command install-deps-arch/-debian's install_npm_globals runs, for the
+# package(s) in $1.
+shared_npm_hint() {
+    printf "(umask 022 && sudo npm install --global --prefix %s --engine-strict --ignore-scripts %s) && sudo chmod -R a+rX %s" \
+        "$NPM_SHARED_PREFIX" "$1" "$NPM_SHARED_MODULES"
+}
+
+SHARED_NODE_HINT="./install-deps-arch or ./install-deps-debian (installs node and npm for every user)"
+
+# Succeeds when npm-installable tool $1 (from package $2) is usable by every
+# user this install serves, including the node its `#!/usr/bin/env node`
+# entry point runs on. Otherwise fails as pipx_tool_usable does.
+npm_tool_usable() {
+    has "$1" || return 1
+    $SYSTEM_INSTALL || return 0
+    if ! _shared=$(shared_command_path "$1"); then
+        printf 'installed only under %s, so other users cannot run it; run: %s' "$HOME" "$(shared_npm_hint "$2")"
+        return 1
+    fi
+    case "$_shared" in
+        "$NPM_SHARED_MODULES/$2"/*)
+            if ! dirs_searchable_by_all "$NPM_SHARED_PREFIX/lib" "$NPM_SHARED_MODULES" \
+                || ! tree_usable_by_all "$NPM_SHARED_MODULES/$2"; then
+                printf '%s is not readable and executable by other users, so they cannot run it; run: %s' "$NPM_SHARED_MODULES/$2" "$(shared_npm_hint "$2")"
+                return 1
+            fi
+            ;;
+    esac
+    if ! _node=$(shared_command_path node); then
+        printf 'needs node, which is not installed outside %s, so other users cannot run it; run: %s' "$HOME" "$SHARED_NODE_HINT"
+        return 1
+    fi
+    if ! tree_usable_by_all "$_node"; then
+        printf 'needs node, but %s is not readable and executable by other users, so they cannot run it; run: %s' "$_node" "$SHARED_NODE_HINT"
+        return 1
+    fi
     return 0
 }
 
@@ -242,10 +298,12 @@ else
     cross "VALIDATE_PYTHON — flake8         (system)" "not installed"
 fi
 
-if has markdownlint; then
+MARKDOWNLINT_OK=false
+if MARKDOWNLINT_PROBLEM=$(npm_tool_usable markdownlint markdownlint-cli); then
+    MARKDOWNLINT_OK=true
     skip  "VALIDATE_MD — markdownlint       (system)" "$(markdownlint --version 2>/dev/null)"
 else
-    cross "VALIDATE_MD — markdownlint       (system)" "not installed"
+    cross "VALIDATE_MD — markdownlint       (system)" "${MARKDOWNLINT_PROBLEM:-not installed}"
 fi
 
 ANSIBLE_LINT_OK=false
@@ -283,10 +341,12 @@ else
     cross "VALIDATE_PYTHON_PYLINT — pylint  (system)" "${PYLINT_PROBLEM:-not installed}"
 fi
 
-if has stylelint; then
+STYLELINT_OK=false
+if STYLELINT_PROBLEM=$(npm_tool_usable stylelint stylelint); then
+    STYLELINT_OK=true
     skip  "VALIDATE_CSS — stylelint          (system)" "$(stylelint --version 2>/dev/null)"
 else
-    cross "VALIDATE_CSS — stylelint          (system)" "not installed"
+    cross "VALIDATE_CSS — stylelint          (system)" "${STYLELINT_PROBLEM:-not installed}"
 fi
 
 if has dotenv-linter; then
@@ -295,10 +355,12 @@ else
     cross "VALIDATE_ENV — dotenv-linter      (system)" "not installed"
 fi
 
-if has eslint; then
+ESLINT_OK=false
+if ESLINT_PROBLEM=$(npm_tool_usable eslint eslint); then
+    ESLINT_OK=true
     skip  "VALIDATE_TYPESCRIPT_ES — eslint   (system)" "$(eslint --version 2>/dev/null)"
 else
-    cross "VALIDATE_TYPESCRIPT_ES — eslint   (system)" "not installed"
+    cross "VALIDATE_TYPESCRIPT_ES — eslint   (system)" "${ESLINT_PROBLEM:-not installed}"
 fi
 
 if has xmllint; then
@@ -343,7 +405,7 @@ $PRE_COMMIT_HOOKS_OK      || MISSING_SYSTEM="$MISSING_SYSTEM pre-commit-hooks"
 has shellcheck    || MISSING_SYSTEM="$MISSING_SYSTEM shellcheck"
 has yamllint      || MISSING_SYSTEM="$MISSING_SYSTEM yamllint"
 has flake8        || MISSING_SYSTEM="$MISSING_SYSTEM flake8"
-has markdownlint  || MISSING_SYSTEM="$MISSING_SYSTEM markdownlint"
+$MARKDOWNLINT_OK  || MISSING_SYSTEM="$MISSING_SYSTEM markdownlint"
 $ANSIBLE_LINT_OK  || MISSING_SYSTEM="$MISSING_SYSTEM ansible-lint"
 has trufflehog    || MISSING_SYSTEM="$MISSING_SYSTEM trufflehog"
 $SQLFLUFF_OK      || MISSING_SYSTEM="$MISSING_SYSTEM sqlfluff"
@@ -352,9 +414,9 @@ has hadolint      || MISSING_SYSTEM="$MISSING_SYSTEM hadolint"
 has actionlint             || MISSING_SYSTEM="$MISSING_SYSTEM actionlint"
 has composite-action-lint  || MISSING_SYSTEM="$MISSING_SYSTEM composite-action-lint"
 $PYLINT_OK        || MISSING_SYSTEM="$MISSING_SYSTEM pylint"
-has stylelint     || MISSING_SYSTEM="$MISSING_SYSTEM stylelint"
+$STYLELINT_OK     || MISSING_SYSTEM="$MISSING_SYSTEM stylelint"
 has dotenv-linter || MISSING_SYSTEM="$MISSING_SYSTEM dotenv-linter"
-has eslint        || MISSING_SYSTEM="$MISSING_SYSTEM eslint"
+$ESLINT_OK        || MISSING_SYSTEM="$MISSING_SYSTEM eslint"
 has xmllint       || MISSING_SYSTEM="$MISSING_SYSTEM xmllint"
 $PWSH_OK          || MISSING_SYSTEM="$MISSING_SYSTEM pwsh"
 has bats          || MISSING_SYSTEM="$MISSING_SYSTEM bats"
@@ -368,16 +430,16 @@ if [ -n "$MISSING_SYSTEM" ]; then
     has shellcheck    || echo "  shellcheck:     apt install shellcheck  # or brew install shellcheck"
     has yamllint      || echo "  yamllint:       pip install yamllint  # or apt install yamllint"
     has flake8        || echo "  flake8:         pip install flake8    # or apt install flake8"
-    has markdownlint  || echo "  markdownlint:   npm install -g markdownlint-cli"
+    $MARKDOWNLINT_OK  || echo "  markdownlint:   $(shared_npm_hint markdownlint-cli)"
     $ANSIBLE_LINT_OK  || echo "  ansible-lint:   $(shared_pipx_hint ansible-lint)  # or apt install ansible-lint"
     has trufflehog    || echo "  trufflehog:     curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin"
     has hadolint      || echo "  hadolint:       brew install hadolint  # or https://github.com/hadolint/hadolint/releases"
     has actionlint             || echo "  actionlint:             brew install actionlint  # or https://github.com/rhysd/actionlint/releases"
     has composite-action-lint  || echo "  composite-action-lint:  go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest"
     $PYLINT_OK        || echo "  pylint:         $(shared_pipx_hint pylint)"
-    has stylelint     || echo "  stylelint:      npm install -g stylelint stylelint-config-standard"
+    $STYLELINT_OK     || echo "  stylelint:      $(shared_npm_hint "stylelint stylelint-config-standard")"
     has dotenv-linter || echo "  dotenv-linter:  https://github.com/dotenv-linter/dotenv-linter/releases"
-    has eslint        || echo "  eslint:         npm install -g eslint"
+    $ESLINT_OK        || echo "  eslint:         $(shared_npm_hint eslint)"
     $SQLFLUFF_OK      || echo "  sqlfluff:       $(shared_pipx_hint sqlfluff)"
     $CFN_LINT_OK      || echo "  cfn-lint:       $(shared_pipx_hint cfn-lint)"
     has xmllint       || echo "  xmllint:        apt install libxml2-utils  # or brew install libxml2"
