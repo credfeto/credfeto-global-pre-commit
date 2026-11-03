@@ -19,6 +19,8 @@ setup() {
     FAKE_BIN="${BATS_TEST_TMPDIR}/bin"
     FAKE_GOPATH="${BATS_TEST_TMPDIR}/gopath"
     FAKE_HOME="${BATS_TEST_TMPDIR}/home"
+    # Where an nvm-managed Node.js and its global npm packages live under HOME.
+    NVM_BIN="${FAKE_HOME}/.nvm/versions/node/v24.2.0/bin"
     mkdir -p "${FAKE_BIN}" "${FAKE_GOPATH}/bin" "${FAKE_HOME}"
 
     export CALL_LOG="${BATS_TEST_TMPDIR}/calls.log"
@@ -268,12 +270,11 @@ chmod -R a+rX ${_prefix}/lib/node_modules root=1"
 
 @test "install_npm_globals installs the shared copies even when per-user nvm copies are already on PATH" {
     write_npm_fakes
-    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v24.2.0/bin"
-    mkdir -p "${_nvm_bin}"
-    printf '#!/bin/sh\nexit 0\n' > "${_nvm_bin}/eslint"
-    "$(type -P chmod)" +x "${_nvm_bin}/eslint"
+    mkdir -p "${NVM_BIN}"
+    printf '#!/bin/sh\nexit 0\n' > "${NVM_BIN}/eslint"
+    "$(type -P chmod)" +x "${NVM_BIN}/eslint"
 
-    run_helper install_npm_globals "${_nvm_bin}"
+    run_helper install_npm_globals "${NVM_BIN}"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "$(calls)" == *"--ignore-scripts markdownlint-cli eslint stylelint stylelint-config-standard umask=0022 root=1"* ]] \
@@ -339,12 +340,11 @@ chmod -R a+rX ${_prefix}/lib/node_modules root=1"
 
 @test "install_shared_node upgrades an older shared node even when the latest LTS is on PATH under HOME" {
     write_node_fakes v22.9.0
-    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v24.2.0/bin"
-    mkdir -p "${_nvm_bin}"
-    printf '#!/bin/sh\necho v24.2.0\n' > "${_nvm_bin}/node"
-    "$(type -P chmod)" +x "${_nvm_bin}/node"
+    mkdir -p "${NVM_BIN}"
+    printf '#!/bin/sh\necho v24.2.0\n' > "${NVM_BIN}/node"
+    "$(type -P chmod)" +x "${NVM_BIN}/node"
 
-    ARCH_UNAME=x86_64 run_helper install_shared_node "${_nvm_bin}"
+    ARCH_UNAME=x86_64 run_helper install_shared_node "${NVM_BIN}"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "$(calls)" == *"tar -xJf "* ]] || fail_test "shared node not installed: $(calls)"
@@ -352,11 +352,10 @@ chmod -R a+rX ${_prefix}/lib/node_modules root=1"
 
 @test "install_shared_node replaces a shared node that links to the latest LTS under HOME" {
     write_node_fakes ""
-    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v24.2.0/bin"
-    mkdir -p "${_nvm_bin}" "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin"
-    printf '#!/bin/sh\necho v24.2.0\n' > "${_nvm_bin}/node"
-    "$(type -P chmod)" +x "${_nvm_bin}/node"
-    ln -s "${_nvm_bin}/node" "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin/node"
+    mkdir -p "${NVM_BIN}" "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin"
+    printf '#!/bin/sh\necho v24.2.0\n' > "${NVM_BIN}/node"
+    "$(type -P chmod)" +x "${NVM_BIN}/node"
+    ln -s "${NVM_BIN}/node" "${NPM_SHARED_PREFIX_TEST_OVERRIDE}/bin/node"
 
     ARCH_UNAME=x86_64 run_helper install_shared_node
 
