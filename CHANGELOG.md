@@ -147,7 +147,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Pre-commit dotnet install-location check accepts a symlinked /usr/share/dotnet (#284)
 - Bats test helper resolves a symlinked /usr/share/dotnet when choosing the expected dotnet path, and the PowerShell tests check for dotnet on TEST_PATH
 - install --system now works from a read-only, root-owned copy: only files that are not already executable are made executable (retrying with sudo), no per-user run-* wrapper links are created because the shared hook puts the scripts on PATH for every user, and composite-action-lint is copied into /usr/local/bin so every user can run it (#280)
-- install-deps-arch (pre-commit-hooks) and install-deps-debian (pre-commit-hooks, sqlfluff, cfn-lint and the pylint/ansible-lint fallbacks) install pipx tools into a shared /opt/pipx with commands in /usr/local/bin, so system-wide hooks work for every account, and check-setup --system fails tools only installed under $HOME
+- Install the pipx hook tools and the npm linters (markdownlint-cli, eslint, stylelint, stylelint-config-standard) once for every account in shared locations (/opt/pipx and /usr/local/bin), running on a Node.js every account can run (pacman nodejs and npm on Arch, or the checksum-verified nodejs.org LTS in /usr/local on Debian/Ubuntu), so system-wide hooks work for every user, and check-setup --system fails npm linters or a node that only resolve under $HOME (#287)
 
 ### Changed
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
