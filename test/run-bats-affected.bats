@@ -68,69 +68,53 @@ run_affected() {
     run_isolated "${_repo}" "${TEST_PATH}" env -u RUN_BATS_FULL "${REPO_DIR}/src/scripts/run-bats" "$@"
 }
 
+# T is the fixture repo from make_affected_repo, rebuilt for every test.
 setup() {
     command -v bats > /dev/null 2>&1 || skip "bats not installed"
+    T="$(make_affected_repo)"
 }
 
 @test "run-bats with a staged .bats file under test/ runs only that file" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" test/delta.bats
     assert_ran_only "${status}" "${output}" marker-delta
 }
 
 @test "run-bats with a script runs the test file named after it" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" src/scripts/alpha-tool.sh
     assert_ran_only "${status}" "${output}" marker-alpha
 }
 
 @test "run-bats with a script referenced by several tests runs all of them and no others" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" src/scripts/shared-tool.sh
     assert_ran_only "${status}" "${output}" marker-beta marker-gamma
 }
 
 @test "run-bats with several files runs the union of their tests" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" src/scripts/alpha-tool.sh test/delta.bats README.md
     assert_ran_only "${status}" "${output}" marker-alpha marker-delta
 }
 
 @test "run-bats with an absolute path inside the repo maps it like a relative one" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" "${T}/src/scripts/alpha-tool.sh"
     assert_ran_only "${status}" "${output}" marker-alpha
 }
 
 @test "run-bats with every .bats file under test/ runs every test file" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" test/alpha-tool.bats test/beta.bats test/gamma.bats test/delta.bats "test/odd ref.bats" "test/ünï.bats"
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with test/test_helper.bash runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" test/test_helper.bash
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with a shell script no test mentions runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" src/scripts/orphan.sh
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with src/.pre-commit-config.yaml runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     mkdir -p "${T}/src"
     printf 'repos: []\n' > "${T}/src/.pre-commit-config.yaml"
     run_affected "${T}" src/.pre-commit-config.yaml
@@ -138,74 +122,54 @@ setup() {
 }
 
 @test "run-bats with a .bats file outside test/ runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     write_marker_test "${T}/src/elsewhere.bats" marker-elsewhere "outside test/"
     run_affected "${T}" src/elsewhere.bats
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with a deleted .bats file under test/ runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" test/removed.bats
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with a file outside the repo runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     printf '#!/bin/sh\necho hello\n' > "${BATS_TEST_TMPDIR}/outside.sh"
     run_affected "${T}" "${BATS_TEST_TMPDIR}/outside.sh"
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with a mapped script and an unmapped script runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" src/scripts/alpha-tool.sh src/scripts/orphan.sh
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats --all-files runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     commit_without_hooks "${T}" . > /dev/null
     run_affected "${T}" --all-files
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with no arguments runs the full suite" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}"
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "RUN_BATS_FULL=1 makes run-bats run the full suite for a mappable file" {
-    local T
-    T="$(make_affected_repo)"
     run_isolated "${T}" "${TEST_PATH}" env RUN_BATS_FULL=1 "${REPO_DIR}/src/scripts/run-bats" test/delta.bats
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats maps a script whose name contains a space" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" "src/scripts/my script.sh"
     assert_ran_only "${status}" "${output}" marker-odd
 }
 
 @test "run-bats runs a staged .bats file with a space in its name" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" "test/odd ref.bats"
     assert_ran_only "${status}" "${output}" marker-odd
 }
 
 @test "run-bats runs a staged .bats file with a non-ASCII name" {
-    local T
-    T="$(make_affected_repo)"
     run_affected "${T}" "test/ünï.bats"
     assert_ran_only "${status}" "${output}" marker-unicode
 }
