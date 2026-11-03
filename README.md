@@ -277,7 +277,7 @@ installs nothing itself and each tool must be on `PATH`:
 | `VALIDATE_TYPESCRIPT_ES` | `eslint` (via `run-eslint`) | `*.ts/tsx/js/jsx` (skips if no eslint config) |
 | `VALIDATE_XML` (full) | `xmllint` | `*.xml` |
 | `VALIDATE_POWERSHELL` | `pwsh` + `PSScriptAnalyzer` (via `run-psscriptanalyzer`) | `*.ps1/psm1/psd1` |
-| `VALIDATE_BATS` | `bats` (via `run-bats`, runs only the `test/` files the staged files affect; see below) | Any staged shell script (including `test/test_helper.bash`) or `src/.pre-commit-config.yaml`, when `test/` holds a `*.bats` file (see `_bats_file_qualifies` in `src/scripts/run-bats` for the full rule) |
+| `VALIDATE_BATS` | `bats` (via `run-bats`, runs only the `test/` files the staged files affect) | Staged shell scripts and `src/.pre-commit-config.yaml`, when `test/` holds a `*.bats` file (see [Bats test selection](#bats-test-selection-run-bats)) |
 | `VALIDATE_SQLFLUFF` | None | Handled by dedicated SQL check |
 | `VALIDATE_CLOUDFORMATION` | None | Handled by dedicated CFN check |
 
@@ -287,29 +287,6 @@ sourced file as well, including files outside the repository such as
 a system or third-party file it cannot fix should put
 `# shellcheck source=/dev/null` on the line above that `source` to opt the file
 out; `# shellcheck disable=SC1091` does not.
-
-The bats hook has no file filter: pre-commit passes it every staged text file
-and `run-bats` decides whether to run the suite. In a repository without bats
-tests it therefore shows `Passed` rather than `Skipped`, because it runs and
-exits at once without invoking `bats`.
-
-`run-bats` runs only the bats files the qualifying staged files affect (see
-`_bats_map_file` in `src/scripts/run-bats`):
-
-- a staged `test/**/*.bats` file runs itself;
-- a staged script `X` runs `test/<X without extension>.bats` if it exists,
-  plus every `.bats` file under `test/` that mentions `X`'s basename (so a
-  test naming its repo-relative path also matches);
-- any other file under `test/` (such as `test/test_helper.bash`),
-  `src/.pre-commit-config.yaml`, a `.bats` file outside `test/`, a deleted
-  `.bats` file, a file outside the repository, or a script no test mentions
-  runs the whole `test/` suite instead.
-
-Files that do not qualify (for example `README.md`) are ignored. Set
-`RUN_BATS_FULL=1` to always run the whole suite. `run-bats --all-files` and
-`run-bats` with no arguments also run the whole suite. `pre-commit run
---all-files` passes every tracked text file rather than the flag, so every
-tracked `test/` bats file is still run.
 
 **Additional security checks** (not part of the Super-linter `VALIDATE_*` set, added independently; tool must be on PATH):
 
@@ -321,6 +298,74 @@ tracked `test/` bats file is still run.
 
 `trivy`'s secret scanner is deliberately not enabled, because it would duplicate the
 verified-only `trufflehog` check above with noisier, unverified findings.
+
+#### Bats test selection (`run-bats`)
+
+This section is the authoritative description of which files trigger the bats
+hook and which bats files `run-bats` then runs. The code lives in
+`src/scripts/run-bats` (`_bats_file_qualifies`, `_bats_map_file` and the
+loop that calls them).
+
+The bats hook has no file filter: pre-commit passes it every staged text file
+and `run-bats` decides what to run. Running "the whole suite" below means
+`bats --recursive test/`.
+
+`run-bats` first exits 0 without running anything when `test/` (searched
+recursively) holds no `*.bats` file, whatever its arguments. In a repository
+without bats tests the hook therefore shows `Passed` rather than `Skipped`,
+because it runs and exits at once without invoking `bats`.
+
+A file **qualifies** when it is:
+
+- named with a `.sh`, `.bash`, `.bats`, `.ksh` or `.dash` extension (so
+  `test/test_helper.bash` qualifies, and so does a deleted file with one of
+  these extensions);
+- an existing file whose first line is a shebang naming `sh`, `bash`, `dash`,
+  `ksh` or `busybox sh` in `/bin`, `/usr/bin` or `/usr/local/bin`, directly or
+  through `env` or `env -S`;
+- an existing file whose first line is a `# shellcheck shell=...` directive
+  for `sh`, `bash`, `dash`, `ksh` or `busybox`; or
+- `src/.pre-commit-config.yaml`.
+
+Every other file (for example `README.md`) is ignored. A deleted file with no
+qualifying extension is ignored too, because there is no first line left to
+read.
+
+`run-bats <file>...` maps each qualifying file to the bats files it affects
+and runs only those. Paths are resolved relative to the repository root, so
+an absolute path inside the repository maps like a relative one:
+
+- a `test/**/*.bats` file that exists runs itself;
+- any other file runs `test/<basename without its last extension>.bats` if
+  that file exists, plus every `.bats` file under `test/` (searched
+  recursively, in the working tree, so untracked tests count) whose text
+  contains the file's basename (a test naming the repo-relative path contains
+  the basename, so it matches too);
+- the whole suite runs instead when any qualifying file is one of:
+  - a `.bats` file under `test/` that no longer exists (deleted or renamed);
+  - any other file under `test/`, such as `test/test_helper.bash`;
+  - a `.bats` file outside `test/`;
+  - `src/.pre-commit-config.yaml`;
+  - a file outside the repository;
+  - a file that maps to no bats file by either rule above.
+
+When no passed file qualifies, `run-bats` exits 0 without running `bats`.
+
+Other ways to run the whole suite:
+
+- `RUN_BATS_FULL=1 run-bats <file>...` skips the mapping and runs the whole
+  suite, provided at least one passed file qualifies (otherwise it still exits
+  0 without running `bats`);
+- `run-bats --all-files` runs the whole suite when any tracked file
+  (`git ls-files`) qualifies, and otherwise exits 0;
+- `run-bats` with no arguments runs the whole suite unconditionally.
+
+`pre-commit run --all-files` passes every tracked text file rather than the
+`--all-files` flag, so each file is mapped as above; every tracked `test/`
+bats file still runs, because each maps to itself. pre-commit splits a very
+long file list into chunks by argument length and calls `run-bats` once per
+chunk, so each chunk is mapped on its own, and a chunk holding no qualifying
+file runs nothing.
 
 ---
 
@@ -400,7 +445,7 @@ system package manager rather than `pre-commit autoupdate`.
 | `scripts/run-stylelint` | Wrapper for stylelint; skips silently if no `package.json` |
 | `scripts/run-psscriptanalyzer` | Wrapper for PSScriptAnalyzer; runs per-file via pwsh |
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
-| `scripts/run-bats` | Wrapper for bats, runs the `test/` files affected by the qualifying staged files, or the complete suite when they cannot be narrowed down or `RUN_BATS_FULL=1` is set (see `VALIDATE_BATS` above) |
+| `scripts/run-bats` | Wrapper for bats, runs the `test/` files the staged files affect, or the whole suite when they cannot be narrowed down (see [Bats test selection](#bats-test-selection-run-bats)) |
 | `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |
 | `scripts/run-formatter` | Applies `dotnet format` to staged `.cs` files and then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) to staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what it changes |
 
