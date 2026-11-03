@@ -132,7 +132,24 @@ _ensure_gpg_key() {
     _run_once_value "${_keyid_file}" _generate_gpg_keyid "${_email}" "${_keyid_file}"
 }
 
+# Second, distinct test GPG identity (different email), used only by
+# identity.bats's signingkey-email-mismatch test. Cached the same way as the
+# primary key, via the shared _ensure_gpg_key() helper.
+OTHER_TEST_GIT_EMAIL="other@example.com"
+OTHER_TEST_GIT_SIGNINGKEY=""
+
+ensure_other_test_gpg_key() {
+    # shellcheck disable=SC2034 # read by test/identity.bats via `load test_helper`
+    OTHER_TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${OTHER_TEST_GIT_EMAIL}" "${GNUPGHOME}/.other-keyid")"
+}
+
+# Generates the second identity before the primary key, not lazily in the one
+# test that needs it: every keyring reader (make_repo, then check-identity)
+# waits only on the primary key's marker, so a later lazy generation wrote the
+# shared keyring while parallel tests read it, and their
+# gpg --list-secret-keys failed transiently under bats --jobs.
 ensure_test_gpg_key() {
+    ensure_other_test_gpg_key || return 1
     TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${TEST_GIT_EMAIL}" "${GNUPGHOME}/.keyid")"
 }
 
@@ -145,17 +162,6 @@ ensure_test_gpg_key() {
 ensure_trivy_db_warm() {
     command -v trivy > /dev/null 2>&1 || return 0
     _run_once "${BATS_RUN_TMPDIR}/.trivy-db-warm" trivy fs --download-db-only --quiet "${BATS_RUN_TMPDIR}"
-}
-
-# Second, distinct test GPG identity (different email), used only by
-# identity.bats's signingkey-email-mismatch test. Cached the same way as
-# ensure_test_gpg_key() above, via the shared _ensure_gpg_key() helper.
-OTHER_TEST_GIT_EMAIL="other@example.com"
-OTHER_TEST_GIT_SIGNINGKEY=""
-
-ensure_other_test_gpg_key() {
-    # shellcheck disable=SC2034 # read by test/identity.bats via `load test_helper`
-    OTHER_TEST_GIT_SIGNINGKEY="$(_ensure_gpg_key "${OTHER_TEST_GIT_EMAIL}" "${GNUPGHOME}/.other-keyid")"
 }
 
 # Fails the current test with a message on stderr. bats-assert's `fail` is not
