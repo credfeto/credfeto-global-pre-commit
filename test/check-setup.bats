@@ -18,6 +18,8 @@ bats_require_minimum_version 1.5.0
 setup() {
     FAKE_BIN="${BATS_TEST_TMPDIR}/bin"
     FAKE_HOME="${BATS_TEST_TMPDIR}/home"
+    # Where an nvm-managed Node.js and its global npm packages live under HOME.
+    NVM_BIN="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
     mkdir -p "${FAKE_BIN}" "${FAKE_HOME}"
 
     # `tool list` reports cscleanup only when run from HOME with
@@ -277,11 +279,10 @@ write_shared_npm_tool() {
 }
 
 @test "check-setup --system fails an npm linter that is only under HOME, giving the shared npm install command" {
-    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
-    write_tool "${_nvm_bin}" eslint
-    write_tool "${_nvm_bin}" node
+    write_tool "${NVM_BIN}" eslint
+    write_tool "${NVM_BIN}" node
 
-    run_check_setup_system PATH="${_nvm_bin}:${FAKE_BIN}"
+    run_check_setup_system PATH="${NVM_BIN}:${FAKE_BIN}"
     local _line
     _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
 
@@ -295,11 +296,10 @@ write_shared_npm_tool() {
 }
 
 @test "check-setup --system fails markdownlint and stylelint copies that are only under HOME" {
-    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
-    write_tool "${_nvm_bin}" markdownlint
-    write_tool "${_nvm_bin}" stylelint
+    write_tool "${NVM_BIN}" markdownlint
+    write_tool "${NVM_BIN}" stylelint
 
-    run_check_setup_system PATH="${_nvm_bin}:${FAKE_BIN}"
+    run_check_setup_system PATH="${NVM_BIN}:${FAKE_BIN}"
 
     [[ "$(output_line 'VALIDATE_MD')" == *"installed only under ${FAKE_HOME}"*"--ignore-scripts markdownlint-cli)"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
@@ -310,13 +310,12 @@ write_shared_npm_tool() {
 }
 
 @test "check-setup accepts every npm linter under HOME for a per-user install, giving no install hint for them" {
-    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
     local _tool
     for _tool in markdownlint stylelint eslint; do
-        write_tool "${_nvm_bin}" "${_tool}"
+        write_tool "${NVM_BIN}" "${_tool}"
     done
 
-    run_check_setup PATH="${_nvm_bin}:${FAKE_BIN}"
+    run_check_setup PATH="${NVM_BIN}:${FAKE_BIN}"
 
     for _tool in markdownlint stylelint eslint; do
         [[ "${output}" != *"  ${_tool}: "* ]] \
@@ -327,12 +326,11 @@ write_shared_npm_tool() {
 }
 
 @test "check-setup --system accepts a readable shared npm linter even when a per-user copy comes first on PATH" {
-    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
-    write_tool "${_nvm_bin}" eslint
-    write_tool "${_nvm_bin}" node
+    write_tool "${NVM_BIN}" eslint
+    write_tool "${NVM_BIN}" node
     write_shared_npm_tool eslint eslint
 
-    run_check_setup_system PATH="${_nvm_bin}:${SHARED_BIN}:${FAKE_BIN}" \
+    run_check_setup_system PATH="${NVM_BIN}:${SHARED_BIN}:${FAKE_BIN}" \
         NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
     local _line
     _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
@@ -374,12 +372,11 @@ write_shared_npm_tool() {
 }
 
 @test "check-setup --system fails a shared npm linter whose node is only under HOME" {
-    local _nvm_bin="${FAKE_HOME}/.nvm/versions/node/v22.0.0/bin"
     write_shared_npm_tool eslint eslint
     rm "${SHARED_BIN}/node"
-    write_tool "${_nvm_bin}" node
+    write_tool "${NVM_BIN}" node
 
-    run_check_setup_system PATH="${SHARED_BIN}:${_nvm_bin}:${FAKE_BIN}" \
+    run_check_setup_system PATH="${SHARED_BIN}:${NVM_BIN}:${FAKE_BIN}" \
         NPM_SHARED_PREFIX_TEST_OVERRIDE="${SHARED_NPM_PREFIX}"
     local _line
     _line="$(output_line 'VALIDATE_TYPESCRIPT_ES')"
