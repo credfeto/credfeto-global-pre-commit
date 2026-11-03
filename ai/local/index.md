@@ -14,5 +14,5 @@ This is an index of local instructions that apply to just this project.
 
 ## Instruction Files
 <!-- Locally Maintained -->
-* [scripts.instructions.md](scripts.instructions.md): rules for adding and removing scripts, keeping `install` in sync, exposing `language: system` wrappers on PATH, what a per-user or `--system` install links or copies, installing pipx packages shared for every user, and the fixer-script staging/exit-code convention
+* [scripts.instructions.md](scripts.instructions.md): rules for adding and removing scripts, keeping `install` in sync, exposing `language: system` wrappers on PATH, what a per-user or `--system` install links or copies, installing pipx packages, npm packages and the Node.js runtime shared for every user, and the fixer-script staging/exit-code convention
 * [linters.instructions.md](linters.instructions.md) — rules for adding, removing, and modifying linters; acceptance test coverage requirements

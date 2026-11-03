@@ -1,7 +1,8 @@
 #!/bin/bash
 # Install dependencies for credfeto-global-pre-commit on Debian / Ubuntu.
 # Safe to run multiple times: apt is idempotent, binary installs are skipped
-# if the tool is already present, and pipx upgrades already-installed packages.
+# if the tool is already present, Node.js is skipped when the shared copy is
+# already the latest LTS, and pipx and npm upgrade already-installed packages.
 #
 # Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
@@ -38,6 +39,7 @@ sudo apt-get install -y \
     gpg \
     pipx \
     parallel \
+    xz-utils \
     || die "apt-get install failed"
 
 # Ensure pipx is available even on older systems that lack the apt package.
@@ -82,6 +84,11 @@ else
 fi
 
 # ── npm global packages ───────────────────────────────────────────────────────
+# The apt nodejs is older than the npm linters' engines allow, so node comes
+# from nodejs.org, shared in /usr/local like the linters, rather than from an
+# nvm Node under $HOME, which other users cannot run.
+info "Node.js (shared)"
+install_shared_node
 install_npm_globals
 
 # ── Binary releases from GitHub ───────────────────────────────────────────────

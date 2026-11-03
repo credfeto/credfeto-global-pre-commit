@@ -36,16 +36,17 @@ helper is needed and nothing is built with `makepkg`.
 
 | Source | Packages |
 | -------- | ---------- |
-| `pacman` | `git`, `bats`, `go`, `pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `python-pipx`, `trivy`, `parallel`, `curl`, `nvm`, `sqlfluff`, `python-cfn-lint` |
+| `pacman` | `git`, `bats`, `go`, `pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `python-pipx`, `trivy`, `parallel`, `curl`, `nvm`, `nodejs`, `npm`, `sqlfluff`, `python-cfn-lint` |
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
 | `pipx` (shared, see below) | `pre-commit-hooks` (no AUR package exists) |
-| `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
+| `npm -g` (shared, see below) | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint` |
 
-The `pacman` `nvm` package does not load nvm into the shell. Before `nvm` (and any
-Node.js it installs) can be used, source its init script from your shell rc file
-(e.g. `~/.bashrc`) and open a new shell:
+The `pacman` `nvm` package does not load nvm into the shell. The hook linters do not
+need it, because they run on the shared `pacman` `nodejs`, but before `nvm` (and any
+Node.js it installs) can be used for your own projects, source its init script from
+your shell rc file (e.g. `~/.bashrc`) and open a new shell:
 
 ```sh
 source /usr/share/nvm/init-nvm.sh
@@ -61,11 +62,12 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
 | Source | Packages |
 | -------- | ---------- |
-| `apt` | `git`, `bats`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx`, `parallel` |
+| `apt` | `git`, `bats`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx`, `parallel`, `xz-utils` |
 | `apt` (fallback: shared `pipx`) | `ansible-lint`, `python3-pylint` (`pylint` from `pipx`), installed via `pipx` on releases where the `apt` package is unavailable |
 | GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
+| nodejs.org | Node.js (`node`, `npm`), the latest LTS tarball, checksum-verified and unpacked into `/usr/local` |
 | `pipx` (shared, see below) | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
-| `npm -g` | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
+| `npm -g` (shared, see below) | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
 | `dotnet tool` | `PowerShell` (`pwsh`), `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint`, skipped with a warning if `go` is not on `PATH` |
 
@@ -73,16 +75,15 @@ If `go` is on `PATH`, `actionlint` is installed via `go install` instead of a
 binary download.
 
 `nvm` is not in `apt`, so it is installed using nvm's official install script.
+The `apt` `nodejs` is older than the npm linters support, so Node.js is installed from
+nodejs.org instead; it is skipped only when `/usr/local/bin/node` is already the latest
+LTS and a real file, not a link (e.g. into an nvm Node under `$HOME`).
 
 ### Notes applicable to both scripts
 
 - Safe to run multiple times: each step is idempotent.
-- Node.js itself is not installed by either script: install it with the
-  [nvm](https://github.com/nvm-sh/nvm) the script provides (on Arch, load nvm into the
-  shell first, as described above). The `npm -g` packages are
-  skipped until a Node.js version is installed and active in nvm, so re-run the script
-  afterwards. Similarly, the .NET SDK is not installed: install it separately and the
-  script will pick it up automatically.
+- The .NET SDK is not installed: install it separately and the script will pick it up
+  automatically.
 - `pwsh` and `cscleanup` are installed as local `dotnet` tools in the `$HOME`-scoped
   tool manifest (`~/.config/dotnet-tools.json` or `~/dotnet-tools.json`, whichever the
   SDK uses; one is created if neither exists), with the `PSScriptAnalyzer` module
@@ -99,6 +100,19 @@ binary download.
 
   ```sh
   (umask 022 && sudo env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install pre-commit-hooks) && sudo chmod -R a+rX /opt/pipx
+  ```
+
+- `npm -g` packages are also installed once for every account, never into an nvm Node
+  under `$HOME`: as root, with `--prefix /usr/local`, under `umask 022`, after which
+  `/usr/local/lib/node_modules` is made readable by all users (`chmod -R a+rX`). Their
+  commands land in `/usr/local/bin` and run on the shared `node` (from `pacman` on Arch,
+  from nodejs.org in `/usr/local` on Debian / Ubuntu). `--engine-strict` makes a `node`
+  too old for a package fail the install, and `--ignore-scripts` stops package scripts
+  running as root. Copies already in your own nvm Node are left alone and do not stop
+  the shared install. To install one package by hand the same way:
+
+  ```sh
+  (umask 022 && sudo npm install --global --prefix /usr/local --engine-strict --ignore-scripts eslint) && sudo chmod -R a+rX /usr/local/lib/node_modules
   ```
 
 ---
@@ -123,6 +137,7 @@ To install for every user on the machine instead, run `./install --system` (need
 5. Validate the `.pre-commit-config.yaml` schema (no managed environments to install, because every hook is `language: system`)
 6. Print a status table of every check showing which are active and which need a system tool installed
    - With `--system`: a `pipx` tool (`pre-commit-hooks`, `sqlfluff`, `cfn-lint`, `pylint`, `ansible-lint`) found only under `$HOME`, or whose shared `/opt/pipx` venv other users cannot read, is marked as failing, because other users cannot run it
+   - With `--system`: an npm tool (`markdownlint`, `eslint`, `stylelint`) found only under `$HOME`, whose shared `/usr/local/lib/node_modules` package other users cannot read, or whose `node` is only under `$HOME` or not executable by other users, is marked as failing for the same reason
 
 `pre-commit` must be installed for linting to run (`pip install pre-commit`).
 
