@@ -210,6 +210,37 @@ run_git_target_files() {
     [ "${output}" = "scrípt.sh" ]
 }
 
+# ── src/scripts/lib/mode-arg.sh git_staged_deletions ─────────────────────────
+
+# run_git_staged_deletions <repo>
+# Sources lib/mode-arg.sh into sh in <repo> and prints git_staged_deletions
+# with each NUL terminator shown as a newline.
+run_git_staged_deletions() {
+    run sh -c '
+        cd "$1" || exit 2
+        . "$2"
+        git_staged_deletions | tr "\000" "\n"
+    ' _ "$1" "${REPO_DIR}/src/scripts/lib/mode-arg.sh"
+}
+
+@test "git_staged_deletions lists a staged deletion with a non-ASCII name by its real name, and a rename by its old name" {
+    local T
+    T="$(make_repo feature/non-ascii-staged-deletions)"
+    mkdir -p "${T}/sub"
+    printf 'echo hello\n' > "${T}/scrípt.sh"
+    printf 'echo old\n' > "${T}/old.sh"
+    printf '# Title\n' > "${T}/README.md"
+    commit_without_hooks "${T}" . > /dev/null
+    git -C "${T}" rm --quiet -- scrípt.sh
+    git -C "${T}" mv old.sh new.sh
+    printf '# Changed\n' > "${T}/README.md"
+    git -C "${T}" add -- README.md
+    # Run from a subdirectory: the list must still be repo-root-relative.
+    run_git_staged_deletions "${T}/sub"
+    [ "${status}" -eq 0 ]
+    [ "${output}" = "$(printf 'old.sh\nscrípt.sh')" ]
+}
+
 # ── src/scripts/check-ignored-files ──────────────────────────────────────────
 
 @test "check-ignored-files reports a tracked ignored file with a non-ASCII name by its real name" {

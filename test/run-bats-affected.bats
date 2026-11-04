@@ -228,3 +228,81 @@ write_sourcing_script() {
     run_affected "${T}" src/scripts/lib/util-lib.sh
     assert_ran_only "${status}" "${output}" marker-util
 }
+
+# commit_fixture_and_stage_removal <repo> <path>...
+# Commits the whole fixture, then stages the removal of each <path>, as a
+# commit deleting those files would before pre-commit runs.
+commit_fixture_and_stage_removal() {
+    local _repo="$1"
+    shift
+    commit_without_hooks "${_repo}" . > /dev/null
+    git -C "${_repo}" rm --quiet -- "$@"
+}
+
+@test "run-bats with a staged deletion of a script runs the full suite when narrowing another" {
+    commit_fixture_and_stage_removal "${T}" src/scripts/alpha-tool.sh
+    run_affected "${T}" src/scripts/shared-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a staged deletion of a script runs the full suite when no passed file qualifies" {
+    commit_fixture_and_stage_removal "${T}" src/scripts/alpha-tool.sh
+    run_affected "${T}" README.md
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a staged deletion of a test helper under test/ runs the full suite" {
+    commit_fixture_and_stage_removal "${T}" test/test_helper.bash
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a staged deletion of an extensionless script runs the full suite" {
+    printf '#!/usr/bin/env bash\necho hello\n' > "${T}/src/scripts/plain-tool"
+    commit_fixture_and_stage_removal "${T}" src/scripts/plain-tool
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a staged rename of a script runs the full suite" {
+    commit_without_hooks "${T}" . > /dev/null
+    git -C "${T}" mv src/scripts/alpha-tool.sh src/scripts/alpha-renamed.sh
+    run_affected "${T}" src/scripts/shared-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a staged deletion of a non-shell file still narrows" {
+    printf 'docs\n' > "${T}/README.md"
+    printf 'no shebang\n' > "${T}/src/scripts/NOTES"
+    commit_fixture_and_stage_removal "${T}" README.md src/scripts/NOTES
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha
+}
+
+@test "run-bats runs the full suite when the index cannot be read" {
+    commit_without_hooks "${T}" . > /dev/null
+    printf 'not an index' > "${T}/.git/index"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a staged deletion whose HEAD blob is missing runs the full suite" {
+    printf 'no shebang\n' > "${T}/src/scripts/NOTES"
+    commit_fixture_and_stage_removal "${T}" src/scripts/NOTES
+    local _oid
+    _oid=$(git -C "${T}" rev-parse HEAD:src/scripts/NOTES)
+    rm -f "${T}/.git/objects/${_oid:0:2}/${_oid:2}"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a staged deletion of a large non-shell file still narrows" {
+    {
+        printf 'no shebang\n'
+        head -c 1048576 /dev/zero | tr '\000' 'x'
+        printf '\n'
+    } > "${T}/src/scripts/BIG"
+    commit_fixture_and_stage_removal "${T}" src/scripts/BIG
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha
+}
