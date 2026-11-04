@@ -4,6 +4,13 @@
 
 load test_helper
 
+# write_marker_test <file> <test name> <comment>
+# Writes a one-test bats file whose passing test is named <test name>, with
+# <comment> as a comment line so the file can mention a path.
+write_marker_test() {
+    printf '#!/usr/bin/env bats\n# %s\n@test "%s" {\n  true\n}\n' "$3" "$2" > "$1"
+}
+
 # make_affected_repo
 # Creates a fixture repo whose test/ suite has one marker test per file, so a
 # run's output shows exactly which files bats ran:
@@ -13,10 +20,6 @@ load test_helper
 #   test/delta.bats       marker-delta  (mentions nothing)
 #   test/odd ref.bats     marker-odd    (mentions src/scripts/my script.sh)
 #   test/ünï.bats         marker-unicode
-write_marker_test() {
-    printf '#!/usr/bin/env bats\n# %s\n@test "%s" {\n  true\n}\n' "$3" "$2" > "$1"
-}
-
 make_affected_repo() {
     local _t
     _t="$(make_repo feature/bats-affected)"
