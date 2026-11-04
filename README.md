@@ -303,7 +303,8 @@ verified-only `trufflehog` check above with noisier, unverified findings.
 This section is the authoritative description of which files trigger the bats
 hook and which bats files `run-bats` then runs. The code lives in
 `src/scripts/run-bats` (`_bats_file_qualifies`, `_bats_map_file`,
-`_bats_is_sourced` and the loop that calls them).
+`_bats_is_sourced`, `_bats_staged_deletion_qualifies` and the loop that calls
+them).
 
 The bats hook has no file filter: pre-commit passes it every staged text file
 and `run-bats` decides what to run. Running "the whole suite" below means
@@ -326,9 +327,9 @@ A file **qualifies** when it is:
   for `sh`, `bash`, `dash`, `ksh` or `busybox`; or
 - `src/.pre-commit-config.yaml`.
 
-Every other file (for example `README.md`) is ignored. A deleted file with no
-qualifying extension is ignored too, because there is no first line left to
-read.
+Every other file (for example `README.md`) is ignored. A deleted file passed
+by hand with no qualifying extension is ignored too, because there is no
+first line left to read; staged deletions are handled separately, below.
 
 `run-bats <file>...` maps each qualifying file to the bats files it affects
 and runs only those. Paths are resolved relative to the repository root, so
@@ -360,7 +361,26 @@ an absolute path inside the repository maps like a relative one:
   - a file outside the repository;
   - a file that maps to no bats file by either rule above.
 
-When no passed file qualifies, `run-bats` exits 0 without running `bats`.
+pre-commit never passes a deleted file to a hook, so before mapping,
+`run-bats <file>...` also reads the index's staged deletions (through
+`git_staged_deletions` in `src/scripts/lib/mode-arg.sh`, which runs
+`git diff --cached --diff-filter=D --no-renames`, so a rename counts as a
+deletion of its old name) and runs the whole suite instead, even when no
+passed file qualifies, if any of them:
+
+- is under `test/`;
+- has a qualifying extension or is `src/.pre-commit-config.yaml`; or
+- had a qualifying first line in `HEAD` (so a deleted extensionless script
+  such as `src/scripts/run-bats` counts, and a deleted `README.md` does not),
+  or its `HEAD` content cannot be read (for example, a blob missing from a
+  partial clone).
+
+The whole suite also runs when the index cannot be read. Because this check
+looks at the whole index, every chunk of a chunked file list (see below) runs
+the whole suite when such a deletion is staged.
+
+When no passed file qualifies and no staged deletion triggers the whole
+suite, `run-bats` exits 0 without running `bats`.
 
 Other ways to run the whole suite:
 

@@ -2,8 +2,9 @@
 # Wrapper for bats: runs the bats tests under test/ that a change could
 # affect. Usage:
 #   run-bats <file>...     run the tests affected by the qualifying files
-#                          (see _bats_file_qualifies, _bats_map_file and
-#                          _bats_is_sourced)
+#                          (see _bats_file_qualifies, _bats_map_file,
+#                          _bats_is_sourced and
+#                          _bats_staged_deletion_qualifies)
 #   run-bats --all-files   run the whole suite if any tracked file qualifies
 #   run-bats               run the whole suite unconditionally (for callers
 #                          that filter files themselves, e.g. a
@@ -38,6 +39,10 @@ unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+# shellcheck source=src/scripts/lib/mode-arg.sh
+. "$SCRIPT_DIR/lib/mode-arg.sh"
+
 # No bats suite in this repo: nothing to run.
 [ -n "$(find "$REPO_ROOT/test" -name '*.bats' -print -quit 2>/dev/null)" ] || exit 0
 
@@ -46,22 +51,72 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 # shared test/test_helper.bash qualifies by its extension) or this repo's own
 # pre-commit config. Extension and path are checked first so the first line
 # is read only when they do not already decide it.
-_bats_file_qualifies() {
-    local path="$1" first=""
-    case "$path" in
+_bats_name_qualifies() {
+    case "$1" in
         src/.pre-commit-config.yaml) return 0 ;;
         *.sh | *.bash | *.bats | *.ksh | *.dash) return 0 ;;
     esac
+    return 1
+}
+
+# Succeeds when the first line $1 is a shebang (an interpreter in /bin,
+# /usr/bin or /usr/local/bin, directly or via `env` / `env -S`, naming sh,
+# bash, dash, ksh or `busybox sh`) or a `# shellcheck shell=` directive.
+_bats_first_line_qualifies() {
+    [[ "$1" =~ ^#![[:space:]]*(/usr(/local)?)?/bin/(env[[:space:]]+(-S[[:space:]]*)?)?(sh|bash|dash|ksh|busybox[[:space:]]+sh)([[:space:]]|$) ]] && return 0
+    [[ "$1" =~ ^#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?shell=(sh|bash|dash|ksh|busybox)([[:space:]]|$) ]]
+}
+
+_bats_file_qualifies() {
+    local path="$1" first=""
+    _bats_name_qualifies "$path" && return 0
     [ -f "$path" ] || return 1
     # Bounded read: a shebang or directive fits well within 256 characters,
     # and an unbounded read would pull in the whole first line of a
     # single-line file such as minified JS or JSON.
-    # A failed read leaves $first empty, so both patterns below fail.
+    # A failed read leaves $first empty, so neither pattern matches.
     IFS= read -r -n 256 first < "$path"
-    # Shebang: an interpreter in /bin, /usr/bin or /usr/local/bin, directly or
-    # via `env` / `env -S`, naming sh, bash, dash, ksh or `busybox sh`.
-    [[ "$first" =~ ^#![[:space:]]*(/usr(/local)?)?/bin/(env[[:space:]]+(-S[[:space:]]*)?)?(sh|bash|dash|ksh|busybox[[:space:]]+sh)([[:space:]]|$) ]] && return 0
-    [[ "$first" =~ ^#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?shell=(sh|bash|dash|ksh|busybox)([[:space:]]|$) ]] && return 0
+    _bats_first_line_qualifies "$first"
+}
+
+# Succeeds when the staged deletion $1 (a repo-root-relative path) could
+# break a test: any file under test/, a file that qualifies by name, or a
+# file whose first line in HEAD (where every staged deletion still exists)
+# qualifies. A HEAD blob that cannot be read (missing from the object store
+# in a partial clone or a damaged repository) counts as qualifying, since its
+# first line is unknown.
+_bats_deleted_file_qualifies() {
+    local path="$1" first="" status
+    case "$path" in
+        test/*) return 0 ;;
+    esac
+    _bats_name_qualifies "$path" && return 0
+    IFS= read -r -n 256 first < <(git -C "$REPO_ROOT" cat-file blob "HEAD:$path" 2>/dev/null)
+    wait "$!"
+    status=$?
+    # 141 (SIGPIPE): git was still writing a blob longer than the bounded
+    # read when the read finished, so the first line was read in full.
+    case "$status" in
+        0 | 141) ;;
+        *) return 0 ;;
+    esac
+    _bats_first_line_qualifies "$first"
+}
+
+# pre-commit passes no deleted file to a hook, so the tests of a deleted
+# script (or a deleted test helper) would never be selected by name. Succeeds
+# when a staged deletion could break a test, or when the index cannot be read,
+# so the caller runs the whole suite. A rename counts as a deletion of its
+# old name (see git_staged_deletions), which breaks that name's tests the
+# same way.
+_bats_staged_deletion_qualifies() {
+    local path
+    local -a deleted
+    mapfile -d '' -t deleted < <(git_staged_deletions 2>/dev/null)
+    wait "$!" || return 0
+    for path in "${deleted[@]}"; do
+        _bats_deleted_file_qualifies "$path" && return 0
+    done
     return 1
 }
 
@@ -153,6 +208,12 @@ if [ "$#" -gt 0 ]; then
     # anyway, and a file that cannot be narrowed down falls back to it (that
     # file qualified, so the suite still runs).
     _bats_qualified=0
+    # A staged deletion that could break a test runs the whole suite, even
+    # when no passed file qualifies, since nothing else would run its tests.
+    if [ "$_bats_narrow" = 1 ] && _bats_staged_deletion_qualifies; then
+        _bats_qualified=1
+        _bats_candidates=()
+    fi
     for _bats_file in "${_bats_candidates[@]}"; do
         _bats_file_qualifies "$_bats_file" || continue
         _bats_qualified=1
