@@ -2,7 +2,8 @@
 # Wrapper for bats: runs the bats tests under test/ that a change could
 # affect. Usage:
 #   run-bats <file>...     run the tests affected by the qualifying files
-#                          (see _bats_file_qualifies and _bats_map_file)
+#                          (see _bats_file_qualifies, _bats_map_file and
+#                          _bats_is_sourced)
 #   run-bats --all-files   run the whole suite if any tracked file qualifies
 #   run-bats               run the whole suite unconditionally (for callers
 #                          that filter files themselves, e.g. a
@@ -73,6 +74,30 @@ _bats_add_target() {
     _bats_targets+=("$1")
 }
 
+# Every line of the repo's tracked and untracked (not ignored) files that
+# sources a file: a `source` or `.` command at command position (line start,
+# or after `;`, `&`, `|`, `(`, `{`, `then`, `do` or `else`), or a
+# `# shellcheck source=` directive. Read once, on first use, by
+# _bats_is_sourced.
+_bats_source_lines=""
+_bats_source_lines_read=0
+
+# Succeeds when a source line names the basename $1, so the file is a library
+# whose tests run through the scripts that source it, which no basename
+# search finds. The basename must stand alone in the line (preceded by a
+# start of line, space, `/`, `=` or quote, and followed by an end of line,
+# space, quote, `;` or `)`), so `x.sh` does not match `lib/xx.sh`.
+_bats_is_sourced() {
+    if [ "$_bats_source_lines_read" = 0 ]; then
+        _bats_source_lines=$(git -C "$REPO_ROOT" grep --untracked -h -I -E \
+            -e '(^[[:space:]]*|[;&|({][[:space:]]*|(^|[[:space:]])(then|do|else)[[:space:]]+)(source|\.)[[:space:]]' \
+            -e '#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?source=' 2>/dev/null)
+        _bats_source_lines_read=1
+    fi
+    local -r before='(^|[[:space:]/="'\''])' after='([[:space:]";'\'')]|$)'
+    [[ "$_bats_source_lines" =~ $before"$1"$after ]]
+}
+
 # Adds the bats files affected by one qualifying file to _bats_targets.
 # Returns 1 when the file cannot be narrowed down, so the whole suite must run.
 _bats_map_file() {
@@ -92,6 +117,7 @@ _bats_map_file() {
     esac
 
     base=${rel##*/}
+    _bats_is_sourced "$base" && return 1
     stem=${base%.*}
     if [ -n "$stem" ] && [ -f "$REPO_ROOT/test/$stem.bats" ]; then
         _bats_add_target "$REPO_ROOT/test/$stem.bats"
