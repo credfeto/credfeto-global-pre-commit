@@ -22,6 +22,8 @@ write_marker_test() {
 #   test/ünï.bats         marker-unicode
 #   test/util-lib.bats    marker-util     (named after src/scripts/lib/util-lib.sh,
 #                                          which no fixture file sources)
+#   test/alias-tool.bats  marker-alias    (named after src/scripts/alias-tool.sh,
+#                                          a symlink to alpha-tool.sh)
 make_affected_repo() {
     local _t
     _t="$(make_repo feature/bats-affected)"
@@ -33,15 +35,17 @@ make_affected_repo() {
     write_marker_test "${_t}/test/odd ref.bats" marker-odd "covers src/scripts/my script.sh"
     write_marker_test "${_t}/test/ünï.bats" marker-unicode "no references"
     write_marker_test "${_t}/test/util-lib.bats" marker-util "no references"
+    write_marker_test "${_t}/test/alias-tool.bats" marker-alias "no references"
     printf 'helper() { true; }\n' > "${_t}/test/test_helper.bash"
     local _script
     for _script in alpha-tool.sh shared-tool.sh "my script.sh" orphan.sh lib/util-lib.sh; do
         printf '#!/bin/sh\necho hello\n' > "${_t}/src/scripts/${_script}"
     done
+    ln -s alpha-tool.sh "${_t}/src/scripts/alias-tool.sh"
     printf '%s' "${_t}"
 }
 
-ALL_MARKERS=(marker-alpha marker-beta marker-gamma marker-delta marker-odd marker-unicode marker-util)
+ALL_MARKERS=(marker-alpha marker-beta marker-gamma marker-delta marker-odd marker-unicode marker-util marker-alias)
 
 # assert_ran_only <status> <output> <marker>...
 # Passes when the run succeeded and ran exactly the named marker tests.
@@ -106,8 +110,25 @@ setup() {
     assert_ran_only "${status}" "${output}" marker-alpha
 }
 
+@test "run-bats with an absolute path through a symlinked repo root maps it like a relative one" {
+    ln -s "${T}" "${BATS_TEST_TMPDIR}/repo-link"
+    run_affected "${T}" "${BATS_TEST_TMPDIR}/repo-link/src/scripts/alpha-tool.sh"
+    assert_ran_only "${status}" "${output}" marker-alpha
+}
+
+@test "run-bats maps a symlinked script by its own name, not its target's" {
+    run_affected "${T}" src/scripts/alias-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alias
+}
+
+@test "run-bats with a symlink under test/ to a mapped script runs the full suite" {
+    ln -s ../src/scripts/alpha-tool.sh "${T}/test/linked-tool.sh"
+    run_affected "${T}" test/linked-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
 @test "run-bats with every .bats file under test/ runs every test file" {
-    run_affected "${T}" test/alpha-tool.bats test/beta.bats test/gamma.bats test/delta.bats "test/odd ref.bats" "test/ünï.bats" test/util-lib.bats
+    run_affected "${T}" test/alpha-tool.bats test/beta.bats test/gamma.bats test/delta.bats "test/odd ref.bats" "test/ünï.bats" test/util-lib.bats test/alias-tool.bats
     assert_ran_full_suite "${status}" "${output}"
 }
 
