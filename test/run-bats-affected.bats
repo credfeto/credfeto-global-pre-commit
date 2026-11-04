@@ -65,11 +65,11 @@ assert_ran_full_suite() {
 }
 
 # run_affected <repo> <arg>...
-# Unsets RUN_BATS_FULL so a value exported by the caller cannot force the full suite.
+# Runs run-bats with <arg>... from <repo> through run_isolated.
 run_affected() {
     local _repo="$1"
     shift
-    run_isolated "${_repo}" "${TEST_PATH}" env -u RUN_BATS_FULL "${REPO_DIR}/src/scripts/run-bats" "$@"
+    run_isolated "${_repo}" "${TEST_PATH}" "${REPO_DIR}/src/scripts/run-bats" "$@"
 }
 
 # T is the fixture repo from make_affected_repo, rebuilt for every test.

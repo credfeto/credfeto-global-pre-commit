@@ -345,11 +345,12 @@ run_hook_env_as_agent() {
 # which run-bats wipes before each run; under bats --jobs that would delete a
 # concurrent test's tmpdir, while the /tmp fallback gives each run its own
 # bats-run-XXXXXX. It is unset only here, not in run_in_hook_env, because gpg and
-# other tools the remaining tests reach rely on it.
+# other tools the remaining tests reach rely on it. RUN_BATS_FULL is unset so a
+# value exported by the caller cannot force run-bats to run the full suite.
 run_isolated() {
     run bash -c '
         cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR XDG_RUNTIME_DIR
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR XDG_RUNTIME_DIR RUN_BATS_FULL
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
         _path="$2"
