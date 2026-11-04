@@ -67,9 +67,18 @@ _bats_first_line_qualifies() {
     [[ "$1" =~ ^#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?shell=(sh|bash|dash|ksh|busybox)([[:space:]]|$) ]]
 }
 
+# $1 is relative to REPO_ROOT (the cwd while arguments are processed) or
+# absolute. Only a path naming a .pre-commit-config.yaml is resolved, so an
+# absolute path to src/.pre-commit-config.yaml qualifies too without a
+# realpath call for every --all-files path.
 _bats_file_qualifies() {
     local path="$1" first=""
     _bats_name_qualifies "$path" && return 0
+    case "$path" in
+        */.pre-commit-config.yaml)
+            [ "$(_bats_repo_relative "$path")" = src/.pre-commit-config.yaml ] && return 0
+            ;;
+    esac
     [ -f "$path" ] || return 1
     # Bounded read: a shebang or directive fits well within 256 characters,
     # and an unbounded read would pull in the whole first line of a
@@ -153,22 +162,30 @@ _bats_is_sourced() {
     [[ "$_bats_source_lines" =~ $before"$1"$after ]]
 }
 
-# Adds the bats files affected by one qualifying file to _bats_targets.
-# Returns 1 when the file cannot be narrowed down, so the whole suite must run.
-_bats_map_file() {
-    local dir rel base stem found=0 hit
-    local -a hits
-    # Only the directory is resolved: a symlink maps by its own path and name,
-    # not its target's, while a symlinked prefix still matches REPO_ROOT, which
-    # git reports with symlinks resolved. git tracks no path below a symlinked
-    # directory, so no staged path passes through one inside the repository.
-    # -m: a deleted or renamed file no longer exists but still maps by name.
+# Prints the path $1 relative to REPO_ROOT; one outside the repository
+# starts with `../`. Only the directory is resolved: a symlink keeps its own
+# path and name, not its target's, while a symlinked prefix still matches
+# REPO_ROOT, which git reports with symlinks resolved. git tracks no path
+# below a symlinked directory, so no staged path passes through one inside
+# the repository. -m: a deleted or renamed file no longer exists but still
+# resolves by name.
+_bats_repo_relative() {
+    local dir base
     dir=$(realpath -m --relative-to="$REPO_ROOT" -- "$(dirname -- "$1")") || return 1
     base=$(basename -- "$1")
     case "$dir" in
-        .) rel=$base ;;
-        *) rel=$dir/$base ;;
+        .) printf '%s' "$base" ;;
+        *) printf '%s' "$dir/$base" ;;
     esac
+}
+
+# Adds the bats files affected by one qualifying file to _bats_targets.
+# Returns 1 when the file cannot be narrowed down, so the whole suite must run.
+_bats_map_file() {
+    local rel base stem found=0 hit
+    local -a hits
+    rel=$(_bats_repo_relative "$1") || return 1
+    base=${rel##*/}
     case "$rel" in
         .. | ../*) return 1 ;;
         src/.pre-commit-config.yaml) return 1 ;;
@@ -199,13 +216,15 @@ _bats_map_file() {
 # An empty _bats_targets means the whole suite runs: no arguments,
 # --all-files, RUN_BATS_FULL=1, or a file that cannot be narrowed down.
 if [ "$#" -gt 0 ]; then
+    # Relative paths, whether passed in or printed by git ls-files, are
+    # repo-root-relative, so read them from REPO_ROOT whatever the caller's
+    # cwd; absolute paths are unaffected.
+    cd "$REPO_ROOT" || exit 1
     _bats_narrow=0
     if [ "$1" = "--all-files" ]; then
-        # git ls-files prints repo-root-relative paths, so read them from
-        # REPO_ROOT whatever the caller's cwd. -z gives each path verbatim:
-        # without it git C-quotes non-ASCII or quote-containing names, which
-        # then match no extension and name no file.
-        cd "$REPO_ROOT" || exit 1
+        # -z gives each path verbatim: without it git C-quotes non-ASCII or
+        # quote-containing names, which then match no extension and name no
+        # file.
         mapfile -d '' -t _bats_candidates < <(git ls-files -z)
     else
         _bats_candidates=("$@")
