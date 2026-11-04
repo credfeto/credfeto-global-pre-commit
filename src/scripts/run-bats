@@ -156,10 +156,19 @@ _bats_is_sourced() {
 # Adds the bats files affected by one qualifying file to _bats_targets.
 # Returns 1 when the file cannot be narrowed down, so the whole suite must run.
 _bats_map_file() {
-    local rel base stem found=0 hit
+    local dir rel base stem found=0 hit
     local -a hits
+    # Only the directory is resolved: a symlink maps by its own path and name,
+    # not its target's, while a symlinked prefix still matches REPO_ROOT, which
+    # git reports with symlinks resolved. git tracks no path below a symlinked
+    # directory, so no staged path passes through one inside the repository.
     # -m: a deleted or renamed file no longer exists but still maps by name.
-    rel=$(realpath -m --relative-to="$REPO_ROOT" -- "$1") || return 1
+    dir=$(realpath -m --relative-to="$REPO_ROOT" -- "$(dirname -- "$1")") || return 1
+    base=$(basename -- "$1")
+    case "$dir" in
+        .) rel=$base ;;
+        *) rel=$dir/$base ;;
+    esac
     case "$rel" in
         .. | ../*) return 1 ;;
         src/.pre-commit-config.yaml) return 1 ;;
@@ -171,7 +180,6 @@ _bats_map_file() {
         test/* | *.bats) return 1 ;;
     esac
 
-    base=${rel##*/}
     _bats_is_sourced "$base" && return 1
     stem=${base%.*}
     if [ -n "$stem" ] && [ -f "$REPO_ROOT/test/$stem.bats" ]; then
