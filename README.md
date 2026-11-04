@@ -302,8 +302,8 @@ verified-only `trufflehog` check above with noisier, unverified findings.
 
 This section is the authoritative description of which files trigger the bats
 hook and which bats files `run-bats` then runs. The code lives in
-`src/scripts/run-bats` (`_bats_file_qualifies`, `_bats_map_file` and the
-loop that calls them).
+`src/scripts/run-bats` (`_bats_file_qualifies`, `_bats_map_file`,
+`_bats_is_sourced` and the loop that calls them).
 
 The bats hook has no file filter: pre-commit passes it every staged text file
 and `run-bats` decides what to run. Running "the whole suite" below means
@@ -345,6 +345,18 @@ an absolute path inside the repository maps like a relative one:
   - any other file under `test/`, such as `test/test_helper.bash`;
   - a `.bats` file outside `test/`;
   - `src/.pre-commit-config.yaml`;
+  - a sourced library: a file whose basename appears in a line, in any
+    tracked or untracked (not ignored) file in the repository, that holds a
+    `source` or `.` command at command position (at the line start, after
+    optional indentation, or after `;`, `&`, `|`, `(`, `{`, `then`, `do` or
+    `else`) or a `# shellcheck source=` directive, because
+    its tests run it through the scripts that source it and no basename
+    search finds those. The basename must stand alone in that line, preceded
+    by a line start, space, `/`, `=` or quote and followed by a line end,
+    space, quote, `;` or `)`, so a line sourcing `lib/my-util.sh` does not
+    make `util.sh` a library. The check reads every file rather than only
+    shell scripts and any line with such a command, so it can treat a file
+    as a library that is not one, which only runs more tests;
   - a file outside the repository;
   - a file that maps to no bats file by either rule above.
 
