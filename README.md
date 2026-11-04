@@ -334,7 +334,9 @@ first line left to read; staged deletions are handled separately, below.
 
 `run-bats <file>...` maps each qualifying file to the bats files it affects
 and runs only those. Paths are resolved relative to the repository root, so
-an absolute path inside the repository maps like a relative one:
+an absolute path inside the repository maps like a relative one. Only a
+path's directory is resolved, so a symlink maps by its own path and basename,
+not by its target's:
 
 - a `test/**/*.bats` file that exists runs itself;
 - any other file runs `test/<basename without its last extension>.bats` if
