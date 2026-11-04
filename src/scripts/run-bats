@@ -129,14 +129,9 @@ _bats_staged_deletion_qualifies() {
     return 1
 }
 
-_bats_targets=()
-declare -A _bats_seen=()
-
-_bats_add_target() {
-    [ -n "${_bats_seen[$1]:-}" ] && return 0
-    _bats_seen[$1]=1
-    _bats_targets+=("$1")
-}
+# The bats files to run, as keys, so a file affected twice runs once. bats
+# needs no stable order.
+declare -A _bats_targets=()
 
 # Every line of the repo's tracked and untracked (not ignored) files that
 # sources a file: a `source` or `.` command at command position (line start,
@@ -191,7 +186,7 @@ _bats_map_file() {
         src/.pre-commit-config.yaml) return 1 ;;
         test/*.bats)
             [ -f "$REPO_ROOT/$rel" ] || return 1
-            _bats_add_target "$REPO_ROOT/$rel"
+            _bats_targets["$REPO_ROOT/$rel"]=1
             return 0
             ;;
         test/* | *.bats) return 1 ;;
@@ -200,14 +195,14 @@ _bats_map_file() {
     _bats_is_sourced "$base" && return 1
     stem=${base%.*}
     if [ -n "$stem" ] && [ -f "$REPO_ROOT/test/$stem.bats" ]; then
-        _bats_add_target "$REPO_ROOT/test/$stem.bats"
+        _bats_targets["$REPO_ROOT/test/$stem.bats"]=1
         found=1
     fi
     # The repo-relative path always contains the basename, so searching for the
     # basename finds both. grep reads the working tree, so untracked tests count.
     mapfile -d '' -t hits < <(grep -rlZ -F --include='*.bats' -e "$base" -- "$REPO_ROOT/test" 2>/dev/null)
     for hit in "${hits[@]}"; do
-        _bats_add_target "$hit"
+        _bats_targets["$hit"]=1
         found=1
     done
     [ "$found" = 1 ]
@@ -344,7 +339,7 @@ if command -v parallel > /dev/null 2>&1; then
 fi
 
 if [ "${#_bats_targets[@]}" -gt 0 ]; then
-    exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure "${_bats_targets[@]}"
+    exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure "${!_bats_targets[@]}"
 fi
 
 exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure --recursive "$REPO_ROOT/test"
