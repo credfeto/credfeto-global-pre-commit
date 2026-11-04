@@ -77,7 +77,7 @@ _bats_add_target() {
 # Returns 1 when the file cannot be narrowed down, so the whole suite must run.
 _bats_map_file() {
     local rel base stem found=0 hit
-    local -a hits=()
+    local -a hits
     # -m: a deleted or renamed file no longer exists but still maps by name.
     rel=$(realpath -m --relative-to="$REPO_ROOT" -- "$1") || return 1
     case "$rel" in
