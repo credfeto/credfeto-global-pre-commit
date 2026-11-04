@@ -145,7 +145,7 @@ setup() {
 
 @test "run-bats --all-files runs the full suite" {
     commit_without_hooks "${T}" . > /dev/null
-    run_affected "${T}" --all-files
+    run_bats_all_files "${T}"
     assert_ran_full_suite "${status}" "${output}"
 }
 
