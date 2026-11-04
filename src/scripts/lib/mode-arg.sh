@@ -1,5 +1,5 @@
 #! /bin/sh
-# Shared helper sourced by check-changelog, run-formatter, and
+# Shared helper sourced by check-changelog, run-formatter, run-bats and
 # clean-package-lock-registry (and by hooks/pre-commit itself). Not intended
 # to be run directly. Depends on the caller already defining die().
 #
@@ -54,4 +54,18 @@ git_target_files() {
     else
         git -C "$_mode_arg_repo_root" diff --cached --name-only --diff-filter=d -z
     fi | grep -zE "$1" | tr '\000' '\n'
+}
+
+# Prints every path the index deletes relative to HEAD, NUL-terminated and
+# repo-root-relative, failing when git does (for example, an unreadable
+# index). --no-renames reports a rename as a deletion of its old name, so a
+# caller sees every name that no longer exists after the commit. Output stays
+# NUL-terminated because callers here are bash, which can read it verbatim
+# (mapfile -d ''); a name containing a newline is therefore supported.
+#
+# Independent of MODE: there is no deletion to report in all-files mode, so
+# a caller uses this only when narrowing work to a commit's staged files.
+git_staged_deletions() {
+    _mode_arg_repo_root=$(git rev-parse --show-toplevel) || return 1
+    git -C "$_mode_arg_repo_root" diff --cached --name-only --no-renames --diff-filter=D -z
 }
