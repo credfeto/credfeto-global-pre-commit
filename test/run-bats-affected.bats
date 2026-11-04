@@ -40,19 +40,20 @@ ALL_MARKERS=(marker-alpha marker-beta marker-gamma marker-delta marker-odd marke
 # assert_ran_only <status> <output> <marker>...
 # Passes when the run succeeded and ran exactly the named marker tests.
 assert_ran_only() {
-    local _status="$1" _output="$2" _marker _wanted
+    local _status="$1" _output="$2" _marker
     shift 2
     [ "${_status}" -eq 0 ] || fail_with_run_output "${_status}" "${_output}" 0
     for _marker in "${ALL_MARKERS[@]}"; do
-        _wanted=0
-        case " $* " in *" ${_marker} "*) _wanted=1 ;; esac
-        if [ "${_wanted}" = 1 ]; then
-            [[ "${_output}" == *"ok "*" ${_marker}"* ]] ||
-                fail_with_run_output "${_status}" "${_output}" "0 with ${_marker} run"
-        else
-            [[ "${_output}" != *" ${_marker}"* ]] ||
-                fail_with_run_output "${_status}" "${_output}" "0 without ${_marker} run"
-        fi
+        case " $* " in
+            *" ${_marker} "*)
+                [[ "${_output}" == *"ok "*" ${_marker}"* ]] ||
+                    fail_with_run_output "${_status}" "${_output}" "0 with ${_marker} run"
+                ;;
+            *)
+                [[ "${_output}" != *" ${_marker}"* ]] ||
+                    fail_with_run_output "${_status}" "${_output}" "0 without ${_marker} run"
+                ;;
+        esac
     done
 }
 
