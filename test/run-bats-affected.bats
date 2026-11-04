@@ -20,25 +20,28 @@ write_marker_test() {
 #   test/delta.bats       marker-delta  (mentions nothing)
 #   test/odd ref.bats     marker-odd    (mentions src/scripts/my script.sh)
 #   test/ünï.bats         marker-unicode
+#   test/util-lib.bats    marker-util     (named after src/scripts/lib/util-lib.sh,
+#                                          which no fixture file sources)
 make_affected_repo() {
     local _t
     _t="$(make_repo feature/bats-affected)"
-    mkdir -p "${_t}/test" "${_t}/src/scripts"
+    mkdir -p "${_t}/test" "${_t}/src/scripts/lib"
     write_marker_test "${_t}/test/alpha-tool.bats" marker-alpha "no references"
     write_marker_test "${_t}/test/beta.bats" marker-beta "covers src/scripts/shared-tool.sh"
     write_marker_test "${_t}/test/gamma.bats" marker-gamma "calls shared-tool.sh"
     write_marker_test "${_t}/test/delta.bats" marker-delta "no references"
     write_marker_test "${_t}/test/odd ref.bats" marker-odd "covers src/scripts/my script.sh"
     write_marker_test "${_t}/test/ünï.bats" marker-unicode "no references"
+    write_marker_test "${_t}/test/util-lib.bats" marker-util "no references"
     printf 'helper() { true; }\n' > "${_t}/test/test_helper.bash"
     local _script
-    for _script in alpha-tool.sh shared-tool.sh "my script.sh" orphan.sh; do
+    for _script in alpha-tool.sh shared-tool.sh "my script.sh" orphan.sh lib/util-lib.sh; do
         printf '#!/bin/sh\necho hello\n' > "${_t}/src/scripts/${_script}"
     done
     printf '%s' "${_t}"
 }
 
-ALL_MARKERS=(marker-alpha marker-beta marker-gamma marker-delta marker-odd marker-unicode)
+ALL_MARKERS=(marker-alpha marker-beta marker-gamma marker-delta marker-odd marker-unicode marker-util)
 
 # assert_ran_only <status> <output> <marker>...
 # Passes when the run succeeded and ran exactly the named marker tests.
@@ -104,7 +107,7 @@ setup() {
 }
 
 @test "run-bats with every .bats file under test/ runs every test file" {
-    run_affected "${T}" test/alpha-tool.bats test/beta.bats test/gamma.bats test/delta.bats "test/odd ref.bats" "test/ünï.bats"
+    run_affected "${T}" test/alpha-tool.bats test/beta.bats test/gamma.bats test/delta.bats "test/odd ref.bats" "test/ünï.bats" test/util-lib.bats
     assert_ran_full_suite "${status}" "${output}"
 }
 
@@ -175,4 +178,53 @@ setup() {
 @test "run-bats runs a staged .bats file with a non-ASCII name" {
     run_affected "${T}" "test/ünï.bats"
     assert_ran_only "${status}" "${output}" marker-unicode
+}
+
+# write_sourcing_script <repo> <line>...
+# Writes src/scripts/user-tool.sh, a script whose body is <line>..., so a
+# test can make it source src/scripts/lib/util-lib.sh in a given form.
+write_sourcing_script() {
+    local _repo="$1"
+    shift
+    { printf '#!/bin/sh\n'; printf '%s\n' "$@"; } > "${_repo}/src/scripts/user-tool.sh"
+}
+
+@test "run-bats with a library no other file sources narrows to its tests" {
+    run_affected "${T}" src/scripts/lib/util-lib.sh
+    assert_ran_only "${status}" "${output}" marker-util
+}
+
+@test "run-bats with a library another script sources with . runs the full suite" {
+    # shellcheck disable=SC2016 # literal script text, written to the fixture unexpanded
+    write_sourcing_script "${T}" 'SCRIPT_DIR=$(dirname "$0")' '. "$SCRIPT_DIR/lib/util-lib.sh"'
+    run_affected "${T}" src/scripts/lib/util-lib.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a library another script sources with source runs the full suite" {
+    # shellcheck disable=SC2016 # literal script text, written to the fixture unexpanded
+    write_sourcing_script "${T}" '[ -n "$1" ] && source "$(dirname "$0")/lib/util-lib.sh"'
+    run_affected "${T}" src/scripts/lib/util-lib.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a library named only by a shellcheck source directive runs the full suite" {
+    # shellcheck disable=SC2016 # literal script text, written to the fixture unexpanded
+    write_sourcing_script "${T}" '# shellcheck source=src/scripts/lib/util-lib.sh' '. "$LIB"'
+    run_affected "${T}" src/scripts/lib/util-lib.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a library sourced by a committed script runs the full suite" {
+    write_sourcing_script "${T}" '. ./lib/util-lib.sh'
+    commit_without_hooks "${T}" . > /dev/null
+    run_affected "${T}" src/scripts/lib/util-lib.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats does not treat a library as sourced when a source line names a longer file ending in its name" {
+    # shellcheck disable=SC2016 # literal script text, written to the fixture unexpanded
+    write_sourcing_script "${T}" '. "$(dirname "$0")/lib/my-util-lib.sh"'
+    run_affected "${T}" src/scripts/lib/util-lib.sh
+    assert_ran_only "${status}" "${output}" marker-util
 }
