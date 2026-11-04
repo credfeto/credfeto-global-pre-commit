@@ -116,6 +116,30 @@ setup() {
     assert_ran_only "${status}" "${output}" marker-alpha
 }
 
+@test "run-bats from a subdirectory resolves a relative .bats path against the repo root" {
+    run_affected "${T}/src" test/delta.bats
+    assert_ran_only "${status}" "${output}" marker-delta
+}
+
+@test "run-bats from a subdirectory resolves a relative extensionless script against the repo root" {
+    printf '#!/bin/sh\necho hello\n' > "${T}/src/scripts/delta"
+    run_affected "${T}/src" src/scripts/delta
+    assert_ran_only "${status}" "${output}" marker-delta
+}
+
+@test "run-bats from a subdirectory with an absolute path to src/.pre-commit-config.yaml runs the full suite" {
+    printf 'repos: []\n' > "${T}/src/.pre-commit-config.yaml"
+    run_affected "${T}/src" "${T}/src/.pre-commit-config.yaml"
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a .pre-commit-config.yaml outside src/ does not treat it as qualifying" {
+    mkdir -p "${T}/other"
+    printf 'repos: []\n' > "${T}/other/.pre-commit-config.yaml"
+    run_affected "${T}" other/.pre-commit-config.yaml src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha
+}
+
 @test "run-bats maps a symlinked script by its own name, not its target's" {
     run_affected "${T}" src/scripts/alias-tool.sh
     assert_ran_only "${status}" "${output}" marker-alias
