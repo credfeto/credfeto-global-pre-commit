@@ -165,8 +165,6 @@ else
     --filter-not-namespace "*.Integration.Tests.*" \
     --filter-not-namespace "*.Benchmark.Tests" \
     --filter-not-namespace "*.Benchmark.Tests.*" \
-    --filter-not-namespace "*.BenchMark.Tests" \
-    --filter-not-namespace "*.BenchMark.Tests.*" \
     "-p:ApiCompatGenerateSuppressionFile=true" \
     "-p:ContinuousIntegrationBuild=true" \
     "-p:IsProduction=false" \
