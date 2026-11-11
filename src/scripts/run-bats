@@ -4,7 +4,7 @@
 #   run-bats <file>...     run the tests affected by the qualifying files
 #                          (see _bats_file_qualifies, _bats_map_file,
 #                          _bats_naming_files and
-#                          _bats_staged_deletion_qualifies)
+#                          _bats_deletion_qualifies)
 #   run-bats --all-files   run the whole suite if any tracked file qualifies
 #   run-bats               run the whole suite unconditionally (for callers
 #                          that filter files themselves, e.g. a
@@ -88,11 +88,64 @@ _bats_file_qualifies() {
     _bats_first_line_qualifies "$first"
 }
 
-# Succeeds when the staged deletion $1 (a repo-root-relative path) could
-# break a test: any file under test/, a file that qualifies by name, or a
-# file whose first line in HEAD (where every staged deletion still exists)
-# qualifies. A HEAD blob that cannot be read (missing from the object store
-# in a partial clone or a damaged repository) counts as qualifying, since its
+# The change the passed files come from, read by _bats_read_change:
+# _bats_change_files lists every path it adds or modifies, in git's order,
+# _bats_change_deleted every path it deletes, and _bats_change_base names the
+# commit in which those deleted paths still exist.
+_bats_change_files=()
+_bats_change_deleted=()
+_bats_change_base=HEAD
+
+# Reads the change being checked. pre-commit sets PRE_COMMIT_FROM_REF and
+# PRE_COMMIT_TO_REF only for `pre-commit run --from-ref A --to-ref B` (which
+# a pre-push runs too), whose files are those `git diff A...B` lists, the
+# range from the refs' merge base; any other run checks a commit, the index
+# against HEAD. --no-renames reports a rename as a deletion of its old name
+# plus an addition of its new one, so every name that no longer exists
+# afterwards is a deletion. Fails when git does (for example, an unreadable
+# index).
+_bats_read_change() {
+    local status path
+    local -a range=()
+    if [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ]; then
+        # As pre-commit does, use FROM itself when the refs share no history.
+        _bats_change_base=$(git merge-base "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF" 2>/dev/null) ||
+            _bats_change_base=$PRE_COMMIT_FROM_REF
+        range=("$_bats_change_base" "$PRE_COMMIT_TO_REF")
+    fi
+    while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+        case "$status" in
+            D) _bats_change_deleted+=("$path") ;;
+            *) _bats_change_files+=("$path") ;;
+        esac
+    done < <(git_change_name_status "${range[@]}" 2>/dev/null)
+    wait "$!"
+}
+
+# Succeeds when the passed files $@ belong to the change _bats_read_change
+# read, so its deletions are part of what is being checked: always on a
+# --from-ref/--to-ref run, otherwise only when every passed file is in the
+# index's change, as on a commit. `pre-commit run --files` or `--all-files`
+# (or run-bats by hand) passes files the commit does not change, so a
+# deletion left staged is not theirs to check.
+_bats_passed_in_change() {
+    local file rel
+    local -A changed=()
+    [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ] && return 0
+    for file in "${_bats_change_files[@]}"; do
+        changed["$file"]=1
+    done
+    for file in "$@"; do
+        rel=$(_bats_repo_relative "$file") || return 1
+        [ -n "${changed["$rel"]:-}" ] || return 1
+    done
+}
+
+# Succeeds when the deletion $1 (a repo-root-relative path) could break a
+# test: any file under test/, a file that qualifies by name, or a file whose
+# first line in _bats_change_base (where every deletion still exists)
+# qualifies. A blob that cannot be read (missing from the object store in a
+# partial clone or a damaged repository) counts as qualifying, since its
 # first line is unknown.
 _bats_deleted_file_qualifies() {
     local path="$1" first="" status
@@ -100,7 +153,7 @@ _bats_deleted_file_qualifies() {
         test/*) return 0 ;;
     esac
     _bats_name_qualifies "$path" && return 0
-    IFS= read -r -n 256 first < <(git -C "$REPO_ROOT" cat-file blob "HEAD:$path" 2>/dev/null)
+    IFS= read -r -n 256 first < <(git -C "$REPO_ROOT" cat-file blob "$_bats_change_base:$path" 2>/dev/null)
     wait "$!"
     status=$?
     # 141 (SIGPIPE): git was still writing a blob longer than the bounded
@@ -114,16 +167,15 @@ _bats_deleted_file_qualifies() {
 
 # pre-commit passes no deleted file to a hook, so the tests of a deleted
 # script (or a deleted test helper) would never be selected by name. Succeeds
-# when a staged deletion could break a test, or when the index cannot be read,
-# so the caller runs the whole suite. A rename counts as a deletion of its
-# old name (see git_staged_deletions), which breaks that name's tests the
-# same way.
-_bats_staged_deletion_qualifies() {
+# when the change the passed files $@ come from deletes a file that could
+# break a test, or when that change cannot be read, so the caller runs the
+# whole suite. A rename counts as a deletion of its old name, which breaks
+# that name's tests the same way.
+_bats_deletion_qualifies() {
     local path
-    local -a deleted
-    mapfile -d '' -t deleted < <(git_staged_deletions 2>/dev/null)
-    wait "$!" || return 0
-    for path in "${deleted[@]}"; do
+    _bats_read_change || return 0
+    _bats_passed_in_change "$@" || return 1
+    for path in "${_bats_change_deleted[@]}"; do
         _bats_deleted_file_qualifies "$path" && return 0
     done
     return 1
@@ -242,9 +294,9 @@ if [ "$#" -gt 0 ]; then
     # anyway, and a file that cannot be narrowed down falls back to it (that
     # file qualified, so the suite still runs).
     _bats_qualified=0
-    # A staged deletion that could break a test runs the whole suite, even
-    # when no passed file qualifies, since nothing else would run its tests.
-    if [ "$_bats_narrow" = 1 ] && _bats_staged_deletion_qualifies; then
+    # A deletion that could break a test runs the whole suite, even when no
+    # passed file qualifies, since nothing else would run its tests.
+    if [ "$_bats_narrow" = 1 ] && _bats_deletion_qualifies "${_bats_candidates[@]}"; then
         _bats_qualified=1
         _bats_candidates=()
     fi

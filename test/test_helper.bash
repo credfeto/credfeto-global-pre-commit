@@ -350,7 +350,7 @@ run_hook_env_as_agent() {
 run_isolated() {
     run bash -c '
         cd "$1"
-        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR XDG_RUNTIME_DIR RUN_BATS_FULL
+        unset CLAUDECODE BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR XDG_RUNTIME_DIR RUN_BATS_FULL PRE_COMMIT_FROM_REF PRE_COMMIT_TO_REF
         bats_readlinkf() { readlink -f "$1"; }
         export -f bats_readlinkf
         _path="$2"
