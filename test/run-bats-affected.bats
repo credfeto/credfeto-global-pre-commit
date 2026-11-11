@@ -226,6 +226,26 @@ setup() {
     assert_ran_full_suite "${status}" "${output}"
 }
 
+@test "run-bats credits a test line to every passed basename it contains" {
+    # tool.sh has no test of its own; the only lines naming it are the ones
+    # naming shared-tool.sh, which holds it.
+    write_script "${T}" src/scripts/tool.sh 'true'
+    run_affected "${T}" src/scripts/shared-tool.sh src/scripts/tool.sh
+    assert_ran_only "${status}" "${output}" marker-beta marker-gamma
+}
+
+@test "run-bats with several scripts adds the tests of the naming files of each" {
+    write_script "${T}" src/scripts/delta 'sh ./alpha-tool.sh'
+    run_affected "${T}" src/scripts/alpha-tool.sh src/scripts/shared-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha marker-beta marker-gamma marker-delta
+}
+
+@test "run-bats with a script whose name holds a newline runs the full suite" {
+    write_script "${T}" "src/scripts/new"$'\n'"line.sh" 'true'
+    run_affected "${T}" "src/scripts/new"$'\n'"line.sh" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
 @test "run-bats --all-files runs the full suite" {
     commit_without_hooks "${T}" . > /dev/null
     run_bats_all_files "${T}"

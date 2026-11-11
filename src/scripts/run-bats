@@ -2,7 +2,7 @@
 # Wrapper for bats: runs the bats tests under test/ that a change could
 # affect. Usage:
 #   run-bats <file>...     run the tests affected by the qualifying files
-#                          (see _bats_file_qualifies, _bats_map_file,
+#                          (see _bats_file_qualifies, _bats_map_files,
 #                          _bats_naming_files, _bats_add_aliases and
 #                          _bats_deletion_qualifies)
 #   run-bats --all-files   run the whole suite if any tracked file qualifies
@@ -76,7 +76,7 @@ _bats_file_qualifies() {
     _bats_name_qualifies "$path" && return 0
     case "$path" in
         */.pre-commit-config.yaml)
-            [ "$(_bats_repo_relative "$path")" = src/.pre-commit-config.yaml ] && return 0
+            _bats_repo_relative "$path" && [ "$_bats_rel" = src/.pre-commit-config.yaml ] && return 0
             ;;
     esac
     [ -f "$path" ] || return 1
@@ -208,7 +208,7 @@ _bats_deleted_file_qualifies() {
 # counts as a deletion of its old name, which breaks that name's tests the
 # same way.
 _bats_deletion_qualifies() {
-    local path file rel found=0
+    local path file found=0
     local -a relative=()
     _bats_read_change || return 0
     for path in "${_bats_change_deleted[@]}"; do
@@ -218,8 +218,8 @@ _bats_deletion_qualifies() {
     done
     [ "$found" = 1 ] || return 1
     for file in "$@"; do
-        rel=$(_bats_repo_relative "$file") || return 1
-        relative+=("$rel")
+        _bats_repo_relative "$file" || return 1
+        relative+=("$_bats_rel")
     done
     _bats_passed_in_change "${relative[@]}" && _bats_holds_designated_file "${relative[@]}"
 }
@@ -229,90 +229,128 @@ _bats_deletion_qualifies() {
 declare -A _bats_targets=()
 
 # Prints, NUL-terminated and repo-root-relative, every tracked or untracked
-# (not ignored) file in the repository other than the repo-relative path $1
-# that names $1's basename: a script that runs or sources it, or a config
-# that invokes it. The basename must stand alone (preceded by a start of
-# line, space, `/`, `=` or quote, and followed by an end of line, space,
-# quote, `;` or `)`), so `x.sh` does not match `lib/xx.sh`.
+# (not ignored) file in the repository that names one of the basenames $@: a
+# script that runs or sources it, or a config that invokes it. A basename
+# must stand alone (preceded by a start of line, space, `/`, `=` or quote,
+# and followed by an end of line, space, quote, `;` or `)`), so `x.sh` does
+# not match `lib/xx.sh`. One git grep searches for every basename at once.
 _bats_naming_files() {
-    local rel="$1" base pattern path
-    base=${rel##*/}
-    # Escape every ERE metacharacter so the basename matches literally.
-    pattern=$(printf '%s' "$base" | sed 's/[][\.*^$+?(){}|/]/\\&/g')
-    pattern='(^|[[:space:]/="'\''])'"$pattern"'([[:space:]";'\'')]|$)'
-    while IFS= read -r -d '' path; do
-        [ "$path" = "$rel" ] || printf '%s\0' "$path"
-    done < <(git -C "$REPO_ROOT" grep --untracked -I -l -z -E -e "$pattern" 2>/dev/null)
+    local pattern
+    local -a escaped=() args=()
+    # Escape every ERE metacharacter so each basename matches literally.
+    mapfile -d '' -t escaped < <(printf '%s\0' "$@" | sed -z 's/[][\.*^$+?(){}|/]/\\&/g')
+    for pattern in "${escaped[@]}"; do
+        args+=(-e '(^|[[:space:]/="'\''])'"$pattern"'([[:space:]";'\'')]|$)')
+    done
+    git -C "$REPO_ROOT" grep --untracked -I -l -z -E "${args[@]}" 2>/dev/null
 }
 
-# Prints the path $1 relative to REPO_ROOT; one outside the repository
-# starts with `../`. Only the directory is resolved: a symlink keeps its own
-# path and name, not its target's, while a symlinked prefix still matches
-# REPO_ROOT, which git reports with symlinks resolved. git tracks no path
-# below a symlinked directory, so no staged path passes through one inside
-# the repository. -m: a deleted or renamed file no longer exists but still
-# resolves by name.
+# Sets _bats_rel to the path $1 relative to REPO_ROOT; one outside the
+# repository starts with `../`. A relative path with no empty, `.` or `..`
+# component is one already, since the cwd is REPO_ROOT, so it is taken as
+# given without a fork. Otherwise only the directory is resolved: a symlink
+# keeps its own path and name, not its target's, while a symlinked prefix
+# still matches REPO_ROOT, which git reports with symlinks resolved. git
+# tracks no path below a symlinked directory, so no staged path passes
+# through one inside the repository. -m: a deleted or renamed file no longer
+# exists but still resolves by name.
 _bats_repo_relative() {
-    local dir base
-    dir=$(realpath -m --relative-to="$REPO_ROOT" -- "$(dirname -- "$1")") || return 1
-    base=$(basename -- "$1")
-    case "$dir" in
-        .) printf '%s' "$base" ;;
-        *) printf '%s' "$dir/$base" ;;
-    esac
-}
-
-# Adds the bats files that name the repo-relative path $1 to _bats_targets:
-# $1 itself when it is a test/ .bats file, otherwise test/<stem>.bats and
-# every test/ .bats file containing its basename. Returns 1 when $1 cannot be
-# narrowed down, so the whole suite must run.
-_bats_map_direct() {
-    local rel="$1" base stem found=0 hit
-    local -a hits
-    base=${rel##*/}
-    case "$rel" in
-        .. | ../*) return 1 ;;
-        src/.pre-commit-config.yaml) return 1 ;;
-        test/*.bats)
-            [ -f "$REPO_ROOT/$rel" ] || return 1
-            _bats_targets["$REPO_ROOT/$rel"]=1
+    local dir
+    case "$1" in
+        /* | . | .. | ./* | ../* | */ | */. | */.. | *//* | */./* | */../*) ;;
+        *)
+            _bats_rel=$1
             return 0
             ;;
-        test/* | *.bats) return 1 ;;
     esac
-
-    stem=${base%.*}
-    if [ -n "$stem" ] && [ -f "$REPO_ROOT/test/$stem.bats" ]; then
-        _bats_targets["$REPO_ROOT/test/$stem.bats"]=1
-        found=1
-    fi
-    # The repo-relative path always contains the basename, so searching for the
-    # basename finds both. grep reads the working tree, so untracked tests count.
-    mapfile -d '' -t hits < <(grep -rlZ -F --include='*.bats' -e "$base" -- "$REPO_ROOT/test" 2>/dev/null)
-    for hit in "${hits[@]}"; do
-        _bats_targets["$hit"]=1
-        found=1
-    done
-    [ "$found" = 1 ]
+    dir=$(realpath -m --relative-to="$REPO_ROOT" -- "$(dirname -- "$1")") || return 1
+    case "$dir" in
+        .) _bats_rel=$(basename -- "$1") ;;
+        *) _bats_rel=$dir/$(basename -- "$1") ;;
+    esac
 }
 
-# Adds the bats files affected by one qualifying file to _bats_targets: its
-# own tests (_bats_map_direct), plus, one level up, the tests of every
-# qualifying file that names it (_bats_naming_files), since those run or
-# source it and their tests reach it through them. Returns 1 when the file
-# or one of those naming files cannot be narrowed down, so the whole suite
-# must run.
-_bats_map_file() {
-    local rel namer
-    rel=$(_bats_repo_relative "$1") || return 1
-    _bats_map_direct "$rel" || return 1
-    case "$rel" in
-        test/*) return 0 ;;
-    esac
-    while IFS= read -r -d '' namer; do
-        _bats_file_qualifies "$namer" || continue
-        _bats_map_direct "$namer" || return 1
-    done < <(_bats_naming_files "$rel")
+# Adds the bats files that name the repo-relative paths $@ to _bats_targets:
+# a test/ .bats file runs itself, any other file test/<stem>.bats and every
+# test/ .bats file containing its basename. One grep searches test/ for every
+# basename at once. Returns 1 when a path cannot be narrowed down, so the
+# whole suite must run.
+_bats_map_direct() {
+    local rel base stem file line
+    local -a bases=() args=()
+    local -A unmatched=() matched=()
+    for rel in "$@"; do
+        base=${rel##*/}
+        case "$rel" in
+            .. | ../*) return 1 ;;
+            src/.pre-commit-config.yaml) return 1 ;;
+            # grep splits a pattern at each newline, so a basename holding one
+            # cannot be searched for.
+            *$'\n'*) return 1 ;;
+            test/*.bats)
+                [ -f "$REPO_ROOT/$rel" ] || return 1
+                _bats_targets["$REPO_ROOT/$rel"]=1
+                continue
+                ;;
+            test/* | *.bats) return 1 ;;
+        esac
+        stem=${base%.*}
+        if [ -n "$stem" ] && [ -f "$REPO_ROOT/test/$stem.bats" ]; then
+            _bats_targets["$REPO_ROOT/test/$stem.bats"]=1
+        else
+            unmatched["$base"]=1
+        fi
+        bases+=("$base")
+        args+=(-e "$base")
+    done
+    [ "${#bases[@]}" -gt 0 ] || return 0
+    # The repo-relative path always contains the basename, so searching for the
+    # basename finds both. grep reads the working tree, so untracked tests count.
+    # Each matching line arrives as `<file>\0<line>\n`, and counts for every
+    # basename it contains, since one line can name several.
+    while IFS= read -r -d '' file && IFS= read -r line; do
+        for base in "${bases[@]}"; do
+            [[ "$line" == *"$base"* ]] || continue
+            _bats_targets["$file"]=1
+            matched["$base"]=1
+        done
+    done < <(grep -rHZ -F --include='*.bats' "${args[@]}" -- "$REPO_ROOT/test" 2>/dev/null)
+    for base in "${!unmatched[@]}"; do
+        [ -n "${matched["$base"]:-}" ] || return 1
+    done
+}
+
+# Adds the bats files affected by the qualifying files $@ to _bats_targets:
+# their own tests (_bats_map_direct), plus, one level up, the tests of every
+# qualifying file that names one of them outside test/ (_bats_naming_files),
+# since those run or source it and their tests reach it through them.
+# Returns 1 when a file or one of those naming files cannot be narrowed down,
+# so the whole suite must run.
+_bats_map_files() {
+    local file namer
+    local -a rels=() bases=()
+    local -A mapped=()
+    for file in "$@"; do
+        _bats_repo_relative "$file" || return 1
+        [ -z "${mapped["$_bats_rel"]:-}" ] || continue
+        mapped["$_bats_rel"]=1
+        rels+=("$_bats_rel")
+        case "$_bats_rel" in
+            *$'\n'*) return 1 ;;
+            test/*) ;;
+            *) bases+=("${_bats_rel##*/}") ;;
+        esac
+    done
+    # A passed file that names another is mapped already, as a passed file.
+    if [ "${#bases[@]}" -gt 0 ]; then
+        while IFS= read -r -d '' namer; do
+            [ -z "${mapped["$namer"]:-}" ] || continue
+            _bats_file_qualifies "$namer" || continue
+            mapped["$namer"]=1
+            rels+=("$namer")
+        done < <(_bats_naming_files "${bases[@]}")
+    fi
+    _bats_map_direct "${rels[@]}"
 }
 
 # Appends to _bats_candidates every symlink in the repository (tracked, or
@@ -323,7 +361,7 @@ _bats_map_file() {
 # suite, as one passed directly does. Returns 1 when the symlinks cannot be
 # resolved, so the whole suite must run.
 _bats_add_aliases() {
-    local entry path file rel i
+    local entry path file i
     local -a links=() targets=()
     local -A passed=()
     # git ls-files --stage prints `<mode> <object> <stage>\t<path>`; mode
@@ -342,8 +380,8 @@ _bats_add_aliases() {
     mapfile -d '' -t targets < <(realpath -z -m --relative-to="$REPO_ROOT" -- "${links[@]}")
     [ "${#targets[@]}" -eq "${#links[@]}" ] || return 1
     for file in "${_bats_candidates[@]}"; do
-        rel=$(_bats_repo_relative "$file") || return 1
-        passed["$rel"]=1
+        _bats_repo_relative "$file" || return 1
+        passed["$_bats_rel"]=1
     done
     for i in "${!links[@]}"; do
         [ -n "${passed["${targets[i]}"]:-}" ] || continue
@@ -385,14 +423,17 @@ if [ "$#" -gt 0 ]; then
     if [ "$_bats_narrow" = 1 ] && [ "${#_bats_candidates[@]}" -gt 0 ]; then
         _bats_add_aliases || _bats_narrow=0
     fi
+    _bats_mapped=()
     for _bats_file in "${_bats_candidates[@]}"; do
         _bats_file_qualifies "$_bats_file" || continue
         _bats_qualified=1
         [ "$_bats_narrow" = 1 ] || break
-        _bats_map_file "$_bats_file" && continue
-        _bats_targets=()
-        break
+        _bats_mapped+=("$_bats_file")
     done
+    # Mapped together, so the searches run once for every qualifying file.
+    if [ "${#_bats_mapped[@]}" -gt 0 ] && ! _bats_map_files "${_bats_mapped[@]}"; then
+        _bats_targets=()
+    fi
     [ "$_bats_qualified" = 1 ] || exit 0
 fi
 

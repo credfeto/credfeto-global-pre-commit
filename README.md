@@ -303,9 +303,9 @@ verified-only `trufflehog` check above with noisier, unverified findings.
 
 This section is the authoritative description of which files trigger the bats
 hook and which bats files `run-bats` then runs. The code lives in
-`src/scripts/run-bats` (`_bats_file_qualifies`, `_bats_map_file`,
-`_bats_map_direct`, `_bats_naming_files`, `_bats_deletion_qualifies`
-and the loop that calls them).
+`src/scripts/run-bats` (`_bats_file_qualifies`, `_bats_map_files`,
+`_bats_map_direct`, `_bats_naming_files`, `_bats_add_aliases`,
+`_bats_deletion_qualifies` and the loop that calls them).
 
 The bats hook has no file filter: pre-commit passes it every staged text file
 and `run-bats` decides what to run. Running "the whole suite" below means
@@ -335,8 +335,11 @@ first line left to read; staged deletions are handled separately, below.
 `run-bats <file>...` maps each qualifying file to the bats files it affects
 and runs only those. Paths are resolved relative to the repository root, so
 an absolute path inside the repository maps like a relative one. Only a
-path's directory is resolved, so a symlink maps by its own path and basename,
-not by its target's. pre-commit passes only the path that changed, so every
+path's directory is resolved, and only for an absolute path or one with an
+empty, `.` or `..` component, so a symlink maps by its own path and basename,
+not by its target's. Every qualifying file is mapped at once: one search finds
+the naming files of all of them, and one finds the tests naming any of their
+basenames. pre-commit passes only the path that changed, so every
 symlink in the repository (tracked, or untracked and not ignored) that points
 at a passed file is mapped as a changed file too: changing
 `src/scripts/alpha-tool.sh` also runs the tests of a
