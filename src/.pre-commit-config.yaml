@@ -318,8 +318,9 @@ repos:
       # run. pre-commit still chunks a very long file list by argument
       # length, so a very large --all-files run calls run-bats once per
       # chunk: each chunk is narrowed on its own, and a chunk holding no
-      # qualifying file runs nothing, unless a qualifying staged deletion
-      # makes run-bats run the whole suite, which it then does in every chunk.
+      # qualifying file runs nothing, unless it holds the change's designated
+      # file and a qualifying deletion triggers the whole suite, in which
+      # case that one chunk runs the whole suite.
       - id: bats
         name: run bats tests
         entry: run-bats
