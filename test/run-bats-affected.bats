@@ -421,3 +421,22 @@ commit_fixture_and_stage_removal() {
     run_affected "${T}" src/scripts/alpha-tool.sh
     assert_ran_only "${status}" "${output}" marker-alpha
 }
+
+@test "run-bats adds a test marked to run always to a narrowed run" {
+    write_marker_test "${T}/test/delta.bats" marker-delta "run-bats: always"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha marker-delta
+}
+
+@test "run-bats runs no test marked to run always when no file qualifies" {
+    write_marker_test "${T}/test/delta.bats" marker-delta "run-bats: always"
+    printf 'notes\n' > "${T}/README.md"
+    run_affected "${T}" README.md
+    assert_ran_only "${status}" "${output}"
+}
+
+@test "run-bats ignores a run-always mention that is not a whole comment line" {
+    write_marker_test "${T}/test/delta.bats" marker-delta "see run-bats: always"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha
+}

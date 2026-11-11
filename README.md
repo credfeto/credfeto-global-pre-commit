@@ -369,6 +369,13 @@ not by its target's:
     library sourced only by scripts that have no tests still runs the whole
     suite).
 
+A `.bats` file under `test/` that checks the repository as a whole, rather
+than the scripts it names, can opt in to every narrowed run with a whole line
+`# run-bats: always` (`test/mode-arg-convention.bats` does this, since it scans
+every script under `src/scripts/`). `run-bats` adds such a file whenever it
+runs a narrowed set of tests; it never makes a run start when no file
+qualifies, and a whole-suite run includes it anyway.
+
 pre-commit never passes a deleted file to a hook, so before mapping,
 `run-bats <file>...` also reads the index's staged deletions (through
 `git_staged_deletions` in `src/scripts/lib/mode-arg.sh`, which runs

@@ -351,6 +351,14 @@ if command -v parallel > /dev/null 2>&1; then
 fi
 
 if [ "${#_bats_targets[@]}" -gt 0 ]; then
+    # A test/ .bats file holding a whole line `# run-bats: always` checks the
+    # repository as a whole (not a script it names), so every narrowed run
+    # adds it.
+    mapfile -d '' -t _bats_always < <(grep -rlZ -E --include='*.bats' \
+        -e '^#[[:space:]]*run-bats:[[:space:]]*always[[:space:]]*$' -- "$REPO_ROOT/test" 2>/dev/null)
+    for _bats_file in "${_bats_always[@]}"; do
+        _bats_targets["$_bats_file"]=1
+    done
     exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure "${!_bats_targets[@]}"
 fi
 
