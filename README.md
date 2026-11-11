@@ -410,8 +410,9 @@ Other ways to run the whole suite:
 `--all-files` flag, so each file is mapped as above; every tracked `test/`
 bats file still runs, because each maps to itself. pre-commit splits a very
 long file list into chunks by argument length and calls `run-bats` once per
-chunk, so each chunk is mapped on its own, and a chunk holding no qualifying
-file runs nothing.
+chunk, so each chunk is mapped on its own. A chunk holding no qualifying file
+runs nothing, unless a staged deletion triggers the whole suite (see above),
+in which case every chunk runs the whole suite.
 
 ---
 
