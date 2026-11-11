@@ -22,22 +22,22 @@ make_bench_repo() {
 # Lays out a fixture solution under "$1/src":
 #   Foo.Extensions                          -- leaf production project
 #   Foo.DataTypes            -> Extensions   -- production project
-#   Foo.DataTypes.BenchMark.Tests -> DataTypes  (mixed-case "BenchMark.Tests" variant)
+#   Foo.DataTypes.Benchmark.Tests -> DataTypes
 #   Foo.Metrics                             -- leaf production project
-#   Foo.Metrics.Benchmark.Tests -> Metrics      (standard "Benchmark.Tests" variant)
+#   Foo.Metrics.Benchmark.Tests -> Metrics
 #   Foo.Widgets                             -- leaf production project
-#   Foo.Widgets.BenchMark.Test -> Widgets       (singular "BenchMark.Test" variant)
+#   Foo.Widgets.Benchmark.Tests -> Widgets
 #   Foo.Metrics.Integration.Tests            -- no ProjectReference, unrelated fixture
 write_fixture() {
     local _t="$1"
     mkdir -p \
         "${_t}/src/Foo.Extensions" \
         "${_t}/src/Foo.DataTypes" \
-        "${_t}/src/Foo.DataTypes.BenchMark.Tests" \
+        "${_t}/src/Foo.DataTypes.Benchmark.Tests" \
         "${_t}/src/Foo.Metrics" \
         "${_t}/src/Foo.Metrics.Benchmark.Tests" \
         "${_t}/src/Foo.Widgets" \
-        "${_t}/src/Foo.Widgets.BenchMark.Test" \
+        "${_t}/src/Foo.Widgets.Benchmark.Tests" \
         "${_t}/src/Foo.Metrics.Integration.Tests"
 
     printf '<Solution></Solution>\n' > "${_t}/src/Foo.slnx"
@@ -49,7 +49,7 @@ write_fixture() {
         > "${_t}/src/Foo.DataTypes/Foo.DataTypes.csproj"
 
     printf '<Project Sdk="Microsoft.NET.Sdk">\n  <ItemGroup>\n    <ProjectReference Include="..\\Foo.DataTypes\\Foo.DataTypes.csproj" />\n  </ItemGroup>\n</Project>\n' \
-        > "${_t}/src/Foo.DataTypes.BenchMark.Tests/Foo.DataTypes.BenchMark.Tests.csproj"
+        > "${_t}/src/Foo.DataTypes.Benchmark.Tests/Foo.DataTypes.Benchmark.Tests.csproj"
 
     printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' \
         > "${_t}/src/Foo.Metrics/Foo.Metrics.csproj"
@@ -61,7 +61,7 @@ write_fixture() {
         > "${_t}/src/Foo.Widgets/Foo.Widgets.csproj"
 
     printf '<Project Sdk="Microsoft.NET.Sdk">\n  <ItemGroup>\n    <ProjectReference Include="..\\Foo.Widgets\\Foo.Widgets.csproj" />\n  </ItemGroup>\n</Project>\n' \
-        > "${_t}/src/Foo.Widgets.BenchMark.Test/Foo.Widgets.BenchMark.Test.csproj"
+        > "${_t}/src/Foo.Widgets.Benchmark.Tests/Foo.Widgets.Benchmark.Tests.csproj"
 
     printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' \
         > "${_t}/src/Foo.Metrics.Integration.Tests/Foo.Metrics.Integration.Tests.csproj"
@@ -73,13 +73,13 @@ commit_baseline() {
     git -C "${_t}" commit --quiet -m baseline
 }
 
-DATATYPES_BENCH_REL="Foo.DataTypes.BenchMark.Tests/Foo.DataTypes.BenchMark.Tests.csproj"
+DATATYPES_BENCH_REL="Foo.DataTypes.Benchmark.Tests/Foo.DataTypes.Benchmark.Tests.csproj"
 METRICS_BENCH_REL="Foo.Metrics.Benchmark.Tests/Foo.Metrics.Benchmark.Tests.csproj"
-WIDGETS_BENCH_REL="Foo.Widgets.BenchMark.Test/Foo.Widgets.BenchMark.Test.csproj"
+WIDGETS_BENCH_REL="Foo.Widgets.Benchmark.Tests/Foo.Widgets.Benchmark.Tests.csproj"
 
 # ── nothing staged ────────────────────────────────────────────────────────────
 
-@test "nothing staged runs every benchmark, proving every naming variant is detected" {
+@test "nothing staged runs every benchmark" {
     local T
     T="$(make_bench_repo)"
     write_fixture "${T}"
@@ -141,7 +141,7 @@ WIDGETS_BENCH_REL="Foo.Widgets.BenchMark.Test/Foo.Widgets.BenchMark.Test.csproj"
     T="$(make_bench_repo)"
     write_fixture "${T}"
     commit_baseline "${T}"
-    # Foo.DataTypes.BenchMark.Tests -> Foo.DataTypes -> Foo.Extensions
+    # Foo.DataTypes.Benchmark.Tests -> Foo.DataTypes -> Foo.Extensions
     printf '<!-- touch -->\n' >> "${T}/src/Foo.Extensions/Foo.Extensions.csproj"
     git -C "${T}" add "src/Foo.Extensions/Foo.Extensions.csproj"
     run "${FILTER}" "${T}/src"
@@ -210,6 +210,49 @@ WIDGETS_BENCH_REL="Foo.Widgets.BenchMark.Test/Foo.Widgets.BenchMark.Test.csproj"
     run "${FILTER}" "${T}/src"
     [ "${status}" -eq 0 ]
     [[ "${output}" != *'Foo.Workbench.Tests'* ]]
+}
+
+# ── only *.Benchmark.Tests is a benchmark project ─────────────────────────────
+
+# *.Benchmark.Tests, case-sensitive and with a name before it, is the only
+# accepted benchmark project name (issue #294). The old variants, and the
+# plural Benchmarks.Tests, are ordinary test projects to this helper.
+@test "only *.Benchmark.Tests is a benchmark project; BenchMark, Bench, singular, plural and lower-case variants are not" {
+    local T _name
+    T="$(make_bench_repo)"
+    write_fixture "${T}"
+    for _name in \
+        Foo.Gadgets.BenchMark.Tests \
+        Foo.Gadgets.Bench.Tests \
+        Foo.Gadgets.Benchmark.Test \
+        Foo.Gadgets.Benchmarks.Tests \
+        Foo.Gadgets.benchmark.tests \
+        Foo.Gadgets.BENCHMARK.TESTS \
+        Benchmark.Tests; do
+        mkdir -p "${T}/src/${_name}"
+        printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' > "${T}/src/${_name}/${_name}.csproj"
+    done
+    commit_baseline "${T}"
+    run "${FILTER}" "${T}/src"
+    [ "${status}" -eq 0 ]
+    [ "${#lines[@]}" -eq 3 ]
+    printf '%s\n' "${lines[@]}" | grep -qxF "${DATATYPES_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${METRICS_BENCH_REL}"
+    printf '%s\n' "${lines[@]}" | grep -qxF "${WIDGETS_BENCH_REL}"
+    [[ "${output}" != *'Gadgets'* ]]
+}
+
+@test "a solution whose only test project uses a non-standard benchmark name prints nothing" {
+    local T
+    T="$(make_bench_repo)"
+    mkdir -p "${T}/src/Foo" "${T}/src/Foo.BenchMark.Tests"
+    printf '<Solution></Solution>\n' > "${T}/src/Foo.slnx"
+    printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' > "${T}/src/Foo/Foo.csproj"
+    printf '<Project Sdk="Microsoft.NET.Sdk"></Project>\n' > "${T}/src/Foo.BenchMark.Tests/Foo.BenchMark.Tests.csproj"
+    commit_baseline "${T}"
+    run "${FILTER}" "${T}/src"
+    [ "${status}" -eq 0 ]
+    [ -z "${output}" ]
 }
 
 # ── ProjectReference with a preceding attribute ───────────────────────────────

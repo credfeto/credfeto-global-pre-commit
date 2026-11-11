@@ -241,6 +241,7 @@ git config --global core.hooksPath
 | --- | --- | --- |
 | `pre-commit` on PATH, repo has `.pre-commit-config.yaml` | Run project pre-commit hooks | `pre-commit run` |
 | `pre-commit` on PATH, no project config | Run global linters (`.pre-commit-config.yaml`) | `pre-commit run --config <global>` |
+| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets / *.globalconfig / *.ruleset` | Benchmark project naming: a project whose `.cs` files use BenchmarkDotNet (`using BenchmarkDotNet…` or `[Benchmark]`, even when the package only comes in transitively) must be named `<Name>.Benchmark.Tests` and use that namespace, the only benchmark name `buildtest` keeps out of its main test run | `scripts/check-benchmark-project-names` |
 | `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test (integration tests and all benchmark test projects always excluded from the main run via a static filter; only the benchmark projects staged changes could affect are then run individually and sequentially, see `scripts/benchmark-test-affected`) | `scripts/buildtest` |
 | `*.ts / *.tsx / *.js / *.jsx` + `package.json` + `npm` on PATH | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
 | `*.sql` + `dotnet` on PATH | T-SQL lint | `dotnet tsqllint .` |
@@ -371,6 +372,7 @@ system package manager rather than `pre-commit autoupdate`.
 | --- | --- |
 | `scripts/buildtest` | Vendored from [credfeto/scripts: buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
 | `scripts/benchmark-test-affected` | Local addition, decides which benchmark test projects `buildtest`'s separate benchmark-only test step should run, from staged git changes alone (no `dotnet` required) |
+| `scripts/check-benchmark-project-names` | Local addition, fails when a project containing BenchmarkDotNet benchmarks is not named `<Name>.Benchmark.Tests` or does not use that namespace (no `dotnet` required) |
 | `scripts/latest-target-framework` | Local addition, prints a multi-targeted `.csproj`'s latest target framework moniker so `buildtest`'s benchmark test step can restrict itself to it (older frameworks are assumed to work); prints nothing for a single-targeted project (no `dotnet` required) |
 | `scripts/buildcheck` | Vendored from [credfeto/scripts: buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
