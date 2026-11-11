@@ -3,7 +3,7 @@
 # affect. Usage:
 #   run-bats <file>...     run the tests affected by the qualifying files
 #                          (see _bats_file_qualifies, _bats_map_file,
-#                          _bats_naming_files and
+#                          _bats_naming_files, _bats_add_aliases and
 #                          _bats_deletion_qualifies)
 #   run-bats --all-files   run the whole suite if any tracked file qualifies
 #   run-bats               run the whole suite unconditionally (for callers
@@ -315,6 +315,43 @@ _bats_map_file() {
     done < <(_bats_naming_files "$rel")
 }
 
+# Appends to _bats_candidates every symlink in the repository (tracked, or
+# untracked and not ignored) that points at a passed file, so it maps as a
+# changed file too: pre-commit passes only the path that changed, yet a
+# symlink to it behaves differently from then on, and its own tests (named
+# after the symlink) must run. A symlink under test/ therefore runs the whole
+# suite, as one passed directly does. Returns 1 when the symlinks cannot be
+# resolved, so the whole suite must run.
+_bats_add_aliases() {
+    local entry path file rel i
+    local -a links=() targets=()
+    local -A passed=()
+    # git ls-files --stage prints `<mode> <object> <stage>\t<path>`; mode
+    # 120000 is a symlink. The path itself may hold a tab, so strip only up to
+    # the first one.
+    while IFS= read -r -d '' entry; do
+        path=${entry#*$'\t'}
+        [ -L "$path" ] && links+=("$path")
+    done < <(git ls-files -z --stage | grep -z '^120000 ')
+    while IFS= read -r -d '' path; do
+        [ -L "$path" ] && links+=("$path")
+    done < <(git ls-files -z --others --exclude-standard)
+    [ "${#links[@]}" -gt 0 ] || return 0
+    # One realpath for every symlink. -m resolves a dangling one too, so each
+    # output lines up with its input.
+    mapfile -d '' -t targets < <(realpath -z -m --relative-to="$REPO_ROOT" -- "${links[@]}")
+    [ "${#targets[@]}" -eq "${#links[@]}" ] || return 1
+    for file in "${_bats_candidates[@]}"; do
+        rel=$(_bats_repo_relative "$file") || return 1
+        passed["$rel"]=1
+    done
+    for i in "${!links[@]}"; do
+        [ -n "${passed["${targets[i]}"]:-}" ] || continue
+        [ -z "${passed["${links[i]}"]:-}" ] || continue
+        _bats_candidates+=("${links[i]}")
+    done
+}
+
 # An empty _bats_targets means the whole suite runs: no arguments,
 # --all-files, RUN_BATS_FULL=1, or a file that cannot be narrowed down.
 if [ "$#" -gt 0 ]; then
@@ -342,6 +379,11 @@ if [ "$#" -gt 0 ]; then
     if [ "$_bats_narrow" = 1 ] && _bats_deletion_qualifies "${_bats_candidates[@]}"; then
         _bats_qualified=1
         _bats_candidates=()
+    fi
+    # After the deletion check: a symlink to a passed file is not part of the
+    # change, so it must not decide whether the change's deletions count.
+    if [ "$_bats_narrow" = 1 ] && [ "${#_bats_candidates[@]}" -gt 0 ]; then
+        _bats_add_aliases || _bats_narrow=0
     fi
     for _bats_file in "${_bats_candidates[@]}"; do
         _bats_file_qualifies "$_bats_file" || continue

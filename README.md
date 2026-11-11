@@ -336,7 +336,14 @@ first line left to read; staged deletions are handled separately, below.
 and runs only those. Paths are resolved relative to the repository root, so
 an absolute path inside the repository maps like a relative one. Only a
 path's directory is resolved, so a symlink maps by its own path and basename,
-not by its target's:
+not by its target's. pre-commit passes only the path that changed, so every
+symlink in the repository (tracked, or untracked and not ignored) that points
+at a passed file is mapped as a changed file too: changing
+`src/scripts/alpha-tool.sh` also runs the tests of a
+`src/scripts/alias-tool.sh -> alpha-tool.sh`, since the symlink now behaves
+differently. Such a symlink under `test/` therefore runs the whole suite, and
+so does one that maps to no bats file. A file reached through a symlinked
+directory is not found, since git lists no path below one:
 
 - a `test/**/*.bats` file that exists runs itself;
 - any other file runs `test/<basename without its last extension>.bats` if
