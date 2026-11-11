@@ -80,6 +80,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - sqlfluff hook: runs sqlfluff fix only on staged SQL files in commit mode, re-stages only those, and fails if a staged SQL file has unstaged changes (--all-files mode unchanged) (#258)
 
 ### Fixed
+- The benchmark project-name guard now treats a project as a benchmark project only when its source runs benchmarks (a `Benchmark<T>()` helper call or `BenchmarkRunner.Run`). BenchmarkDotNet `using` directives and `[Benchmark]` attributes, which analyzer test projects carry inside string literals, no longer trigger it (#297)
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
 - Invoke changelog tool directly rather than via dotnet prefix (#16)
 - install.sh chmod list out of sync after check-secrets was inlined (#15)

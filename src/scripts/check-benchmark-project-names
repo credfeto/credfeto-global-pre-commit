@@ -9,10 +9,15 @@
 #
 # Detection is by source, not by PackageReference: benchmark projects usually
 # get BenchmarkDotNet transitively (through FunFair.Test.Common), so the
-# project file need not mention it. Any tracked .cs file outside bin/ and obj/
-# that has a `using BenchmarkDotNet...` directive (including `global using`
-# and `using static`) or a [Benchmark] attribute marks its nearest enclosing
-# directory holding a .csproj as a benchmark project. For each one:
+# project file need not mention it. A project is a benchmark project only when
+# it RUNS benchmarks in its tests: a tracked .cs file outside bin/ and obj/
+# that calls FunFair.Test.Common's Benchmark<T>() helper (as an assignment,
+# return, argument or statement, never a declaration of it) or
+# BenchmarkRunner.Run marks its nearest enclosing directory holding a .csproj.
+# A `using BenchmarkDotNet` directive or a [Benchmark] attribute on its own
+# does not count: analyzer test projects carry both inside string literals,
+# and a project that only defines benchmark classes runs nothing. For each
+# benchmark project:
 #
 #   - every .csproj in that directory must be named <Name>.Benchmark.Tests.csproj
 #     (case-sensitive, with a non-empty <Name>);
@@ -29,7 +34,7 @@
 #
 # Known limitations of a grep heuristic, accepted for a cheap no-build check:
 # a block-scoped namespace nested inside another is checked on its own name,
-# and the markers are matched in comments and strings too.
+# and a runner call written inside a comment or string is still matched.
 
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
@@ -41,8 +46,7 @@ cd "$REPO_ROOT" || die "unable to change to the repository root: $REPO_ROOT"
 
 PROJECT_FILE_RE='^.+\.Benchmark\.Tests\.csproj$'
 NAMESPACE_RE='^[A-Za-z_@][A-Za-z0-9_.@]*\.Benchmark\.Tests(\.[A-Za-z0-9_.@]+)?$'
-USING_RE='(^|[[:space:];])using[[:space:]]+(static[[:space:]]+)?BenchmarkDotNet([[:space:].;]|$)'
-ATTRIBUTE_RE='\[[[:space:]]*(BenchmarkDotNet\.Attributes\.)?Benchmark(Attribute)?([^A-Za-z0-9_]|$)'
+RUNNER_RE='(^[[:space:]]*|[=(,][[:space:]]*|return[[:space:]]+|this\.)Benchmark<[^>]+>[[:space:]]*\(|BenchmarkRunner\.Run'
 TAB=$(printf '\t')
 
 # Every tracked .cs file, outside build output. Read NUL-separated and only
@@ -52,7 +56,7 @@ CS_FILES=$(git ls-files -z -- '*.cs' | tr '\000' '\n' | grep -vE '(^|/)(bin|obj)
 [ -n "$CS_FILES" ] || exit 0
 
 MARKED=$(printf '%s\n' "$CS_FILES" | tr '\n' '\000' \
-    | xargs -0 -r grep -lsZE -e "$USING_RE" -e "$ATTRIBUTE_RE" -- \
+    | xargs -0 -r grep -lsZE -e "$RUNNER_RE" -- \
     | tr '\000' '\n')
 [ -n "$MARKED" ] || exit 0
 
