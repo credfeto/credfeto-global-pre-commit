@@ -19,6 +19,10 @@
 # comment (not a trailing inline one) as non-executable. Both are accepted,
 # known limitations of a lightweight text-based guard, not something this
 # test tries to fully solve.
+#
+# It scans every script under src/scripts, not one a change names, so
+# run-bats adds it to every narrowed run:
+# run-bats: always
 
 load test_helper
 
