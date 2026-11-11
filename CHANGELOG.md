@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Security
 - Pin GitHub Actions uses: references to commit SHA instead of tag (#193)
 ### Added
+- Pre-commit fails when a project containing BenchmarkDotNet benchmarks (found by source, so a transitive reference counts) is not named *.Benchmark.Tests or uses another namespace, so its benchmarks no longer run as ordinary tests on every commit (#294)
 - Add acceptance tests for check-merge-conflict hook covering pass and fail cases (#67)
 - Add acceptance tests for check-shebang-scripts-are-executable hook covering pass and fail cases (#75)
 - Add acceptance tests for check-json hook covering pass and fail cases (#74)
@@ -150,6 +151,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Install the pipx hook tools and the npm linters (markdownlint-cli, eslint, stylelint, stylelint-config-standard) once for every account in shared locations (/opt/pipx and /usr/local/bin), running on a Node.js every account can run (pacman nodejs and npm on Arch, or the checksum-verified nodejs.org LTS in /usr/local on Debian/Ubuntu), so system-wide hooks work for every user, and check-setup --system fails npm linters or a node that only resolve under $HOME (#287)
 
 ### Changed
+- Benchmark test projects are recognised only by the name *.Benchmark.Tests (case-sensitive); the BenchMark, Bench, singular .Test and other case variants are no longer treated as benchmark projects (#294)
 - Replaced csharpier with Credfeto.DotNet.Repo.Formatter (cscleanup) for C# formatting in pre-commit hooks
 - Extended cscleanup formatter to also process staged .csproj files
 - Pass all staged files to cscleanup in a single invocation rather than one call per file

@@ -609,6 +609,13 @@ if check_files_match '(^|/)CHANGELOG\.md$' && [ "$HAS_DOTNET" -eq 1 ]; then
 fi
 
 # ── 4. .NET: format check + build + test if source/project file changes ──────
+# The benchmark project name check is a grep, so it needs no dotnet and runs
+# first: a misnamed benchmark project would otherwise run its benchmarks as
+# ordinary tests in buildtest.
+if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$'; then
+    info "Detected .NET changes — checking benchmark project names..."
+    sh "$SCRIPTS_DIR/check-benchmark-project-names" || die "benchmark project naming"
+fi
 if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
     sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"

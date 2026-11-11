@@ -86,6 +86,7 @@ make_executable \
     "$HOOKS_DIR/pre-push" \
     "$SCRIPTS_DIR/buildtest" \
     "$SCRIPTS_DIR/benchmark-test-affected" \
+    "$SCRIPTS_DIR/check-benchmark-project-names" \
     "$SCRIPTS_DIR/latest-target-framework" \
     "$SCRIPTS_DIR/dacpac-only-solution" \
     "$SCRIPTS_DIR/buildcheck" \

@@ -5,9 +5,10 @@
 #
 # Usage: benchmark-test-affected <solution-dir>
 #
-# A benchmark test project (basename matches, case-insensitively, "bench" or
-# "benchmark" immediately followed by ".Test" or ".Tests") is affected -- and
-# therefore printed -- when a staged .NET-relevant file falls under its own
+# A benchmark test project (file name <Name>.Benchmark.Tests.csproj, matched
+# case-sensitively: *.Benchmark.Tests is the only accepted benchmark project
+# name, and check-benchmark-project-names fails a commit whose benchmarks live
+# in a project named anything else) is affected -- and therefore printed -- when a staged .NET-relevant file falls under its own
 # directory or the directory of any project it references, directly or
 # transitively (via <ProjectReference>). Any staged change to a solution-wide
 # shared build input (Directory.Build.props/targets, Directory.Packages.props,
@@ -34,7 +35,7 @@ BENCH_PROJECTS=""
 while IFS= read -r proj; do
     [ -n "$proj" ] || continue
     bn=$(basename "$proj")
-    if printf '%s\n' "$bn" | grep -qiE '(^|[.])bench(mark)?[.]tests?[.]csproj$'; then
+    if printf '%s\n' "$bn" | grep -qE '^.+[.]Benchmark[.]Tests[.]csproj$'; then
         BENCH_PROJECTS="$BENCH_PROJECTS
 $proj"
     fi

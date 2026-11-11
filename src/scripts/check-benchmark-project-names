@@ -1,0 +1,122 @@
+#!/bin/sh
+# Fails when a .NET project contains BenchmarkDotNet benchmarks but is not
+# named <Name>.Benchmark.Tests. buildtest keeps benchmarks out of its main
+# test run only by namespace (--filter-not-namespace "*.Benchmark.Tests" and
+# "*.Benchmark.Tests.*"), and benchmark-test-affected only runs projects whose
+# file name ends in .Benchmark.Tests.csproj, so a benchmark project named
+# anything else (src/Bench, Foo.BenchMark.Tests, Foo.Benchmarks.Tests, ...)
+# runs every benchmark as an ordinary test on every commit.
+#
+# Detection is by source, not by PackageReference: benchmark projects usually
+# get BenchmarkDotNet transitively (through FunFair.Test.Common), so the
+# project file need not mention it. Any tracked .cs file outside bin/ and obj/
+# that has a `using BenchmarkDotNet...` directive (including `global using`
+# and `using static`) or a [Benchmark] attribute marks its nearest enclosing
+# directory holding a .csproj as a benchmark project. For each one:
+#
+#   - every .csproj in that directory must be named <Name>.Benchmark.Tests.csproj
+#     (case-sensitive, with a non-empty <Name>);
+#   - an explicit <RootNamespace> must be <Name>.Benchmark.Tests or below it,
+#     unless it is an MSBuild property expression;
+#   - every `namespace` declaration in the project's own tracked .cs files
+#     (not those of a project nested below it) must be <Name>.Benchmark.Tests
+#     or below it, since that namespace is what buildtest's filter matches.
+#
+# Scans every tracked file, not only staged ones, so the result is the same
+# for a commit and for an --all-files run, and an existing misnamed project
+# blocks the next .NET commit rather than going unnoticed. Tracked files are
+# read from the index the commit is built from; contents from the working tree.
+#
+# Known limitations of a grep heuristic, accepted for a cheap no-build check:
+# a block-scoped namespace nested inside another is checked on its own name,
+# and the markers are matched in comments and strings too.
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+REPO_ROOT=$(git rev-parse --show-toplevel) || die "unable to locate the repository root"
+cd "$REPO_ROOT" || die "unable to change to the repository root: $REPO_ROOT"
+
+PROJECT_FILE_RE='^.+\.Benchmark\.Tests\.csproj$'
+NAMESPACE_RE='^[A-Za-z_@][A-Za-z0-9_.@]*\.Benchmark\.Tests(\.[A-Za-z0-9_.@]+)?$'
+USING_RE='(^|[[:space:];])using[[:space:]]+(static[[:space:]]+)?BenchmarkDotNet([[:space:].;]|$)'
+ATTRIBUTE_RE='\[[[:space:]]*(BenchmarkDotNet\.Attributes\.)?Benchmark(Attribute)?([^A-Za-z0-9_]|$)'
+TAB=$(printf '\t')
+
+# Every tracked .cs file, outside build output. Read NUL-separated and only
+# then split on newlines, since line-separated git output C-quotes non-ASCII
+# names. A name containing a newline is not supported.
+CS_FILES=$(git ls-files -z -- '*.cs' | tr '\000' '\n' | grep -vE '(^|/)(bin|obj)/')
+[ -n "$CS_FILES" ] || exit 0
+
+MARKED=$(printf '%s\n' "$CS_FILES" | tr '\n' '\000' \
+    | xargs -0 -r grep -lsZE -e "$USING_RE" -e "$ATTRIBUTE_RE" -- \
+    | tr '\000' '\n')
+[ -n "$MARKED" ] || exit 0
+
+# Prints the nearest directory at or above <file>'s own that holds a .csproj,
+# relative to the repository root ("." for the root itself). Fails when there
+# is none.
+project_dir_of() {
+    _dir=$(dirname "$1")
+    while :; do
+        for _proj in "$_dir"/*.csproj; do
+            [ -f "$_proj" ] && {
+                printf '%s\n' "$_dir"
+                return 0
+            }
+        done
+        [ "$_dir" = "." ] && return 1
+        _dir=$(dirname "$_dir")
+    done
+}
+
+# "<project dir><TAB><first marked file>" per benchmark project.
+PROJECTS=$(printf '%s\n' "$MARKED" | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    d=$(project_dir_of "$f") || continue
+    printf '%s\t%s\n' "$d" "$f"
+done | sort -t "$TAB" -k1,1 -u)
+[ -n "$PROJECTS" ] || exit 0
+
+PROBLEMS=$(printf '%s\n' "$PROJECTS" | while IFS="$TAB" read -r dir example; do
+    [ -n "$dir" ] || continue
+    for proj in "$dir"/*.csproj; do
+        [ -f "$proj" ] || continue
+        proj=${proj#./}
+        name=$(basename "$proj")
+        printf '%s\n' "$name" | grep -qE "$PROJECT_FILE_RE" \
+            || printf '  %s: project name %s is not <Name>.Benchmark.Tests, but %s contains benchmarks\n' \
+                "$proj" "${name%.csproj}" "$example"
+        sed -n 's|.*<RootNamespace>[[:space:]]*\([^<]*[^<[:space:]]\)[[:space:]]*</RootNamespace>.*|\1|p' "$proj" \
+            | while IFS= read -r root_ns; do
+                # shellcheck disable=SC2016 # literal MSBuild property syntax, not a shell expansion
+                case "$root_ns" in *'$('*) continue ;; esac
+                printf '%s\n' "$root_ns" | grep -qE "$NAMESPACE_RE" \
+                    || printf '  %s: RootNamespace %s is not <Name>.Benchmark.Tests or below it\n' "$proj" "$root_ns"
+            done
+    done
+
+    printf '%s\n' "$CS_FILES" | while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if [ "$dir" != "." ]; then
+            case "$f" in "$dir"/*) ;; *) continue ;; esac
+        fi
+        [ -f "$f" ] || continue
+        [ "$(project_dir_of "$f")" = "$dir" ] || continue
+        grep -nE '^[[:space:]]*namespace[[:space:]]+[A-Za-z_@]' -- "$f" \
+            | sed -E 's/^([0-9]+):[[:space:]]*namespace[[:space:]]+([A-Za-z0-9_.@]+).*/\1 \2/' \
+            | while read -r line ns; do
+                printf '%s\n' "$ns" | grep -qE "$NAMESPACE_RE" \
+                    || printf '  %s:%s: namespace %s is not <Name>.Benchmark.Tests or below it\n' "$f" "$line" "$ns"
+            done
+    done
+done)
+
+[ -n "$PROBLEMS" ] || exit 0
+
+printf '\n\033[31m✗\033[0m %s\n' "Benchmark project(s) not named *.Benchmark.Tests:" >&2
+printf '%s\n' "$PROBLEMS" >&2
+die "rename each project above, and its namespace, to <Name>.Benchmark.Tests (the only accepted benchmark project name); buildtest only keeps *.Benchmark.Tests out of the main test run, so any other name runs its benchmarks as ordinary tests on every commit"

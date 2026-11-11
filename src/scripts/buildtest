@@ -152,8 +152,9 @@ else
   # Integration tests are always safe to skip in pre-commit. Every benchmark
   # test project is always excluded here too, regardless of whether it is
   # affected by staged changes; benchmark-test-affected below runs only the
-  # affected ones separately. "Benchmark" and "BenchMark" both appear in the
-  # wild; tracked to converge on one spelling.
+  # affected ones separately. *.Benchmark.Tests is the only accepted benchmark
+  # project name and namespace; check-benchmark-project-names fails the commit
+  # before this point if any project with benchmarks is named otherwise.
   dotnet test \
     --configuration Release \
     --no-restore \
