@@ -22,8 +22,9 @@ write_marker_test() {
 #   test/ünï.bats         marker-unicode
 #   test/util-lib.bats    marker-util     (named after src/scripts/lib/util-lib.sh,
 #                                          which no fixture file sources)
+#   test/base-tool.bats   marker-base     (named after src/scripts/base-tool.sh)
 #   test/alias-tool.bats  marker-alias    (named after src/scripts/alias-tool.sh,
-#                                          a symlink to alpha-tool.sh)
+#                                          a symlink to base-tool.sh)
 make_affected_repo() {
     local _t
     _t="$(make_repo feature/bats-affected)"
@@ -35,17 +36,18 @@ make_affected_repo() {
     write_marker_test "${_t}/test/odd ref.bats" marker-odd "covers src/scripts/my script.sh"
     write_marker_test "${_t}/test/ünï.bats" marker-unicode "no references"
     write_marker_test "${_t}/test/util-lib.bats" marker-util "no references"
+    write_marker_test "${_t}/test/base-tool.bats" marker-base "no references"
     write_marker_test "${_t}/test/alias-tool.bats" marker-alias "no references"
     printf 'helper() { true; }\n' > "${_t}/test/test_helper.bash"
     local _script
-    for _script in alpha-tool.sh shared-tool.sh "my script.sh" orphan.sh lib/util-lib.sh; do
+    for _script in alpha-tool.sh base-tool.sh shared-tool.sh "my script.sh" orphan.sh lib/util-lib.sh; do
         printf '#!/bin/sh\necho hello\n' > "${_t}/src/scripts/${_script}"
     done
-    ln -s alpha-tool.sh "${_t}/src/scripts/alias-tool.sh"
+    ln -s base-tool.sh "${_t}/src/scripts/alias-tool.sh"
     printf '%s' "${_t}"
 }
 
-ALL_MARKERS=(marker-alpha marker-beta marker-gamma marker-delta marker-odd marker-unicode marker-util marker-alias)
+ALL_MARKERS=(marker-alpha marker-beta marker-gamma marker-delta marker-odd marker-unicode marker-util marker-base marker-alias)
 
 # assert_ran_only <status> <output> <marker>...
 # Passes when the run succeeded and ran exactly the named marker tests.
@@ -151,8 +153,38 @@ setup() {
     assert_ran_full_suite "${status}" "${output}"
 }
 
+@test "run-bats with a script also runs the tests of an untracked symlink to it" {
+    run_affected "${T}" src/scripts/base-tool.sh
+    assert_ran_only "${status}" "${output}" marker-base marker-alias
+}
+
+@test "run-bats with a script also runs the tests of a committed symlink to it" {
+    commit_without_hooks "${T}" . > /dev/null
+    stage_edit "${T}" src/scripts/base-tool.sh
+    run_affected "${T}" src/scripts/base-tool.sh
+    assert_ran_only "${status}" "${output}" marker-base marker-alias
+}
+
+@test "run-bats with a script a symlink under test/ points at runs the full suite" {
+    ln -s ../src/scripts/base-tool.sh "${T}/test/linked-tool.sh"
+    run_affected "${T}" src/scripts/base-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a script that an untested symlink points at runs the full suite" {
+    ln -s alpha-tool.sh "${T}/src/scripts/untested-alias.sh"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats ignores a dangling symlink when mapping a script" {
+    ln -s missing-tool.sh "${T}/src/scripts/dangling.sh"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha
+}
+
 @test "run-bats with every .bats file under test/ runs every test file" {
-    run_affected "${T}" test/alpha-tool.bats test/beta.bats test/gamma.bats test/delta.bats "test/odd ref.bats" "test/ünï.bats" test/util-lib.bats test/alias-tool.bats
+    run_affected "${T}" test/alpha-tool.bats test/beta.bats test/gamma.bats test/delta.bats "test/odd ref.bats" "test/ünï.bats" test/util-lib.bats test/base-tool.bats test/alias-tool.bats
     assert_ran_full_suite "${status}" "${output}"
 }
 
