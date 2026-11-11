@@ -3,8 +3,10 @@
 # that fails when a project containing BenchmarkDotNet benchmarks is not
 # named <Name>.Benchmark.Tests (or does not use that namespace), since
 # buildtest only keeps *.Benchmark.Tests out of its main test run.
-# - detection is by source (`using BenchmarkDotNet...` or [Benchmark]), so a
-#   project that only gets BenchmarkDotNet transitively is still found
+# - detection is by a benchmark runner call in source (Benchmark<T>() or
+#   BenchmarkRunner.Run), so a project that only gets BenchmarkDotNet
+#   transitively is still found, while BenchmarkDotNet text in string
+#   literals (analyzer tests) or a lone [Benchmark] class is not
 # - the project file name, every namespace declaration in the project's own
 #   files and an explicit RootNamespace are checked
 # - bin/ and obj/, untracked files and projects with no benchmarks are ignored
@@ -41,17 +43,18 @@ write_project() {
     } > "${_repo}/${_dir}/${_name}.csproj"
 }
 
-# write_bench_class <file> <namespace>: a class with a [Benchmark] method.
+# write_bench_class <file> <namespace>: a class with a [Benchmark] method and
+# a test that runs it through FunFair.Test.Common's Benchmark<T>() helper.
 write_bench_class() {
     mkdir -p "$(dirname "$1")"
-    printf 'using BenchmarkDotNet.Attributes;\n\nnamespace %s;\n\npublic sealed class SampleBench\n{\n    [Benchmark]\n    public void Run() { }\n}\n' "$2" > "$1"
+    printf 'using BenchmarkDotNet.Attributes;\n\nnamespace %s;\n\npublic sealed class SampleBench\n{\n    [Benchmark]\n    public void Run() { }\n}\n\npublic sealed class SampleBenchTests : LoggingTestBase\n{\n    public void Run_Benchmarks()\n    {\n        (Summary _, AccumulationLogger logger) = Benchmark<SampleBench>();\n    }\n}\n' "$2" > "$1"
 }
 
-# write_bench_test <file> <namespace>: a test that runs benchmarks, using
-# BenchmarkDotNet types but carrying no [Benchmark] attribute itself.
+# write_bench_test <file> <namespace>: a test that runs benchmarks through
+# Benchmark<T>(), carrying no [Benchmark] attribute itself.
 write_bench_test() {
     mkdir -p "$(dirname "$1")"
-    printf 'using BenchmarkDotNet.Reports;\nusing FunFair.Test.Common;\n\nnamespace %s;\n\npublic sealed class SampleTests : LoggingTestBase\n{\n}\n' "$2" > "$1"
+    printf 'using BenchmarkDotNet.Reports;\nusing FunFair.Test.Common;\n\nnamespace %s;\n\npublic sealed class SampleTests : LoggingTestBase\n{\n    public void Run_Benchmarks()\n    {\n        (Summary _, AccumulationLogger logger) = Benchmark<OtherBench>();\n    }\n}\n' "$2" > "$1"
 }
 
 # write_plain_class <file> <namespace>
@@ -210,7 +213,7 @@ run_check() {
     done
 }
 
-@test "a project detected only through a using directive fails" {
+@test "a project detected through a Benchmark<T>() runner call fails" {
     local T
     T="$(make_names_repo)"
     write_project "${T}" src/Foo.Perf Foo.Perf
@@ -221,7 +224,7 @@ run_check() {
     [[ "${output}" == *'src/Foo.Perf/Foo.Perf.csproj: project name Foo.Perf is not'* ]]
 }
 
-@test "global using and using static of BenchmarkDotNet mark a benchmark project" {
+@test "BenchmarkDotNet using directives alone do not mark a benchmark project" {
     local T _directive
     for _directive in 'global using BenchmarkDotNet.Attributes;' 'using static BenchmarkDotNet.Running.BenchmarkRunner;'; do
         rm -rf "${BATS_TEST_TMPDIR}/repo"
@@ -230,16 +233,49 @@ run_check() {
         printf '%s\n' "${_directive}" > "${T}/src/Foo.Perf/Usings.cs"
         stage_all "${T}"
         run_check "${T}"
-        [ "${status}" -ne 0 ] || fail_with_run_output "${status}" "${output}" "non-zero for '${_directive}'"
+        [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" "zero for '${_directive}'"
     done
 }
 
-@test "a project detected only through a [Benchmark] attribute fails" {
+@test "a [Benchmark] attribute alone does not mark a benchmark project" {
     local T
     T="$(make_names_repo)"
     write_project "${T}" src/Foo.Perf Foo.Perf
     printf 'namespace Foo.Perf;\n\npublic sealed class SampleBench\n{\n    [Benchmark(Baseline = true)]\n    public void Run() { }\n}\n' \
         > "${T}/src/Foo.Perf/SampleBench.cs"
+    stage_all "${T}"
+    run_check "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "BenchmarkDotNet text inside string literals (analyzer tests) is not a benchmark marker" {
+    local T
+    T="$(make_names_repo)"
+    write_project "${T}" src/Foo.CodeAnalysis.Tests Foo.CodeAnalysis.Tests
+    printf 'namespace Foo.CodeAnalysis.Tests;\n\npublic sealed class AnalyzerTests\n{\n    private const string Source = @"\nusing BenchmarkDotNet.Attributes;\n\npublic sealed class X\n{\n    [Benchmark]\n    public void Run() { }\n}";\n}\n' \
+        > "${T}/src/Foo.CodeAnalysis.Tests/AnalyzerTests.cs"
+    stage_all "${T}"
+    run_check "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "the Benchmark<T>() helper's own declaration is not a runner call" {
+    local T
+    T="$(make_names_repo)"
+    write_project "${T}" src/Foo.Test.Common Foo.Test.Common
+    printf 'namespace Foo.Test.Common;\n\npublic abstract class LoggingTestBase\n{\n    protected static (Summary summary, AccumulationLogger logger) Benchmark<TBenchmark>()\n    {\n        return default;\n    }\n}\n' \
+        > "${T}/src/Foo.Test.Common/LoggingTestBase.cs"
+    stage_all "${T}"
+    run_check "${T}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "a misnamed project calling BenchmarkRunner.Run fails" {
+    local T
+    T="$(make_names_repo)"
+    write_project "${T}" src/Foo.Perf Foo.Perf
+    printf 'namespace Foo.Perf;\n\npublic static class Program\n{\n    public static void Main() => BenchmarkRunner.Run<Program>();\n}\n' \
+        > "${T}/src/Foo.Perf/Program.cs"
     stage_all "${T}"
     run_check "${T}"
     [ "${status}" -ne 0 ]
@@ -263,7 +299,7 @@ run_check() {
     local T
     T="$(make_names_repo)"
     write_project "${T}" src/Foo.Benchmark.Tests Foo.Benchmark.Tests
-    printf 'using BenchmarkDotNet.Attributes;\n\nnamespace Foo.BenchMark.Tests\n{\n    public sealed class SampleBench { [Benchmark] public void Run() { } }\n}\n' \
+    printf 'using BenchmarkDotNet.Attributes;\n\nnamespace Foo.BenchMark.Tests\n{\n    public sealed class SampleBench { [Benchmark] public void Run() { } }\n    public sealed class SampleBenchTests { public void Run() { _ = Benchmark<SampleBench>(); } }\n}\n' \
         > "${T}/src/Foo.Benchmark.Tests/SampleBench.cs"
     stage_all "${T}"
     run_check "${T}"
