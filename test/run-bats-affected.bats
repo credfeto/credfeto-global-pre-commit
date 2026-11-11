@@ -225,18 +225,88 @@ setup() {
     assert_ran_only "${status}" "${output}" marker-unicode
 }
 
+# write_script <repo> <path> <line>...
+# Writes <repo>/<path>, a sh script whose body is <line>..., so a test can
+# make it run or source another fixture file.
+write_script() {
+    local _repo="$1" _path="$2"
+    shift 2
+    { printf '#!/bin/sh\n'; printf '%s\n' "$@"; } > "${_repo}/${_path}"
+}
+
 # write_sourcing_script <repo> <line>...
-# Writes src/scripts/user-tool.sh, a script whose body is <line>..., so a
-# test can make it source src/scripts/lib/util-lib.sh in a given form.
+# Writes src/scripts/user-tool.sh, a script no test names, whose body is
+# <line>..., so a test can make it source src/scripts/lib/util-lib.sh in a
+# given form.
 write_sourcing_script() {
     local _repo="$1"
     shift
-    { printf '#!/bin/sh\n'; printf '%s\n' "$@"; } > "${_repo}/src/scripts/user-tool.sh"
+    write_script "${_repo}" src/scripts/user-tool.sh "$@"
 }
 
 @test "run-bats with a library no other file sources narrows to its tests" {
     run_affected "${T}" src/scripts/lib/util-lib.sh
     assert_ran_only "${status}" "${output}" marker-util
+}
+
+@test "run-bats with a script another script runs adds the tests of the script that runs it" {
+    # shellcheck disable=SC2016 # literal script text, written to the fixture unexpanded
+    write_script "${T}" src/scripts/delta 'sh "$(dirname "$0")/alpha-tool.sh"'
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha marker-delta
+}
+
+@test "run-bats with a library a tested script sources adds the tests of that script" {
+    # shellcheck disable=SC2016 # literal script text, written to the fixture unexpanded
+    write_script "${T}" src/scripts/delta '. "$(dirname "$0")/lib/util-lib.sh"'
+    run_affected "${T}" src/scripts/lib/util-lib.sh
+    assert_ran_only "${status}" "${output}" marker-util marker-delta
+}
+
+@test "run-bats with a script named by a committed script adds that script's tests" {
+    write_script "${T}" src/scripts/delta 'sh ./alpha-tool.sh'
+    commit_without_hooks "${T}" . > /dev/null
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha marker-delta
+}
+
+@test "run-bats looks for files naming a script outside src/" {
+    mkdir -p "${T}/tools"
+    write_script "${T}" tools/delta 'sh ../src/scripts/alpha-tool.sh'
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha marker-delta
+}
+
+@test "run-bats goes only one level up from a changed script" {
+    write_script "${T}" src/scripts/delta 'sh ./alpha-tool.sh'
+    write_script "${T}" src/scripts/gamma 'sh ./delta'
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha marker-delta
+}
+
+@test "run-bats ignores a file that names a script but does not qualify" {
+    printf 'Run src/scripts/alpha-tool.sh to start.\n' > "${T}/README.md"
+    printf 'see alpha-tool.sh\n' > "${T}/src/scripts/NOTES"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_only "${status}" "${output}" marker-alpha
+}
+
+@test "run-bats with a script named by a test helper runs the full suite" {
+    printf 'helper() { sh src/scripts/alpha-tool.sh; }\n' > "${T}/test/test_helper.bash"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a script named by src/.pre-commit-config.yaml runs the full suite" {
+    printf 'repos:\n  - hooks:\n      - entry: alpha-tool.sh\n' > "${T}/src/.pre-commit-config.yaml"
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a script named by a script with no tests runs the full suite" {
+    write_script "${T}" src/scripts/user-tool.sh 'sh ./alpha-tool.sh'
+    run_affected "${T}" src/scripts/alpha-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with a library another script sources with . runs the full suite" {
