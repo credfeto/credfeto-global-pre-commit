@@ -354,20 +354,45 @@ commit_fixture_and_stage_removal() {
     git -C "${_repo}" rm --quiet -- "$@"
 }
 
+# stage_edit <repo> <path>...
+# Appends a line to each <path> and stages it, so the path is part of the
+# staged change, as every file pre-commit passes to a commit run is.
+stage_edit() {
+    local _repo="$1" _path
+    shift
+    for _path in "$@"; do
+        printf '# edited\n' >> "${_repo}/${_path}"
+        git -C "${_repo}" add -- "${_path}"
+    done
+}
+
+# run_affected_range <repo> <from> <to> <arg>...
+# Runs run-bats with <arg>... from <repo> as pre-commit runs a hook for
+# `pre-commit run --from-ref <from> --to-ref <to>`, and for a pre-push.
+run_affected_range() {
+    local _repo="$1" _from="$2" _to="$3"
+    shift 3
+    run_isolated "${_repo}" "${TEST_PATH}" env PRE_COMMIT_FROM_REF="${_from}" PRE_COMMIT_TO_REF="${_to}" \
+        "${REPO_DIR}/src/scripts/run-bats" "$@"
+}
+
 @test "run-bats with a staged deletion of a script runs the full suite when narrowing another" {
     commit_fixture_and_stage_removal "${T}" src/scripts/alpha-tool.sh
+    stage_edit "${T}" src/scripts/shared-tool.sh
     run_affected "${T}" src/scripts/shared-tool.sh
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with a staged deletion of a script runs the full suite when no passed file qualifies" {
     commit_fixture_and_stage_removal "${T}" src/scripts/alpha-tool.sh
+    stage_edit "${T}" README.md
     run_affected "${T}" README.md
     assert_ran_full_suite "${status}" "${output}"
 }
 
 @test "run-bats with a staged deletion of a test helper under test/ runs the full suite" {
     commit_fixture_and_stage_removal "${T}" test/test_helper.bash
+    stage_edit "${T}" src/scripts/alpha-tool.sh
     run_affected "${T}" src/scripts/alpha-tool.sh
     assert_ran_full_suite "${status}" "${output}"
 }
@@ -375,6 +400,7 @@ commit_fixture_and_stage_removal() {
 @test "run-bats with a staged deletion of an extensionless script runs the full suite" {
     printf '#!/usr/bin/env bash\necho hello\n' > "${T}/src/scripts/plain-tool"
     commit_fixture_and_stage_removal "${T}" src/scripts/plain-tool
+    stage_edit "${T}" src/scripts/alpha-tool.sh
     run_affected "${T}" src/scripts/alpha-tool.sh
     assert_ran_full_suite "${status}" "${output}"
 }
@@ -382,6 +408,7 @@ commit_fixture_and_stage_removal() {
 @test "run-bats with a staged rename of a script runs the full suite" {
     commit_without_hooks "${T}" . > /dev/null
     git -C "${T}" mv src/scripts/alpha-tool.sh src/scripts/alpha-renamed.sh
+    stage_edit "${T}" src/scripts/shared-tool.sh
     run_affected "${T}" src/scripts/shared-tool.sh
     assert_ran_full_suite "${status}" "${output}"
 }
@@ -390,8 +417,44 @@ commit_fixture_and_stage_removal() {
     printf 'docs\n' > "${T}/README.md"
     printf 'no shebang\n' > "${T}/src/scripts/NOTES"
     commit_fixture_and_stage_removal "${T}" README.md src/scripts/NOTES
+    stage_edit "${T}" src/scripts/alpha-tool.sh
     run_affected "${T}" src/scripts/alpha-tool.sh
     assert_ran_only "${status}" "${output}" marker-alpha
+}
+
+@test "run-bats ignores a leftover staged deletion when a passed file is not part of the staged change" {
+    # As `pre-commit run --files` or --all-files does with a deletion left
+    # staged: the passed file is not in the staged change, so the deletion is
+    # not part of what is being checked.
+    commit_fixture_and_stage_removal "${T}" src/scripts/alpha-tool.sh
+    run_affected "${T}" src/scripts/shared-tool.sh
+    assert_ran_only "${status}" "${output}" marker-beta marker-gamma
+}
+
+@test "run-bats with a deletion in a --from-ref/--to-ref range runs the full suite" {
+    commit_fixture_and_stage_removal "${T}" src/scripts/alpha-tool.sh
+    stage_edit "${T}" src/scripts/shared-tool.sh
+    commit_without_hooks "${T}" . > /dev/null
+    run_affected_range "${T}" HEAD~1 HEAD src/scripts/shared-tool.sh
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats with a deletion of a non-shell file in a range still narrows, reading it from the range's base" {
+    printf 'no shebang\n' > "${T}/src/scripts/NOTES"
+    commit_fixture_and_stage_removal "${T}" src/scripts/NOTES
+    stage_edit "${T}" src/scripts/shared-tool.sh
+    commit_without_hooks "${T}" . > /dev/null
+    run_affected_range "${T}" HEAD~1 HEAD src/scripts/shared-tool.sh
+    assert_ran_only "${status}" "${output}" marker-beta marker-gamma
+}
+
+@test "run-bats in a range run ignores a deletion staged outside the range" {
+    commit_without_hooks "${T}" . > /dev/null
+    stage_edit "${T}" src/scripts/shared-tool.sh
+    commit_without_hooks "${T}" . > /dev/null
+    git -C "${T}" rm --quiet -- src/scripts/alpha-tool.sh
+    run_affected_range "${T}" HEAD~1 HEAD src/scripts/shared-tool.sh
+    assert_ran_only "${status}" "${output}" marker-beta marker-gamma
 }
 
 @test "run-bats runs the full suite when the index cannot be read" {
@@ -404,6 +467,7 @@ commit_fixture_and_stage_removal() {
 @test "run-bats with a staged deletion whose HEAD blob is missing runs the full suite" {
     printf 'no shebang\n' > "${T}/src/scripts/NOTES"
     commit_fixture_and_stage_removal "${T}" src/scripts/NOTES
+    stage_edit "${T}" src/scripts/alpha-tool.sh
     local _oid
     _oid=$(git -C "${T}" rev-parse HEAD:src/scripts/NOTES)
     rm -f "${T}/.git/objects/${_oid:0:2}/${_oid:2}"
@@ -418,6 +482,7 @@ commit_fixture_and_stage_removal() {
         printf '\n'
     } > "${T}/src/scripts/BIG"
     commit_fixture_and_stage_removal "${T}" src/scripts/BIG
+    stage_edit "${T}" src/scripts/alpha-tool.sh
     run_affected "${T}" src/scripts/alpha-tool.sh
     assert_ran_only "${status}" "${output}" marker-alpha
 }

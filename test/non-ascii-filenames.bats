@@ -210,22 +210,23 @@ run_git_target_files() {
     [ "${output}" = "scrípt.sh" ]
 }
 
-# ── src/scripts/lib/mode-arg.sh git_staged_deletions ─────────────────────────
+# ── src/scripts/lib/mode-arg.sh git_change_name_status ───────────────────────
 
-# run_git_staged_deletions <repo>
-# Sources lib/mode-arg.sh into sh in <repo> and prints git_staged_deletions
-# with each NUL terminator shown as a newline.
-run_git_staged_deletions() {
+# run_git_change_name_status <repo> [<base> <to>]
+# Sources lib/mode-arg.sh into sh in <repo> and prints git_change_name_status
+# (given any <base> <to>) with each NUL terminator shown as a newline.
+run_git_change_name_status() {
     run sh -c '
         cd "$1" || exit 2
         . "$2"
-        git_staged_deletions | tr "\000" "\n"
-    ' _ "$1" "${REPO_DIR}/src/scripts/lib/mode-arg.sh"
+        shift 2
+        git_change_name_status "$@" | tr "\000" "\n"
+    ' _ "$1" "${REPO_DIR}/src/scripts/lib/mode-arg.sh" "${@:2}"
 }
 
-@test "git_staged_deletions lists a staged deletion with a non-ASCII name by its real name, and a rename by its old name" {
+@test "git_change_name_status lists a staged change with a non-ASCII name by its real name, and a rename as a deletion and an addition" {
     local T
-    T="$(make_repo feature/non-ascii-staged-deletions)"
+    T="$(make_repo feature/non-ascii-staged-change)"
     mkdir -p "${T}/sub"
     printf 'echo hello\n' > "${T}/scrípt.sh"
     printf 'echo old\n' > "${T}/old.sh"
@@ -236,9 +237,26 @@ run_git_staged_deletions() {
     printf '# Changed\n' > "${T}/README.md"
     git -C "${T}" add -- README.md
     # Run from a subdirectory: the list must still be repo-root-relative.
-    run_git_staged_deletions "${T}/sub"
+    run_git_change_name_status "${T}/sub"
     [ "${status}" -eq 0 ]
-    [ "${output}" = "$(printf 'old.sh\nscrípt.sh')" ]
+    [ "${output}" = "$(printf 'M\nREADME.md\nA\nnew.sh\nD\nold.sh\nD\nscrípt.sh')" ]
+}
+
+@test "git_change_name_status lists a committed range's changes, ignoring the index" {
+    local T
+    T="$(make_repo feature/non-ascii-range-change)"
+    mkdir -p "${T}/sub"
+    printf 'echo hello\n' > "${T}/scrípt.sh"
+    printf '# Title\n' > "${T}/README.md"
+    commit_without_hooks "${T}" . > /dev/null
+    git -C "${T}" rm --quiet -- scrípt.sh
+    commit_without_hooks "${T}" . > /dev/null
+    # A staged change outside the range must not be listed.
+    printf '# Changed\n' > "${T}/README.md"
+    git -C "${T}" add -- README.md
+    run_git_change_name_status "${T}/sub" HEAD~1 HEAD
+    [ "${status}" -eq 0 ]
+    [ "${output}" = "$(printf 'D\nscrípt.sh')" ]
 }
 
 # ── src/scripts/check-ignored-files ──────────────────────────────────────────

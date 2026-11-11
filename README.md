@@ -304,7 +304,7 @@ verified-only `trufflehog` check above with noisier, unverified findings.
 This section is the authoritative description of which files trigger the bats
 hook and which bats files `run-bats` then runs. The code lives in
 `src/scripts/run-bats` (`_bats_file_qualifies`, `_bats_map_file`,
-`_bats_map_direct`, `_bats_naming_files`, `_bats_staged_deletion_qualifies`
+`_bats_map_direct`, `_bats_naming_files`, `_bats_deletion_qualifies`
 and the loop that calls them).
 
 The bats hook has no file filter: pre-commit passes it every staged text file
@@ -377,25 +377,38 @@ runs a narrowed set of tests; it never makes a run start when no file
 qualifies, and a whole-suite run includes it anyway.
 
 pre-commit never passes a deleted file to a hook, so before mapping,
-`run-bats <file>...` also reads the index's staged deletions (through
-`git_staged_deletions` in `src/scripts/lib/mode-arg.sh`, which runs
-`git diff --cached --diff-filter=D --no-renames`, so a rename counts as a
-deletion of its old name) and runs the whole suite instead, even when no
-passed file qualifies, if any of them:
+`run-bats <file>...` also reads the deletions of the change the passed files
+come from (through `git_change_name_status` in
+`src/scripts/lib/mode-arg.sh`, which runs `git diff --name-status
+--no-renames`, so a rename counts as a deletion of its old name):
+
+- on a `pre-commit run --from-ref A --to-ref B` run (which a `pre-push` hook
+  runs too), pre-commit sets `PRE_COMMIT_FROM_REF` and `PRE_COMMIT_TO_REF`,
+  and the change is the range from the merge base of `A` and `B` to `B`, the
+  same range pre-commit took the files from; the index is not read;
+- on any other run the change is the index against `HEAD`, and its deletions
+  count only when every passed file is added or modified in the index, as on
+  a commit. `pre-commit run --files` and `--all-files` pass files the index
+  does not change, so a deletion left staged does not make them run the whole
+  suite.
+
+It then runs the whole suite instead, even when no passed file qualifies, if
+any of those deletions:
 
 - is under `test/`;
 - has a qualifying extension or is `src/.pre-commit-config.yaml`; or
-- had a qualifying first line in `HEAD` (so a deleted extensionless script
-  such as `src/scripts/run-bats` counts, and a deleted `README.md` does not),
-  or its `HEAD` content cannot be read (for example, a blob missing from a
-  partial clone).
+- had a qualifying first line before the change (in `HEAD`, or in the
+  range's merge base), so a deleted extensionless script such as
+  `src/scripts/run-bats` counts and a deleted `README.md` does not, or that
+  content cannot be read (for example, a blob missing from a partial clone).
 
-The whole suite also runs when the index cannot be read. Because this check
-looks at the whole index, every chunk of a chunked file list (see below) runs
-the whole suite when such a deletion is staged.
+The whole suite also runs when the change cannot be read (for example, an
+unreadable index). Because this check looks at the whole change, every chunk
+of a chunked file list (see below) runs the whole suite when such a deletion
+is in it.
 
-When no passed file qualifies and no staged deletion triggers the whole
-suite, `run-bats` exits 0 without running `bats`.
+When no passed file qualifies and no deletion triggers the whole suite,
+`run-bats` exits 0 without running `bats`.
 
 Other ways to run the whole suite:
 
@@ -411,7 +424,7 @@ Other ways to run the whole suite:
 bats file still runs, because each maps to itself. pre-commit splits a very
 long file list into chunks by argument length and calls `run-bats` once per
 chunk, so each chunk is mapped on its own. A chunk holding no qualifying file
-runs nothing, unless a staged deletion triggers the whole suite (see above),
+runs nothing, unless a deletion triggers the whole suite (see above),
 in which case every chunk runs the whole suite.
 
 ---
