@@ -403,9 +403,15 @@ any of those deletions:
   content cannot be read (for example, a blob missing from a partial clone).
 
 The whole suite also runs when the change cannot be read (for example, an
-unreadable index). Because this check looks at the whole change, every chunk
-of a chunked file list (see below) runs the whole suite when such a deletion
-is in it.
+unreadable index). This check looks at the whole change, so when pre-commit
+chunks the file list (see below) only one call makes the decision: the one
+passed the change's designated file, the first file the change adds or
+modifies that pre-commit passes to the hook (an existing regular file, not a
+symlink, that is text by pre-commit's own test). Every other chunk is mapped
+as usual, so a large rename commit runs the whole suite once rather than once
+per chunk. On a `pre-commit run --files` run that passes only some of the
+staged files, a deletion therefore counts only when the designated file is
+among them.
 
 When no passed file qualifies and no deletion triggers the whole suite,
 `run-bats` exits 0 without running `bats`.
@@ -424,8 +430,9 @@ Other ways to run the whole suite:
 bats file still runs, because each maps to itself. pre-commit splits a very
 long file list into chunks by argument length and calls `run-bats` once per
 chunk, so each chunk is mapped on its own. A chunk holding no qualifying file
-runs nothing, unless a deletion triggers the whole suite (see above),
-in which case every chunk runs the whole suite.
+runs nothing, unless it holds the designated file of a change whose deletion
+triggers the whole suite (see above), in which case that one chunk runs the
+whole suite.
 
 ---
 

@@ -122,23 +122,58 @@ _bats_read_change() {
     wait "$!"
 }
 
-# Succeeds when the passed files $@ belong to the change _bats_read_change
-# read, so its deletions are part of what is being checked: always on a
-# --from-ref/--to-ref run, otherwise only when every passed file is in the
-# index's change, as on a commit. `pre-commit run --files` or `--all-files`
-# (or run-bats by hand) passes files the commit does not change, so a
-# deletion left staged is not theirs to check.
+# Succeeds when the repo-relative passed files $@ belong to the change
+# _bats_read_change read, so its deletions are part of what is being checked:
+# always on a --from-ref/--to-ref run, otherwise only when every passed file
+# is in the index's change, as on a commit. `pre-commit run --files` or
+# `--all-files` (or run-bats by hand) passes files the commit does not
+# change, so a deletion left staged is not theirs to check.
 _bats_passed_in_change() {
-    local file rel
+    local file
     local -A changed=()
     [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ] && return 0
     for file in "${_bats_change_files[@]}"; do
         changed["$file"]=1
     done
     for file in "$@"; do
-        rel=$(_bats_repo_relative "$file") || return 1
-        [ -n "${changed["$rel"]:-}" ] || return 1
+        [ -n "${changed["$file"]:-}" ] || return 1
     done
+}
+
+# Succeeds when the file $1 is text as pre-commit's identify library judges
+# it, which decides whether the hook's `types: [text]` passes it: its first
+# 1024 bytes hold no byte below space other than BEL, BS, TAB, LF, VT, FF, CR
+# and ESC, and no DEL. Counted with wc so a NUL byte, which a command
+# substitution would drop, still counts.
+_bats_is_text() {
+    local count
+    count=$(head -c 1024 -- "$1" | LC_ALL=C tr -d '\007-\015\033\040-\176\200-\377' | wc -c) || return 1
+    [ "$count" -eq 0 ]
+}
+
+# Succeeds when this call holds the change's designated file, so it is the
+# one call that makes the deletion decision. pre-commit splits a very long
+# file list into chunks by argument length and calls run-bats once per
+# chunk, each passed file in exactly one chunk; without this, every chunk
+# would run the whole suite for the same deletion. The designated file is
+# the first file the change adds or modifies that pre-commit passes to this
+# hook: one that exists as a regular file, not a symlink, and is text. Every
+# passed file is in the change (_bats_passed_in_change), so such a file
+# exists whenever anything is passed; should none exist, every call decides.
+# $@ are the repo-relative passed files.
+_bats_holds_designated_file() {
+    local file
+    local -A passed=()
+    for file in "$@"; do
+        passed["$file"]=1
+    done
+    for file in "${_bats_change_files[@]}"; do
+        if [ -f "$file" ] && [ ! -L "$file" ] && _bats_is_text "$file"; then
+            [ -n "${passed["$file"]:-}" ]
+            return
+        fi
+    done
+    return 0
 }
 
 # Succeeds when the deletion $1 (a repo-root-relative path) could break a
@@ -168,17 +203,25 @@ _bats_deleted_file_qualifies() {
 # pre-commit passes no deleted file to a hook, so the tests of a deleted
 # script (or a deleted test helper) would never be selected by name. Succeeds
 # when the change the passed files $@ come from deletes a file that could
-# break a test, or when that change cannot be read, so the caller runs the
-# whole suite. A rename counts as a deletion of its old name, which breaks
-# that name's tests the same way.
+# break a test and this call holds the change's designated file, or when
+# that change cannot be read, so the caller runs the whole suite. A rename
+# counts as a deletion of its old name, which breaks that name's tests the
+# same way.
 _bats_deletion_qualifies() {
-    local path
+    local path file rel found=0
+    local -a relative=()
     _bats_read_change || return 0
-    _bats_passed_in_change "$@" || return 1
     for path in "${_bats_change_deleted[@]}"; do
-        _bats_deleted_file_qualifies "$path" && return 0
+        _bats_deleted_file_qualifies "$path" || continue
+        found=1
+        break
     done
-    return 1
+    [ "$found" = 1 ] || return 1
+    for file in "$@"; do
+        rel=$(_bats_repo_relative "$file") || return 1
+        relative+=("$rel")
+    done
+    _bats_passed_in_change "${relative[@]}" && _bats_holds_designated_file "${relative[@]}"
 }
 
 # The bats files to run, as keys, so a file affected twice runs once. bats

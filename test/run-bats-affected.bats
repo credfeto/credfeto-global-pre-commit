@@ -409,7 +409,8 @@ run_affected_range() {
     commit_without_hooks "${T}" . > /dev/null
     git -C "${T}" mv src/scripts/alpha-tool.sh src/scripts/alpha-renamed.sh
     stage_edit "${T}" src/scripts/shared-tool.sh
-    run_affected "${T}" src/scripts/shared-tool.sh
+    # pre-commit passes the rename's new path as well as the edited file.
+    run_affected "${T}" src/scripts/alpha-renamed.sh src/scripts/shared-tool.sh
     assert_ran_full_suite "${status}" "${output}"
 }
 
@@ -420,6 +421,29 @@ run_affected_range() {
     stage_edit "${T}" src/scripts/alpha-tool.sh
     run_affected "${T}" src/scripts/alpha-tool.sh
     assert_ran_only "${status}" "${output}" marker-alpha
+}
+
+@test "run-bats with a qualifying staged deletion runs the full suite only in the chunk holding the first changed text file" {
+    # pre-commit passes the staged files in chunks, one run-bats call each:
+    # README.md sorts first, so only its chunk makes the deletion decision.
+    commit_fixture_and_stage_removal "${T}" src/scripts/alpha-tool.sh
+    stage_edit "${T}" README.md src/scripts/shared-tool.sh
+    run_affected "${T}" src/scripts/shared-tool.sh
+    assert_ran_only "${status}" "${output}" marker-beta marker-gamma
+    run_affected "${T}" README.md
+    assert_ran_full_suite "${status}" "${output}"
+}
+
+@test "run-bats does not designate a changed binary file or symlink, which pre-commit never passes to the hook" {
+    commit_fixture_and_stage_removal "${T}" src/scripts/alpha-tool.sh
+    printf 'bin\000ary\n' > "${T}/0-data.bin"
+    ln -s README.md "${T}/1-link.md"
+    git -C "${T}" add -- 0-data.bin 1-link.md
+    stage_edit "${T}" README.md src/scripts/shared-tool.sh
+    run_affected "${T}" README.md
+    assert_ran_full_suite "${status}" "${output}"
+    run_affected "${T}" src/scripts/shared-tool.sh
+    assert_ran_only "${status}" "${output}" marker-beta marker-gamma
 }
 
 @test "run-bats ignores a leftover staged deletion when a passed file is not part of the staged change" {
