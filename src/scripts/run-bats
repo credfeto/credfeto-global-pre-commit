@@ -3,7 +3,7 @@
 # affect. Usage:
 #   run-bats <file>...     run the tests affected by the qualifying files
 #                          (see _bats_file_qualifies, _bats_map_file,
-#                          _bats_is_sourced and
+#                          _bats_naming_files and
 #                          _bats_staged_deletion_qualifies)
 #   run-bats --all-files   run the whole suite if any tracked file qualifies
 #   run-bats               run the whole suite unconditionally (for callers
@@ -133,28 +133,21 @@ _bats_staged_deletion_qualifies() {
 # needs no stable order.
 declare -A _bats_targets=()
 
-# Every line of the repo's tracked and untracked (not ignored) files that
-# sources a file: a `source` or `.` command at command position (line start,
-# or after `;`, `&`, `|`, `(`, `{`, `then`, `do` or `else`), or a
-# `# shellcheck source=` directive. Read once, on first use, by
-# _bats_is_sourced.
-_bats_source_lines=""
-_bats_source_lines_read=0
-
-# Succeeds when a source line names the basename $1, so the file is a library
-# whose tests run through the scripts that source it, which no basename
-# search finds. The basename must stand alone in the line (preceded by a
-# start of line, space, `/`, `=` or quote, and followed by an end of line,
-# space, quote, `;` or `)`), so `x.sh` does not match `lib/xx.sh`.
-_bats_is_sourced() {
-    if [ "$_bats_source_lines_read" = 0 ]; then
-        _bats_source_lines=$(git -C "$REPO_ROOT" grep --untracked -h -I -E \
-            -e '(^[[:space:]]*|[;&|({][[:space:]]*|(^|[[:space:]])(then|do|else)[[:space:]]+)(source|\.)[[:space:]]' \
-            -e '#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?source=' 2>/dev/null)
-        _bats_source_lines_read=1
-    fi
-    local -r before='(^|[[:space:]/="'\''])' after='([[:space:]";'\'')]|$)'
-    [[ "$_bats_source_lines" =~ $before"$1"$after ]]
+# Prints, NUL-terminated and repo-root-relative, every tracked or untracked
+# (not ignored) file in the repository other than the repo-relative path $1
+# that names $1's basename: a script that runs or sources it, or a config
+# that invokes it. The basename must stand alone (preceded by a start of
+# line, space, `/`, `=` or quote, and followed by an end of line, space,
+# quote, `;` or `)`), so `x.sh` does not match `lib/xx.sh`.
+_bats_naming_files() {
+    local rel="$1" base pattern path
+    base=${rel##*/}
+    # Escape every ERE metacharacter so the basename matches literally.
+    pattern=$(printf '%s' "$base" | sed 's/[][\.*^$+?(){}|/]/\\&/g')
+    pattern='(^|[[:space:]/="'\''])'"$pattern"'([[:space:]";'\'')]|$)'
+    while IFS= read -r -d '' path; do
+        [ "$path" = "$rel" ] || printf '%s\0' "$path"
+    done < <(git -C "$REPO_ROOT" grep --untracked -I -l -z -E -e "$pattern" 2>/dev/null)
 }
 
 # Prints the path $1 relative to REPO_ROOT; one outside the repository
@@ -174,12 +167,13 @@ _bats_repo_relative() {
     esac
 }
 
-# Adds the bats files affected by one qualifying file to _bats_targets.
-# Returns 1 when the file cannot be narrowed down, so the whole suite must run.
-_bats_map_file() {
-    local rel base stem found=0 hit
+# Adds the bats files that name the repo-relative path $1 to _bats_targets:
+# $1 itself when it is a test/ .bats file, otherwise test/<stem>.bats and
+# every test/ .bats file containing its basename. Returns 1 when $1 cannot be
+# narrowed down, so the whole suite must run.
+_bats_map_direct() {
+    local rel="$1" base stem found=0 hit
     local -a hits
-    rel=$(_bats_repo_relative "$1") || return 1
     base=${rel##*/}
     case "$rel" in
         .. | ../*) return 1 ;;
@@ -192,7 +186,6 @@ _bats_map_file() {
         test/* | *.bats) return 1 ;;
     esac
 
-    _bats_is_sourced "$base" && return 1
     stem=${base%.*}
     if [ -n "$stem" ] && [ -f "$REPO_ROOT/test/$stem.bats" ]; then
         _bats_targets["$REPO_ROOT/test/$stem.bats"]=1
@@ -206,6 +199,25 @@ _bats_map_file() {
         found=1
     done
     [ "$found" = 1 ]
+}
+
+# Adds the bats files affected by one qualifying file to _bats_targets: its
+# own tests (_bats_map_direct), plus, one level up, the tests of every
+# qualifying file that names it (_bats_naming_files), since those run or
+# source it and their tests reach it through them. Returns 1 when the file
+# or one of those naming files cannot be narrowed down, so the whole suite
+# must run.
+_bats_map_file() {
+    local rel namer
+    rel=$(_bats_repo_relative "$1") || return 1
+    _bats_map_direct "$rel" || return 1
+    case "$rel" in
+        test/*) return 0 ;;
+    esac
+    while IFS= read -r -d '' namer; do
+        _bats_file_qualifies "$namer" || continue
+        _bats_map_direct "$namer" || return 1
+    done < <(_bats_naming_files "$rel")
 }
 
 # An empty _bats_targets means the whole suite runs: no arguments,

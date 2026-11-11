@@ -304,8 +304,8 @@ verified-only `trufflehog` check above with noisier, unverified findings.
 This section is the authoritative description of which files trigger the bats
 hook and which bats files `run-bats` then runs. The code lives in
 `src/scripts/run-bats` (`_bats_file_qualifies`, `_bats_map_file`,
-`_bats_is_sourced`, `_bats_staged_deletion_qualifies` and the loop that calls
-them).
+`_bats_map_direct`, `_bats_naming_files`, `_bats_staged_deletion_qualifies`
+and the loop that calls them).
 
 The bats hook has no file filter: pre-commit passes it every staged text file
 and `run-bats` decides what to run. Running "the whole suite" below means
@@ -344,25 +344,30 @@ not by its target's:
   recursively, in the working tree, so untracked tests count) whose text
   contains the file's basename (a test naming the repo-relative path contains
   the basename, so it matches too);
-- the whole suite runs instead when any qualifying file is one of:
+- such a file also runs, one level up, the tests of every **naming file**: a
+  qualifying file anywhere in the repository (tracked or untracked, not
+  ignored; symlinks are not read) other than itself whose text names its
+  basename, such as a script that runs or sources it or
+  `src/.pre-commit-config.yaml` naming it as a hook `entry:`. Its tests run
+  through the naming file, so changing `src/scripts/check-ignored-files` also
+  runs the tests of `src/hooks/pre-commit`, which runs it. Each naming file
+  maps by the rules above and below, but its own naming files are not
+  followed. The basename must stand alone, preceded by a line start, space,
+  `/`, `=` or quote and followed by a line end, space, quote, `;` or `)`, so
+  a line naming `lib/my-util.sh` does not make it a naming file of
+  `util.sh`. A file that does not qualify, such as `README.md`, is never a
+  naming file. A path built from variables (for example
+  `. "$LIB_DIR/$name.sh"`) names no basename and is not found;
+- the whole suite runs instead when any qualifying file, or any of its
+  naming files, is one of:
   - a `.bats` file under `test/` that no longer exists (deleted or renamed);
   - any other file under `test/`, such as `test/test_helper.bash`;
   - a `.bats` file outside `test/`;
   - `src/.pre-commit-config.yaml`;
-  - a sourced library: a file whose basename appears in a line, in any
-    tracked or untracked (not ignored) file in the repository, that holds a
-    `source` or `.` command at command position (at the line start, after
-    optional indentation, or after `;`, `&`, `|`, `(`, `{`, `then`, `do` or
-    `else`) or a `# shellcheck source=` directive, because
-    its tests run it through the scripts that source it and no basename
-    search finds those. The basename must stand alone in that line, preceded
-    by a line start, space, `/`, `=` or quote and followed by a line end,
-    space, quote, `;` or `)`, so a line sourcing `lib/my-util.sh` does not
-    make `util.sh` a library. The check reads every file rather than only
-    shell scripts and any line with such a command, so it can treat a file
-    as a library that is not one, which only runs more tests;
   - a file outside the repository;
-  - a file that maps to no bats file by either rule above.
+  - a file that maps to no bats file by the first two rules above (so a
+    library sourced only by scripts that have no tests still runs the whole
+    suite).
 
 pre-commit never passes a deleted file to a hook, so before mapping,
 `run-bats <file>...` also reads the index's staged deletions (through
