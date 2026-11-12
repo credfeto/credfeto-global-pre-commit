@@ -1,5 +1,5 @@
 #! /bin/sh
-# Shared helper sourced by check-changelog, run-formatter, and
+# Shared helper sourced by check-changelog, run-formatter, run-bats and
 # clean-package-lock-registry (and by hooks/pre-commit itself). Not intended
 # to be run directly. Depends on the caller already defining die().
 #
@@ -54,4 +54,25 @@ git_target_files() {
     else
         git -C "$_mode_arg_repo_root" diff --cached --name-only --diff-filter=d -z
     fi | grep -zE "$1" | tr '\000' '\n'
+}
+
+# Prints the status letter and repo-root-relative path of every file a change
+# touches, each NUL-terminated (status, then path), failing when git does
+# (for example, an unreadable index). With no arguments the change is the
+# index against HEAD, a commit's; with <base> <to> it is the range from
+# commit <base> to <to>. --no-renames reports a rename as a deletion (D) of
+# its old name plus an addition (A) of its new one, so a caller sees every
+# name that no longer exists after the change. Output stays NUL-terminated
+# because callers here are bash, which can read it verbatim (read -d ''); a
+# name containing a newline is therefore supported.
+#
+# Independent of MODE: there is no change to report in all-files mode, so a
+# caller uses this only when narrowing work to the files a change touches.
+git_change_name_status() {
+    _mode_arg_repo_root=$(git rev-parse --show-toplevel) || return 1
+    if [ "$#" -eq 0 ]; then
+        git -C "$_mode_arg_repo_root" diff --cached --name-status --no-renames -z
+    else
+        git -C "$_mode_arg_repo_root" diff --name-status --no-renames -z "$1" "$2" --
+    fi
 }

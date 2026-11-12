@@ -187,6 +187,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - README: dependency tables and notes corrected to match the install scripts, cscleanup documented as a local dotnet tool, Node.js/nvm notes clarified, and em dashes removed
 - cscleanup is now installed as a local dotnet tool in the $HOME manifest instead of a global tool, and check-setup's install hint gives the local install command
 - lib/common.sh die and the new warn helper write to stderr; status output uses the info and success helpers
+- run-bats on commit runs only the bats test files the staged files affect: a changed script runs its own tests, the tests that name it and, one level up, the tests of scripts that run or source it, plus any test marked '# run-bats: always'; the whole suite runs when a file maps to no test, a test helper or src/.pre-commit-config.yaml changes, or a staged deletion or rename could break a test; RUN_BATS_FULL=1 forces the whole suite, and --all-files and no-argument runs are unchanged (#276)
 
 ### Deprecated
 ### Removed

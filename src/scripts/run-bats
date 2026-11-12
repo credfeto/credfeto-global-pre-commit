@@ -1,13 +1,19 @@
 #!/bin/bash
-# Wrapper for bats: runs the complete bats suite under test/ when a change
-# could affect it. Usage:
-#   run-bats <file>...     run if any file qualifies (see _bats_file_qualifies)
-#   run-bats --all-files   run if any tracked file qualifies
-#   run-bats               run unconditionally (for callers that filter files
-#                          themselves, e.g. a pass_filenames: false hook)
-# Filenames only decide whether to run; the whole suite always runs, never
-# just the named files. Exits 0 without running when test/ holds no *.bats
-# file, so the hook is a cheap no-op in repos without a bats suite.
+# Wrapper for bats: runs the bats tests under test/ that a change could
+# affect. Usage:
+#   run-bats <file>...     run the tests affected by the qualifying files
+#                          (see _bats_file_qualifies, _bats_map_files,
+#                          _bats_naming_files, _bats_add_aliases and
+#                          _bats_deletion_qualifies)
+#   run-bats --all-files   run the whole suite if any tracked file qualifies
+#   run-bats               run the whole suite unconditionally (for callers
+#                          that filter files themselves, e.g. a
+#                          pass_filenames: false hook)
+# When a qualifying file cannot be narrowed down, or RUN_BATS_FULL=1 is set,
+# the whole suite runs instead; run-bats exits 0 without running when test/
+# holds no *.bats file. README.md, "Bats test selection (run-bats)", is the
+# full and authoritative description of which files qualify and which tests
+# they run.
 # Must be bash (not sh) so that export -f can propagate bats_readlinkf to the
 # inner bats process (needed on platforms where the bats wrapper does not export it).
 
@@ -33,6 +39,10 @@ unset BATS_RUN_TMPDIR BATS_SUITE_TMPDIR BATS_FILE_TMPDIR BATS_TEST_TMPDIR
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+# shellcheck source=src/scripts/lib/mode-arg.sh
+. "$SCRIPT_DIR/lib/mode-arg.sh"
+
 # No bats suite in this repo: nothing to run.
 [ -n "$(find "$REPO_ROOT/test" -name '*.bats' -print -quit 2>/dev/null)" ] || exit 0
 
@@ -41,45 +51,390 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 # shared test/test_helper.bash qualifies by its extension) or this repo's own
 # pre-commit config. Extension and path are checked first so the first line
 # is read only when they do not already decide it.
-_bats_file_qualifies() {
-    local path="$1" first=""
-    case "$path" in
+_bats_name_qualifies() {
+    case "$1" in
         src/.pre-commit-config.yaml) return 0 ;;
         *.sh | *.bash | *.bats | *.ksh | *.dash) return 0 ;;
+    esac
+    return 1
+}
+
+# Succeeds when the first line $1 is a shebang (an interpreter in /bin,
+# /usr/bin or /usr/local/bin, directly or via `env` / `env -S`, naming sh,
+# bash, dash, ksh or `busybox sh`) or a `# shellcheck shell=` directive.
+_bats_first_line_qualifies() {
+    [[ "$1" =~ ^#![[:space:]]*(/usr(/local)?)?/bin/(env[[:space:]]+(-S[[:space:]]*)?)?(sh|bash|dash|ksh|busybox[[:space:]]+sh)([[:space:]]|$) ]] && return 0
+    [[ "$1" =~ ^#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?shell=(sh|bash|dash|ksh|busybox)([[:space:]]|$) ]]
+}
+
+# $1 is relative to REPO_ROOT (the cwd while arguments are processed) or
+# absolute. Only a path naming a .pre-commit-config.yaml is resolved, so an
+# absolute path to src/.pre-commit-config.yaml qualifies too without a
+# realpath call for every --all-files path.
+_bats_file_qualifies() {
+    local path="$1" first=""
+    _bats_name_qualifies "$path" && return 0
+    case "$path" in
+        */.pre-commit-config.yaml)
+            _bats_repo_relative "$path" && [ "$_bats_rel" = src/.pre-commit-config.yaml ] && return 0
+            ;;
     esac
     [ -f "$path" ] || return 1
     # Bounded read: a shebang or directive fits well within 256 characters,
     # and an unbounded read would pull in the whole first line of a
     # single-line file such as minified JS or JSON.
-    # A failed read leaves $first empty, so both patterns below fail.
+    # A failed read leaves $first empty, so neither pattern matches.
     IFS= read -r -n 256 first < "$path"
-    # Shebang: an interpreter in /bin, /usr/bin or /usr/local/bin, directly or
-    # via `env` / `env -S`, naming sh, bash, dash, ksh or `busybox sh`.
-    [[ "$first" =~ ^#![[:space:]]*(/usr(/local)?)?/bin/(env[[:space:]]+(-S[[:space:]]*)?)?(sh|bash|dash|ksh|busybox[[:space:]]+sh)([[:space:]]|$) ]] && return 0
-    [[ "$first" =~ ^#[[:space:]]*shellcheck[[:space:]]+(.*[[:space:]])?shell=(sh|bash|dash|ksh|busybox)([[:space:]]|$) ]] && return 0
-    return 1
+    _bats_first_line_qualifies "$first"
 }
 
+# The change the passed files come from, read by _bats_read_change:
+# _bats_change_files lists every path it adds or modifies, in git's order,
+# _bats_change_deleted every path it deletes, and _bats_change_base names the
+# commit in which those deleted paths still exist.
+_bats_change_files=()
+_bats_change_deleted=()
+_bats_change_base=HEAD
+
+# Reads the change being checked. pre-commit sets PRE_COMMIT_FROM_REF and
+# PRE_COMMIT_TO_REF only for `pre-commit run --from-ref A --to-ref B` (which
+# a pre-push runs too), whose files are those `git diff A...B` lists, the
+# range from the refs' merge base; any other run checks a commit, the index
+# against HEAD. --no-renames reports a rename as a deletion of its old name
+# plus an addition of its new one, so every name that no longer exists
+# afterwards is a deletion. Fails when git does (for example, an unreadable
+# index).
+_bats_read_change() {
+    local status path
+    local -a range=()
+    if [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ]; then
+        # As pre-commit does, use FROM itself when the refs share no history.
+        _bats_change_base=$(git merge-base "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF" 2>/dev/null) ||
+            _bats_change_base=$PRE_COMMIT_FROM_REF
+        range=("$_bats_change_base" "$PRE_COMMIT_TO_REF")
+    fi
+    while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+        case "$status" in
+            D) _bats_change_deleted+=("$path") ;;
+            *) _bats_change_files+=("$path") ;;
+        esac
+    done < <(git_change_name_status "${range[@]}" 2>/dev/null)
+    wait "$!"
+}
+
+# Succeeds when the repo-relative passed files $@ belong to the change
+# _bats_read_change read, so its deletions are part of what is being checked:
+# always on a --from-ref/--to-ref run, otherwise only when every passed file
+# is in the index's change, as on a commit. `pre-commit run --files` or
+# `--all-files` (or run-bats by hand) passes files the commit does not
+# change, so a deletion left staged is not theirs to check.
+_bats_passed_in_change() {
+    local file
+    local -A changed=()
+    [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ] && return 0
+    for file in "${_bats_change_files[@]}"; do
+        changed["$file"]=1
+    done
+    for file in "$@"; do
+        [ -n "${changed["$file"]:-}" ] || return 1
+    done
+}
+
+# Succeeds when the file $1 is text as pre-commit's identify library judges
+# it, which decides whether the hook's `types: [text]` passes it: its first
+# 1024 bytes hold no byte below space other than BEL, BS, TAB, LF, VT, FF, CR
+# and ESC, and no DEL. Counted with wc so a NUL byte, which a command
+# substitution would drop, still counts.
+_bats_is_text() {
+    local count
+    count=$(head -c 1024 -- "$1" | LC_ALL=C tr -d '\007-\015\033\040-\176\200-\377' | wc -c) || return 1
+    [ "$count" -eq 0 ]
+}
+
+# Succeeds when this call holds the change's designated file, so it is the
+# one call that makes the deletion decision. pre-commit splits a very long
+# file list into chunks by argument length and calls run-bats once per
+# chunk, each passed file in exactly one chunk; without this, every chunk
+# would run the whole suite for the same deletion. The designated file is
+# the first file the change adds or modifies that pre-commit passes to this
+# hook: one that exists as a regular file, not a symlink, and is text. Every
+# passed file is in the change (_bats_passed_in_change), so such a file
+# exists whenever anything is passed; should none exist, every call decides.
+# $@ are the repo-relative passed files.
+_bats_holds_designated_file() {
+    local file
+    local -A passed=()
+    for file in "$@"; do
+        passed["$file"]=1
+    done
+    for file in "${_bats_change_files[@]}"; do
+        if [ -f "$file" ] && [ ! -L "$file" ] && _bats_is_text "$file"; then
+            [ -n "${passed["$file"]:-}" ]
+            return
+        fi
+    done
+    return 0
+}
+
+# Succeeds when the deletion $1 (a repo-root-relative path) could break a
+# test: any file under test/, a file that qualifies by name, or a file whose
+# first line in _bats_change_base (where every deletion still exists)
+# qualifies. A blob that cannot be read (missing from the object store in a
+# partial clone or a damaged repository) counts as qualifying, since its
+# first line is unknown.
+_bats_deleted_file_qualifies() {
+    local path="$1" first="" status
+    case "$path" in
+        test/*) return 0 ;;
+    esac
+    _bats_name_qualifies "$path" && return 0
+    IFS= read -r -n 256 first < <(git -C "$REPO_ROOT" cat-file blob "$_bats_change_base:$path" 2>/dev/null)
+    wait "$!"
+    status=$?
+    # 141 (SIGPIPE): git was still writing a blob longer than the bounded
+    # read when the read finished, so the first line was read in full.
+    case "$status" in
+        0 | 141) ;;
+        *) return 0 ;;
+    esac
+    _bats_first_line_qualifies "$first"
+}
+
+# pre-commit passes no deleted file to a hook, so the tests of a deleted
+# script (or a deleted test helper) would never be selected by name. Succeeds
+# when the change the passed files $@ come from deletes a file that could
+# break a test and this call holds the change's designated file, or when
+# that change cannot be read, so the caller runs the whole suite. A rename
+# counts as a deletion of its old name, which breaks that name's tests the
+# same way.
+_bats_deletion_qualifies() {
+    local path file found=0
+    local -a relative=()
+    _bats_read_change || return 0
+    for path in "${_bats_change_deleted[@]}"; do
+        _bats_deleted_file_qualifies "$path" || continue
+        found=1
+        break
+    done
+    [ "$found" = 1 ] || return 1
+    for file in "$@"; do
+        _bats_repo_relative "$file" || return 1
+        relative+=("$_bats_rel")
+    done
+    _bats_passed_in_change "${relative[@]}" && _bats_holds_designated_file "${relative[@]}"
+}
+
+# The bats files to run, as keys, so a file affected twice runs once. bats
+# needs no stable order.
+declare -A _bats_targets=()
+
+# Prints, NUL-terminated and repo-root-relative, every tracked or untracked
+# (not ignored) file in the repository that names one of the basenames $@: a
+# script that runs or sources it, or a config that invokes it. A basename
+# must stand alone (preceded by a start of line, space, `/`, `=` or quote,
+# and followed by an end of line, space, quote, `;` or `)`), so `x.sh` does
+# not match `lib/xx.sh`. One git grep searches for every basename at once.
+_bats_naming_files() {
+    local pattern
+    local -a escaped=() args=()
+    # Escape every ERE metacharacter so each basename matches literally.
+    mapfile -d '' -t escaped < <(printf '%s\0' "$@" | sed -z 's/[][\.*^$+?(){}|/]/\\&/g')
+    for pattern in "${escaped[@]}"; do
+        args+=(-e '(^|[[:space:]/="'\''])'"$pattern"'([[:space:]";'\'')]|$)')
+    done
+    git -C "$REPO_ROOT" grep --untracked -I -l -z -E "${args[@]}" 2>/dev/null
+}
+
+# Sets _bats_rel to the path $1 relative to REPO_ROOT; one outside the
+# repository starts with `../`. A relative path with no empty, `.` or `..`
+# component is one already, since the cwd is REPO_ROOT, so it is taken as
+# given without a fork. Otherwise only the directory is resolved: a symlink
+# keeps its own path and name, not its target's, while a symlinked prefix
+# still matches REPO_ROOT, which git reports with symlinks resolved. git
+# tracks no path below a symlinked directory, so no staged path passes
+# through one inside the repository. -m: a deleted or renamed file no longer
+# exists but still resolves by name.
+_bats_repo_relative() {
+    local dir
+    case "$1" in
+        /* | . | .. | ./* | ../* | */ | */. | */.. | *//* | */./* | */../*) ;;
+        *)
+            _bats_rel=$1
+            return 0
+            ;;
+    esac
+    dir=$(realpath -m --relative-to="$REPO_ROOT" -- "$(dirname -- "$1")") || return 1
+    case "$dir" in
+        .) _bats_rel=$(basename -- "$1") ;;
+        *) _bats_rel=$dir/$(basename -- "$1") ;;
+    esac
+}
+
+# Adds the bats files that name the repo-relative paths $@ to _bats_targets:
+# a test/ .bats file runs itself, any other file test/<stem>.bats and every
+# test/ .bats file containing its basename. One grep searches test/ for every
+# basename at once. Returns 1 when a path cannot be narrowed down, so the
+# whole suite must run.
+_bats_map_direct() {
+    local rel base stem file line
+    local -a bases=() args=()
+    local -A unmatched=() matched=()
+    for rel in "$@"; do
+        base=${rel##*/}
+        case "$rel" in
+            .. | ../*) return 1 ;;
+            src/.pre-commit-config.yaml) return 1 ;;
+            # grep splits a pattern at each newline, so a basename holding one
+            # cannot be searched for.
+            *$'\n'*) return 1 ;;
+            test/*.bats)
+                [ -f "$REPO_ROOT/$rel" ] || return 1
+                _bats_targets["$REPO_ROOT/$rel"]=1
+                continue
+                ;;
+            test/* | *.bats) return 1 ;;
+        esac
+        stem=${base%.*}
+        if [ -n "$stem" ] && [ -f "$REPO_ROOT/test/$stem.bats" ]; then
+            _bats_targets["$REPO_ROOT/test/$stem.bats"]=1
+        else
+            unmatched["$base"]=1
+        fi
+        bases+=("$base")
+        args+=(-e "$base")
+    done
+    [ "${#bases[@]}" -gt 0 ] || return 0
+    # The repo-relative path always contains the basename, so searching for the
+    # basename finds both. grep reads the working tree, so untracked tests count.
+    # Each matching line arrives as `<file>\0<line>\n`, and counts for every
+    # basename it contains, since one line can name several.
+    while IFS= read -r -d '' file && IFS= read -r line; do
+        for base in "${bases[@]}"; do
+            [[ "$line" == *"$base"* ]] || continue
+            _bats_targets["$file"]=1
+            matched["$base"]=1
+        done
+    done < <(grep -rHZ -F --include='*.bats' "${args[@]}" -- "$REPO_ROOT/test" 2>/dev/null)
+    for base in "${!unmatched[@]}"; do
+        [ -n "${matched["$base"]:-}" ] || return 1
+    done
+}
+
+# Adds the bats files affected by the qualifying files $@ to _bats_targets:
+# their own tests (_bats_map_direct), plus, one level up, the tests of every
+# qualifying file that names one of them outside test/ (_bats_naming_files),
+# since those run or source it and their tests reach it through them.
+# Returns 1 when a file or one of those naming files cannot be narrowed down,
+# so the whole suite must run.
+_bats_map_files() {
+    local file namer
+    local -a rels=() bases=()
+    local -A mapped=()
+    for file in "$@"; do
+        _bats_repo_relative "$file" || return 1
+        [ -z "${mapped["$_bats_rel"]:-}" ] || continue
+        mapped["$_bats_rel"]=1
+        rels+=("$_bats_rel")
+        case "$_bats_rel" in
+            *$'\n'*) return 1 ;;
+            test/*) ;;
+            *) bases+=("${_bats_rel##*/}") ;;
+        esac
+    done
+    # A passed file that names another is mapped already, as a passed file.
+    if [ "${#bases[@]}" -gt 0 ]; then
+        while IFS= read -r -d '' namer; do
+            [ -z "${mapped["$namer"]:-}" ] || continue
+            _bats_file_qualifies "$namer" || continue
+            mapped["$namer"]=1
+            rels+=("$namer")
+        done < <(_bats_naming_files "${bases[@]}")
+    fi
+    _bats_map_direct "${rels[@]}"
+}
+
+# Appends to _bats_candidates every symlink in the repository (tracked, or
+# untracked and not ignored) that points at a passed file, so it maps as a
+# changed file too: pre-commit passes only the path that changed, yet a
+# symlink to it behaves differently from then on, and its own tests (named
+# after the symlink) must run. A symlink under test/ therefore runs the whole
+# suite, as one passed directly does. Returns 1 when the symlinks cannot be
+# resolved, so the whole suite must run.
+_bats_add_aliases() {
+    local entry path file i
+    local -a links=() targets=()
+    local -A passed=()
+    # git ls-files --stage prints `<mode> <object> <stage>\t<path>`; mode
+    # 120000 is a symlink. The path itself may hold a tab, so strip only up to
+    # the first one.
+    while IFS= read -r -d '' entry; do
+        path=${entry#*$'\t'}
+        [ -L "$path" ] && links+=("$path")
+    done < <(git ls-files -z --stage | grep -z '^120000 ')
+    while IFS= read -r -d '' path; do
+        [ -L "$path" ] && links+=("$path")
+    done < <(git ls-files -z --others --exclude-standard)
+    [ "${#links[@]}" -gt 0 ] || return 0
+    # One realpath for every symlink. -m resolves a dangling one too, so each
+    # output lines up with its input.
+    mapfile -d '' -t targets < <(realpath -z -m --relative-to="$REPO_ROOT" -- "${links[@]}")
+    [ "${#targets[@]}" -eq "${#links[@]}" ] || return 1
+    for file in "${_bats_candidates[@]}"; do
+        _bats_repo_relative "$file" || return 1
+        passed["$_bats_rel"]=1
+    done
+    for i in "${!links[@]}"; do
+        [ -n "${passed["${targets[i]}"]:-}" ] || continue
+        [ -z "${passed["${links[i]}"]:-}" ] || continue
+        _bats_candidates+=("${links[i]}")
+    done
+}
+
+# An empty _bats_targets means the whole suite runs: no arguments,
+# --all-files, RUN_BATS_FULL=1, or a file that cannot be narrowed down.
 if [ "$#" -gt 0 ]; then
+    # Relative paths, whether passed in or printed by git ls-files, are
+    # repo-root-relative, so read them from REPO_ROOT whatever the caller's
+    # cwd; absolute paths are unaffected.
+    cd "$REPO_ROOT" || exit 1
+    _bats_narrow=0
     if [ "$1" = "--all-files" ]; then
-        # git ls-files prints repo-root-relative paths, so read them from
-        # REPO_ROOT whatever the caller's cwd. -z gives each path verbatim:
-        # without it git C-quotes non-ASCII or quote-containing names, which
-        # then match no extension and name no file.
-        cd "$REPO_ROOT" || exit 1
+        # -z gives each path verbatim: without it git C-quotes non-ASCII or
+        # quote-containing names, which then match no extension and name no
+        # file.
         mapfile -d '' -t _bats_candidates < <(git ls-files -z)
     else
         _bats_candidates=("$@")
+        [ "${RUN_BATS_FULL:-}" = 1 ] || _bats_narrow=1
     fi
 
-    _bats_any_qualifies() {
-        local file
-        for file in "${_bats_candidates[@]}"; do
-            _bats_file_qualifies "$file" && return 0
-        done
-        return 1
-    }
-    _bats_any_qualifies || exit 0
+    # One pass: the first qualifying file is enough when the whole suite runs
+    # anyway, and a file that cannot be narrowed down falls back to it (that
+    # file qualified, so the suite still runs).
+    _bats_qualified=0
+    # A deletion that could break a test runs the whole suite, even when no
+    # passed file qualifies, since nothing else would run its tests.
+    if [ "$_bats_narrow" = 1 ] && _bats_deletion_qualifies "${_bats_candidates[@]}"; then
+        _bats_qualified=1
+        _bats_candidates=()
+    fi
+    # After the deletion check: a symlink to a passed file is not part of the
+    # change, so it must not decide whether the change's deletions count.
+    if [ "$_bats_narrow" = 1 ] && [ "${#_bats_candidates[@]}" -gt 0 ]; then
+        _bats_add_aliases || _bats_narrow=0
+    fi
+    _bats_mapped=()
+    for _bats_file in "${_bats_candidates[@]}"; do
+        _bats_file_qualifies "$_bats_file" || continue
+        _bats_qualified=1
+        [ "$_bats_narrow" = 1 ] || break
+        _bats_mapped+=("$_bats_file")
+    done
+    # Mapped together, so the searches run once for every qualifying file.
+    if [ "${#_bats_mapped[@]}" -gt 0 ] && ! _bats_map_files "${_bats_mapped[@]}"; then
+        _bats_targets=()
+    fi
+    [ "$_bats_qualified" = 1 ] || exit 0
 fi
 
 # Sweep stale bats-run dirs from /tmp: removes litter left by hard-killed
@@ -171,6 +526,18 @@ if command -v parallel > /dev/null 2>&1; then
     case "$CPU_COUNT" in ('' | *[!0-9]*) CPU_COUNT=0 ;; esac
     [ "$CPU_COUNT" -gt 8 ] && CPU_COUNT=8
     [ "$CPU_COUNT" -gt 1 ] && BATS_JOBS_ARGS=(--jobs "$CPU_COUNT")
+fi
+
+if [ "${#_bats_targets[@]}" -gt 0 ]; then
+    # A test/ .bats file holding a whole line `# run-bats: always` checks the
+    # repository as a whole (not a script it names), so every narrowed run
+    # adds it.
+    mapfile -d '' -t _bats_always < <(grep -rlZ -E --include='*.bats' \
+        -e '^#[[:space:]]*run-bats:[[:space:]]*always[[:space:]]*$' -- "$REPO_ROOT/test" 2>/dev/null)
+    for _bats_file in "${_bats_always[@]}"; do
+        _bats_targets["$_bats_file"]=1
+    done
+    exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure "${!_bats_targets[@]}"
 fi
 
 exec bats "${BATS_JOBS_ARGS[@]}" --print-output-on-failure --recursive "$REPO_ROOT/test"
