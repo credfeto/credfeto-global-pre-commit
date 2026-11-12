@@ -295,13 +295,6 @@ repos:
         language: system
         types: [xml]
 
-      # ── VALIDATE_POWERSHELL ───────────────────────────────────────────────
-      - id: psscriptanalyzer
-        name: PSScriptAnalyzer
-        entry: run-psscriptanalyzer
-        language: system
-        files: \.(ps1|psm1|psd1)$
-
       # ── VALIDATE_BATS — run bats test suite ──────────────────────────────
       # run-bats runs only the bats files the passed-in files can affect, and
       # falls back to bats --recursive test/ when a file cannot be narrowed

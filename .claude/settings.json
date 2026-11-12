@@ -18,8 +18,6 @@
       "Bash(eslint *)",
       "Bash(run-eslint *)",
       "Bash(xmllint *)",
-      "Bash(pwsh *)",
-      "Bash(run-psscriptanalyzer *)",
       "Bash(trufflehog *)",
       "Bash(sqlfluff *)",
       "Bash(cfn-lint *)",
