@@ -24,7 +24,7 @@ setup() {
 
     # `tool list` reports cscleanup only when run from HOME with
     # FAKE_LOCAL_CSCLEANUP set; `tool list --global` only with
-    # FAKE_GLOBAL_CSCLEANUP set. Every other call fails, so pwsh is absent.
+    # FAKE_GLOBAL_CSCLEANUP set. Every other dotnet call fails.
     cat > "${FAKE_BIN}/dotnet" <<'FAKE'
 #!/bin/sh
 case "$*" in

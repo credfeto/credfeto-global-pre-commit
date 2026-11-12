@@ -367,15 +367,6 @@ else
     cross "VALIDATE_XML — xmllint            (system)" "not installed"
 fi
 
-PWSH_OK=false
-if has dotnet && (cd "$HOME" && dotnet pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop") > /dev/null 2>&1; then
-    PWSH_OK=true
-    PWSH_VERSION=$(cd "$HOME" && { dotnet tool list; dotnet tool list -g; } 2>/dev/null | awk 'tolower($3)=="pwsh"{print $2; exit}')
-    skip  "VALIDATE_POWERSHELL — PSScriptAnalyzer (system)" "pwsh v${PWSH_VERSION} (dotnet local tool)"
-else
-    cross "VALIDATE_POWERSHELL — PSScriptAnalyzer (system)" "not installed — run: ./install-deps-arch or ./install-deps-debian"
-fi
-
 if has bats; then
     skip  "VALIDATE_BATS: bats tests        (system)" "$(bats --version 2>/dev/null)"
 else
@@ -416,7 +407,6 @@ $STYLELINT_OK     || MISSING_SYSTEM="$MISSING_SYSTEM stylelint"
 has dotenv-linter || MISSING_SYSTEM="$MISSING_SYSTEM dotenv-linter"
 $ESLINT_OK        || MISSING_SYSTEM="$MISSING_SYSTEM eslint"
 has xmllint       || MISSING_SYSTEM="$MISSING_SYSTEM xmllint"
-$PWSH_OK          || MISSING_SYSTEM="$MISSING_SYSTEM pwsh"
 has bats          || MISSING_SYSTEM="$MISSING_SYSTEM bats"
 has trivy         || MISSING_SYSTEM="$MISSING_SYSTEM trivy"
 has parallel      || MISSING_SYSTEM="$MISSING_SYSTEM parallel"
@@ -441,7 +431,6 @@ if [ -n "$MISSING_SYSTEM" ]; then
     $SQLFLUFF_OK      || echo "  sqlfluff:       $(shared_pipx_hint sqlfluff)"
     $CFN_LINT_OK      || echo "  cfn-lint:       $(shared_pipx_hint cfn-lint)"
     has xmllint       || echo "  xmllint:        apt install libxml2-utils  # or brew install libxml2"
-    $PWSH_OK          || echo "  pwsh:           run ./install-deps-arch or ./install-deps-debian (installs as a local dotnet tool + PSScriptAnalyzer module)"
     has bats          || echo "  bats:           apt install bats  # or pacman -S bash-bats"
     has trivy         || echo "  trivy:          pacman -S trivy  # or https://github.com/aquasecurity/trivy/releases"
     has parallel      || echo "  parallel:       apt install parallel  # or pacman -S parallel"
