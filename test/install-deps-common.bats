@@ -2,7 +2,7 @@
 # Acceptance tests for the install helpers in lib/common.sh shared by
 # install-deps-arch and install-deps-debian: install_release_linters,
 # install_shared_node, install_npm_globals, install_composite_action_lint,
-# install_pwsh, install_cscleanup, ensure_root_pipx and pipx_ensure.
+# install_cscleanup, ensure_root_pipx and pipx_ensure.
 #
 # Never installs anything: each helper runs in a bash whose PATH holds only
 # fakes, so the host's own node, npm, go or dotnet can never be found, the
@@ -562,46 +562,6 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
     [ "$(calls)" = "dotnet new tool-manifest (in ${FAKE_HOME})" ]
 }
 
-@test "install_pwsh installs PowerShell locally, then the PSScriptAnalyzer module from HOME" {
-    write_dotnet_fake
-    : > "${FAKE_HOME}/dotnet-tools.json"
-
-    run_helper install_pwsh
-
-    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ "$(calls | sed -n 1p)" = "dotnet tool install PowerShell (in ${FAKE_HOME})" ]
-    [[ "$(calls | sed -n 2p)" == "dotnet pwsh -NoProfile -NonInteractive -Command "*"Install-Module PSScriptAnalyzer"*"(in ${FAKE_HOME})" ]]
-}
-
-@test "install_pwsh updates PowerShell when it is already in the HOME tool manifest" {
-    write_dotnet_fake
-    : > "${FAKE_HOME}/dotnet-tools.json"
-
-    FAKE_DOTNET_TOOLS="powershell 7.5.0 pwsh ${FAKE_HOME}/dotnet-tools.json" run_helper install_pwsh
-
-    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ "$(calls | sed -n 1p)" = "dotnet tool update PowerShell (in ${FAKE_HOME})" ]
-}
-
-@test "install_pwsh fails, without running pwsh, when the PowerShell tool install fails" {
-    write_dotnet_fake
-    : > "${FAKE_HOME}/dotnet-tools.json"
-
-    FAKE_DOTNET_FAIL="tool install" run_helper install_pwsh
-
-    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
-    [[ "${output}" == *"failed to install PowerShell dotnet tool or PSScriptAnalyzer module"* ]]
-    [[ "$(calls)" != *"dotnet pwsh "* ]]
-}
-
-@test "install_pwsh skips the install when dotnet is not on PATH" {
-    run_helper --separate-stderr install_pwsh
-
-    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [[ "${stderr}" == *"warning: dotnet not found, skipping pwsh install"* ]]
-    [[ "${output}" != *"warning:"* ]]
-    [ -z "$(calls)" ]
-}
 
 @test "pipx_ensure installs into the shared pipx home as root with umask 022, then opens it to all users" {
     write_pipx_fakes

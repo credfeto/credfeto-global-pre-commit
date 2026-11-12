@@ -59,9 +59,6 @@ if ! sudo apt-get install -y python3-pylint 2>/dev/null; then
     pipx_ensure pylint
 fi
 
-# ── PowerShell ────────────────────────────────────────────────────────────────
-install_pwsh
-
 # ── cscleanup (C# formatter dotnet tool) ──────────────────────────────────────
 install_cscleanup
 

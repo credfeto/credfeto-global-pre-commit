@@ -391,7 +391,7 @@ system_config_has_hooks_path() {
     [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
 }
 
-WRAPPER_LINKS="run-eslint run-stylelint run-psscriptanalyzer run-bats run-pylint"
+WRAPPER_LINKS="run-eslint run-stylelint run-bats run-pylint"
 
 # Prints a PATH holding the fakes and only the host tools the installer and
 # its stubs need, so go is missing even when the host keeps it in /usr/bin.
@@ -432,6 +432,30 @@ add_fake_composite_action_lint() {
     for _link in ${WRAPPER_LINKS}; do
         [ "$(readlink "${BATS_TEST_TMPDIR}/home/.local/bin/${_link}")" = "${STAGE}/src/scripts/${_link}" ]
     done
+}
+
+@test "per-user install removes a stale run-psscriptanalyzer link from the user's bin directory" {
+    local _stale="${BATS_TEST_TMPDIR}/home/.local/bin/run-psscriptanalyzer"
+    mkdir -p "$(dirname "${_stale}")"
+    ln -s "${STAGE}/src/scripts/run-psscriptanalyzer" "${_stale}"
+
+    run_user_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ ! -L "${_stale}" ]
+    [ ! -e "${_stale}" ]
+}
+
+@test "per-user install leaves a regular run-psscriptanalyzer file in the user's bin directory alone" {
+    local _file="${BATS_TEST_TMPDIR}/home/.local/bin/run-psscriptanalyzer"
+    mkdir -p "$(dirname "${_file}")"
+    printf '#!/bin/sh\n' > "${_file}"
+
+    run_user_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ -f "${_file}" ]
+    [ ! -L "${_file}" ]
 }
 
 @test "per-user install links composite-action-lint into the user's bin directory" {

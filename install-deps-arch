@@ -75,9 +75,6 @@ pipx_ensure pre-commit-hooks
 # $HOME, which other users cannot run.
 install_npm_globals
 
-# ── PowerShell ────────────────────────────────────────────────────────────────
-install_pwsh
-
 # ── cscleanup (C# formatter dotnet tool) ──────────────────────────────────────
 install_cscleanup
 

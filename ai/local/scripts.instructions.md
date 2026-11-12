@@ -72,7 +72,7 @@ A per-user install links the `run-*` wrappers already listed in the *Symlink sys
 
 ## Fixer scripts: staging and exit-code convention (MANDATORY)
 
-A "fixer" script can modify files to correct a problem (e.g. `run-formatter`, `clean-package-lock-registry`) — distinct from a pure validator that only reports problems and never writes (e.g. `run-eslint`, `run-stylelint`, `run-psscriptanalyzer`, none of which pass `--fix`-style flags today).
+A "fixer" script can modify files to correct a problem (e.g. `run-formatter`, `clean-package-lock-registry`) — distinct from a pure validator that only reports problems and never writes (e.g. `run-eslint`, `run-stylelint`, neither of which pass `--fix`-style flags today).
 
 Every fixer script must:
 
