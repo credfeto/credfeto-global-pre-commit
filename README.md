@@ -471,7 +471,8 @@ an unreadable report prints a `WARNING:` line, and the commit carries on.
   its own targets, not the time it waits for the projects it references, and a
   target's time is summed over every project and parallel node, so its share
   can pass 100%. The solution's own targets, and the targets that only wait for
-  other projects (`Build`, `ResolveProjectReferences`), are left out.
+  other projects (`Build`, `ResolveProjectReferences` and any other target
+  that runs the `MSBuild` or `CallTarget` task), are left out.
   Analyzer and generator times are summed over every project and listed, but
   not warned on.
 - **Step timings.** `buildtest` ends every run, success or failure, with one

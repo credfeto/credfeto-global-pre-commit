@@ -53,8 +53,10 @@ import xml.etree.ElementTree as ElementTree
 BUILD_TOP = 5
 # Targets whose time is spent waiting for other projects to build (a
 # solution's Build target waits for every project), so would count those
-# projects a second time.
+# projects a second time. Any other target that runs an MSBuild or CallTarget
+# task is found in the log and treated the same way.
 WAITING_TARGETS = {"Build", "ResolveProjectReferences", "_GetProjectReferenceTargetFrameworkProperties"}
+WAITING_TASK = re.compile(r'^Task "(MSBuild|CallTarget)"')
 SOLUTION_SUFFIXES = (".sln", ".slnx", ".metaproj")
 TRX_DURATION = re.compile(r"^(?:(\d+)\.)?(\d+):(\d+):(\d+(?:\.\d+)?)$")
 # A ShowTimestamp line starts with the time and, in a multi-node build, the
@@ -169,41 +171,57 @@ def add(totals, name, seconds):
     totals[name] = totals.get(name, 0.0) + seconds
 
 
-def target_times(times, stacks, line):
-    """Pairs each target's start and done lines within one project context
-    (targets in a context run one at a time), adding each target's time to
-    its project, unless it only waits for other projects."""
-    prefix = LINE_PREFIX.match(line)
-    if not prefix.group(1):
-        return
-    hours, minutes, seconds, context = prefix.groups()
-    stamp = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-    text = line[prefix.end():]
-    started = TARGET_STARTED.match(text)
-    if started:
-        stacks.setdefault(context or "", []).append((started.group(1), started.group(2), stamp))
-        return
-    done = TARGET_DONE.match(text)
-    stack = stacks.get(context or "")
-    if not done or not stack or stack[-1][0] != done.group(1):
-        return
-    target, project, began = stack.pop()
-    if target in WAITING_TARGETS or project.lower().endswith(SOLUTION_SUFFIXES):
-        return
-    # A target running over midnight.
-    add(times, project_name(project), (stamp - began) % 86400)
+class TargetTimes:
+    """Adds up each project's own target time from the ShowTimestamp lines.
+    Targets in one project context run one at a time, so each target's start
+    and done lines pair up on a stack per context. A line with no prefix
+    belongs to the context of the last line that had one."""
+
+    def __init__(self):
+        self.projects = {}
+        self.waiting = set(WAITING_TARGETS)
+        self.stacks = {}
+        self.context = ""
+
+    def read(self, line):
+        prefix = LINE_PREFIX.match(line)
+        text = line[prefix.end():]
+        if prefix.group(1):
+            self.context = prefix.group(4) or ""
+        stack = self.stacks.setdefault(self.context, [])
+        if WAITING_TASK.match(text):
+            if stack:
+                self.waiting.add(stack[-1][0])
+                stack[-1][3] = True
+            return
+        if not prefix.group(1):
+            return
+        hours, minutes, seconds = prefix.group(1, 2, 3)
+        stamp = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        started = TARGET_STARTED.match(text)
+        if started:
+            stack.append([started.group(1), started.group(2), stamp, False])
+            return
+        done = TARGET_DONE.match(text)
+        if not done or not stack or stack[-1][0] != done.group(1):
+            return
+        target, project, began, waited = stack.pop()
+        if waited or target in WAITING_TARGETS or project.lower().endswith(SOLUTION_SUFFIXES):
+            return
+        # A target running over midnight.
+        add(self.projects, project_name(project), (stamp - began) % 86400)
 
 
 def read_build_log(path):
-    sections = {"project": {}, "target": {}, "analyzer": {}, "generator": {}}
-    stacks = {}
+    sections = {"target": {}, "analyzer": {}, "generator": {}}
+    times = TargetTimes()
     elapsed = None
     in_targets = False
     table = None
     with open(path, encoding="utf-8", errors="replace") as log:
         for raw in log:
             raw = raw.rstrip("\n")
-            target_times(sections["project"], stacks, raw)
+            times.read(raw)
             line = raw[LINE_PREFIX.match(raw).end():]
             stripped = line.strip()
             match = TOTAL_TIME.match(line)
@@ -235,8 +253,10 @@ def read_build_log(path):
             match = SUMMARY_LINE.match(line)
             if not match:
                 in_targets = False
-            elif match.group(2) not in WAITING_TARGETS:
+            else:
                 add(sections["target"], match.group(2), int(match.group(1)) / 1000)
+    sections["project"] = times.projects
+    sections["target"] = {name: seconds for name, seconds in sections["target"].items() if name not in times.waiting}
     return sections, elapsed
 
 
