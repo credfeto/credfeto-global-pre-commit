@@ -13,6 +13,9 @@
 # require_dotnet_tool(), and on lib/mode-arg.sh having been sourced and
 # parse_all_files_mode_arg() having set MODE: the target files are the staged
 # ones, or every tracked one in all-files mode (see git_target_files).
+#
+# It sets DOTNET_FORMAT_SECONDS and CSCLEANUP_SECONDS to how long each step
+# took, in whole seconds, when that step ran, for buildtest's timings line.
 
 FORMATTER_TOOL_CMD="cscleanup"
 FORMATTER_TOOL_PKG="Credfeto.DotNet.Repo.Formatter"
@@ -69,7 +72,10 @@ format_dotnet_sources() {
             done << EOF
 $_fmt_cs_files
 EOF
+            _fmt_started=$(date +%s)
             (cd "$_fmt_root" && dotnet format "$@") || die "dotnet format failed"
+            # shellcheck disable=SC2034 # read by buildtest's timings line
+            DOTNET_FORMAT_SECONDS=$(($(date +%s) - _fmt_started))
             success "dotnet format applied"
         fi
     fi
@@ -83,7 +89,10 @@ $_fmt_files
 EOF
 
     info "Applying cscleanup formatting to ${_fmt_scope} .cs and .csproj files..."
+    _fmt_started=$(date +%s)
     dotnet "$FORMATTER_TOOL_CMD" "$@" || die "cscleanup format failed"
+    # shellcheck disable=SC2034 # read by buildtest's timings line
+    CSCLEANUP_SECONDS=$(($(date +%s) - _fmt_started))
 
     # Re-stage everything either step may have changed, in one git add call,
     # only once both steps have succeeded.
