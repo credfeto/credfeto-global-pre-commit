@@ -72,6 +72,8 @@ EOF
 # umask, and a fake chmod that only records, so nothing is ever written to the
 # shared pipx home. pipx fails the subcommands listed in FAKE_PIPX_FAIL
 # (e.g. "install upgrade"); chmod fails when FAKE_CHMOD_FAIL is set.
+# `pipx list --short` prints FAKE_PIPX_INSTALLED (one "<package> <version>"
+# row per line), the packages already in the shared pipx home.
 write_pipx_fakes() {
     write_fake_sudo "${FAKE_BIN}"
     export FAKE_SUDO_LOG="${CALL_LOG}"
@@ -83,11 +85,17 @@ printf 'pipx %s PIPX_HOME=%s PIPX_BIN_DIR=%s PIPX_MAN_DIR=%s umask=%s root=%s\n'
 case " ${FAKE_PIPX_FAIL:-} " in
     *" $1 "*) exit 1 ;;
 esac
+if [ "$*" = "list --short" ] && [ -n "${FAKE_PIPX_INSTALLED:-}" ]; then
+    printf '%s\n' "$FAKE_PIPX_INSTALLED"
+fi
 exit 0
 EOF
     chmod +x "${FAKE_BIN}/pipx"
     write_chmod_fake
     link_host_tool env "${FAKE_BIN}"
+    # The installed-package check pipes `pipx list --short` through awk, which
+    # the fakes-only PATH would otherwise hide.
+    link_host_tool awk "${FAKE_BIN}"
 }
 
 # write_chmod_fake
@@ -572,11 +580,36 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     local _expected
-    _expected="env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install pre-commit-hooks
+    _expected="env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx list --short
+pipx list --short PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man umask=0022 root=1
+env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install pre-commit-hooks
 pipx install pre-commit-hooks PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man umask=0022 root=1
 chmod -R a+rX /opt/pipx
 chmod -R a+rX /opt/pipx root=1"
     [ "$(calls)" = "${_expected}" ] || fail_test "unexpected calls: $(calls)"
+}
+
+@test "pipx_ensure installs, without upgrading, when the shared pipx home lacks the package" {
+    write_pipx_fakes
+
+    FAKE_PIPX_INSTALLED="sqlfluff-templater-dbt 2.0.0
+pre-commit 4.0.1" run_helper pipx_ensure "" sqlfluff
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"pipx install sqlfluff PIPX_HOME=/opt/pipx "* ]] \
+        || fail_test "shared install not run: $(calls)"
+    [[ "$(calls)" != *"pipx upgrade"* ]] || fail_test "upgrade run for a missing package: $(calls)"
+}
+
+@test "pipx_ensure installs when the shared pipx home cannot be listed" {
+    write_pipx_fakes
+
+    FAKE_PIPX_FAIL=list run_helper pipx_ensure "" sqlfluff
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"pipx install sqlfluff PIPX_HOME=/opt/pipx "* ]] \
+        || fail_test "shared install not run: $(calls)"
+    [[ "$(calls)" != *"pipx upgrade"* ]] || fail_test "upgrade run for an unlisted package: $(calls)"
 }
 
 @test "pipx_ensure installs the shared copy even when a per-user copy is already on PATH" {
@@ -590,24 +623,37 @@ chmod -R a+rX /opt/pipx root=1"
         || fail_test "shared install not run: $(calls)"
 }
 
-@test "pipx_ensure upgrades the shared copy when the install fails because it is already installed" {
+@test "pipx_ensure upgrades, without reinstalling, when the shared pipx home already has the package" {
     write_pipx_fakes
 
-    FAKE_PIPX_FAIL=install run_helper pipx_ensure "" sqlfluff
+    FAKE_PIPX_INSTALLED="pre-commit-hooks 5.0.0
+sqlfluff 3.0.0" run_helper pipx_ensure "" sqlfluff
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "$(calls)" == *"pipx upgrade sqlfluff PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man umask=0022 root=1"* ]] \
         || fail_test "shared upgrade not run: $(calls)"
+    [[ "$(calls)" != *"pipx install"* ]] || fail_test "install run for an installed package: $(calls)"
     [[ "$(calls)" == *"chmod -R a+rX /opt/pipx root=1"* ]]
 }
 
-@test "pipx_ensure fails, without opening the shared home, when both install and upgrade fail" {
+@test "pipx_ensure fails, without opening the shared home, when the install fails" {
     write_pipx_fakes
 
-    FAKE_PIPX_FAIL="install upgrade" run_helper pipx_ensure "" cfn-lint
+    FAKE_PIPX_FAIL=install run_helper pipx_ensure "" cfn-lint
 
     [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
     [[ "${output}" == *"failed to install cfn-lint"* ]]
+    [[ "$(calls)" != *"chmod"* ]]
+}
+
+@test "pipx_ensure fails, without opening the shared home, when the upgrade of an installed package fails" {
+    write_pipx_fakes
+
+    FAKE_PIPX_INSTALLED="cfn-lint 1.0.0" FAKE_PIPX_FAIL=upgrade run_helper pipx_ensure "" cfn-lint
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to upgrade cfn-lint"* ]]
+    [[ "$(calls)" != *"pipx install"* ]] || fail_test "install run after a failed upgrade: $(calls)"
     [[ "$(calls)" != *"chmod"* ]]
 }
 
