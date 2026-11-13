@@ -282,7 +282,7 @@ install_home_dotnet_tool() {
 
 # Install or update the cscleanup C# formatter (Credfeto.DotNet.Repo.Formatter)
 # as a local dotnet tool (see install_home_dotnet_tool), which is how
-# run-formatter invokes it (`dotnet cscleanup`).
+# buildtest's formatter step invokes it (`dotnet cscleanup`).
 # Skipped with a warning if dotnet is not on PATH.
 install_cscleanup() {
     info "cscleanup (Credfeto.DotNet.Repo.Formatter, local dotnet tool)"

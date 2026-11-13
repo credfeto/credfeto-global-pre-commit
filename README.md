@@ -241,7 +241,7 @@ git config --global core.hooksPath
 | `pre-commit` on PATH, repo has `.pre-commit-config.yaml` | Run project pre-commit hooks | `pre-commit run` |
 | `pre-commit` on PATH, no project config | Run global linters (`.pre-commit-config.yaml`) | `pre-commit run --config <global>` |
 | `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets / *.globalconfig / *.ruleset` | Benchmark project naming: a project whose `.cs` files use BenchmarkDotNet (`using BenchmarkDotNet…` or `[Benchmark]`, even when the package only comes in transitively) must be named `<Name>.Benchmark.Tests` and use that namespace, the only benchmark name `buildtest` keeps out of its main test run | `scripts/check-benchmark-project-names` |
-| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | Full .NET build + test (integration tests and all benchmark test projects always excluded from the main run via a static filter; only the benchmark projects staged changes could affect are then run individually and sequentially, see `scripts/benchmark-test-affected`) | `scripts/buildtest` |
+| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | One solution restore, then `dotnet format --no-restore` on the staged `.cs` files and `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) on the staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what they change, then a full .NET build + test (integration tests and all benchmark test projects always excluded from the main run via a static filter; only the benchmark projects staged changes could affect are then run individually and sequentially, see `scripts/benchmark-test-affected`) | `scripts/buildtest` |
 | `*.ts / *.tsx / *.js / *.jsx` + `package.json` + `npm` on PATH | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
 | `*.sql` + `dotnet` on PATH | T-SQL lint | `dotnet tsqllint .` |
 | `*.sql` + `sqlfluff` on PATH | SQL style fix of staged `*.sql` files, re-staging only those (the commit is blocked if a staged `*.sql` file also has unstaged changes), then SQL style lint | `sqlfluff fix -- <staged *.sql files>`, then `sqlfluff lint .` |
@@ -508,7 +508,7 @@ system package manager rather than `pre-commit autoupdate`.
 
 | Script | Source |
 | --- | --- |
-| `scripts/buildtest` | Vendored from [credfeto/scripts: buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest) |
+| `scripts/buildtest` | Vendored from [credfeto/scripts: buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest), with a local formatter step (`scripts/lib/dotnet-format.sh`) between its restore and its build: `dotnet format --no-restore` on the staged `.cs` files, then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) on the staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what they change |
 | `scripts/benchmark-test-affected` | Local addition, decides which benchmark test projects `buildtest`'s separate benchmark-only test step should run, from staged git changes alone (no `dotnet` required) |
 | `scripts/check-benchmark-project-names` | Local addition, fails when a project containing BenchmarkDotNet benchmarks is not named `<Name>.Benchmark.Tests` or does not use that namespace (no `dotnet` required) |
 | `scripts/latest-target-framework` | Local addition, prints a multi-targeted `.csproj`'s latest target framework moniker so `buildtest`'s benchmark test step can restrict itself to it (older frameworks are assumed to work); prints nothing for a single-targeted project (no `dotnet` required) |
@@ -521,7 +521,6 @@ system package manager rather than `pre-commit autoupdate`.
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
 | `scripts/run-bats` | Wrapper for bats, runs the `test/` files the staged files affect, or the whole suite when they cannot be narrowed down (see [Bats test selection](#bats-test-selection-run-bats)) |
 | `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |
-| `scripts/run-formatter` | Applies `dotnet format` to staged `.cs` files and then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) to staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what it changes |
 
 ---
 
