@@ -40,8 +40,8 @@ write_trx() {
 # Writes a trimmed detailed MSBuild file log, built with
 # -p:ReportAnalyzer=true, PerformanceSummary and ShowTimestamp, of a 60 second
 # build: App.Tests waits 13.5s for App, whose own targets take 13s (a 12s
-# compile and a 1s copy), then compiles for 20s; the solution's own target
-# and the Build targets only wait. Two compiles' analyzer and generator
+# compile and a 1s copy), then compiles for 20s; the solution's own target,
+# the Build targets and a target that runs the MSBuild task only wait. Two compiles' analyzer and generator
 # reports, then the performance summaries.
 write_build_log() {
     cat > "$1" << 'LOG'
@@ -49,6 +49,7 @@ Build started 11/13/2026 16:00:00.
 16:00:00.000     3>Target "ValidateSolutionConfiguration" in file "/src/App.slnx.metaproj" from project "/src/App.slnx" (entry point):
 16:00:00.500     3>Done building target "ValidateSolutionConfiguration" in project "App.slnx".
 16:00:00.000     1>Target "ResolveProjectReferences" in file "/sdk/Microsoft.Common.CurrentVersion.targets" from project "/src/App.Tests/App.Tests.csproj" (target "ResolveReferences" depends on it):
+                   Task "MSBuild"
 16:00:00.100   2:2>Target "CoreCompile" in file "/sdk/Microsoft.CSharp.Core.targets" from project "/src/App/App.csproj" (target "Compile" depends on it):
 16:00:11.900   2:2>Task "Csc"
 16:00:11.900   2:2>  NOTE: Elapsed time may be less than analyzer execution time because analyzers can run concurrently.
@@ -74,6 +75,10 @@ Build started 11/13/2026 16:00:00.
                    0.800   88      EnumGenerator.Package.EnumGenerator
                  Done executing task "Csc".
 16:00:33.600     1>Done building target "CoreCompile" in project "App.Tests.csproj".
+16:00:33.650     1>Target "CoverageReferencedPaths" in file "/nuget/coverage.targets" from project "/src/App.Tests/App.Tests.csproj" (target "Build" depends on it):
+                   Task "MSBuild"
+                   Done executing task "MSBuild".
+16:00:38.650     1>Done building target "CoverageReferencedPaths" in project "App.Tests.csproj".
 16:00:33.700     1>Target "Build" in project "/src/App.Tests/App.Tests.csproj" (entry point):
 16:00:59.700     1>Done building target "Build" in project "App.Tests.csproj".
 
@@ -86,6 +91,7 @@ Project Performance Summary:
 Target Performance Summary:
         2 ms  GetAssemblyVersion                         2 calls
      9000 ms  _CopyFilesMarkedCopyLocal                  1 calls
+     5000 ms  CoverageReferencedPaths                    1 calls
     32000 ms  CoreCompile                                2 calls
     13500 ms  ResolveProjectReferences                   2 calls
     59000 ms  Build                                      3 calls
@@ -282,6 +288,7 @@ XML
     [[ "${output}" == *"9.00s    15%  _CopyFilesMarkedCopyLocal"* ]]
     # Targets that only wait for other projects are left out.
     [[ "${output}" != *"ResolveProjectReferences"* ]]
+    [[ "${output}" != *"CoverageReferencedPaths"* ]]
     [[ "${output}" != *"  Build"* ]]
     # Analyzer time is summed over both compiles; rule rows are not listed.
     [[ "${output}" == *"15.00s    25%  SlowAnalyzer"* ]]
