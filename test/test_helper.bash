@@ -155,7 +155,7 @@ ensure_test_gpg_key() {
 
 # Pre-warms trivy's vulnerability DB once per bats run, via the same _run_once
 # guard as _ensure_gpg_key above. trivy's own metadata.json write has no
-# cross-process lock, so two of linters.bats's trivy tests updating the DB at
+# cross-process lock, so two of linters-trivy.bats's trivy tests updating the DB at
 # the same moment under bats --jobs raced and corrupted the loser's read
 # (json decode error: EOF). Warming the shared cache once before either test's
 # own trivy invocation means both see an already-fresh DB and never write.
