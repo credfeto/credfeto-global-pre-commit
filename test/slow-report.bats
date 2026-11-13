@@ -38,34 +38,47 @@ write_trx() {
 
 # write_build_log <file>
 # Writes a trimmed detailed MSBuild file log, built with
-# -p:ReportAnalyzer=true and PerformanceSummary, of a 60 second build: two
-# compiles' analyzer and generator reports, then the performance summaries.
+# -p:ReportAnalyzer=true, PerformanceSummary and ShowTimestamp, of a 60 second
+# build: App.Tests waits 13.5s for App, whose own targets take 13s (a 12s
+# compile and a 1s copy), then compiles for 20s; the solution's own target
+# and the Build targets only wait. Two compiles' analyzer and generator
+# reports, then the performance summaries.
 write_build_log() {
     cat > "$1" << 'LOG'
-Build started 11/13/2026 16:03:04.
-     1>Project "/src/App.Tests/App.Tests.csproj" on node 1 (default targets).
-       Task "Csc"
-         NOTE: Elapsed time may be less than analyzer execution time because analyzers can run concurrently.
-         Total analyzer execution time: 12.500 seconds.
-         Time (s)    %   Analyzer
-         12.000   96   SlowAnalyzer, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
-         11.000   88      SlowAnalyzer.Rules.Expensive (SA0001)
-         <0.001   <1   TinyAnalyzer, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null
-         Total generator execution time: 0.900 seconds.
-         Time (s)    %   Generator
-         0.800   88   EnumGenerator.Package, Version=1.2.0.0, Culture=neutral, PublicKeyToken=null
-         0.800   88      EnumGenerator.Package.EnumGenerator
-       Done executing task "Csc".
-   2:2>Task "Csc"
-         Total analyzer execution time: 3.000 seconds.
-         Time (s)    %   Analyzer
-         3.000  100   SlowAnalyzer, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
-       Done executing task "Csc".
-
-Project Evaluation Performance Summary:
-      170 ms  /src/App/App.csproj   1 calls
+Build started 11/13/2026 16:00:00.
+16:00:00.000     3>Target "ValidateSolutionConfiguration" in file "/src/App.slnx.metaproj" from project "/src/App.slnx" (entry point):
+16:00:00.500     3>Done building target "ValidateSolutionConfiguration" in project "App.slnx".
+16:00:00.000     1>Target "ResolveProjectReferences" in file "/sdk/Microsoft.Common.CurrentVersion.targets" from project "/src/App.Tests/App.Tests.csproj" (target "ResolveReferences" depends on it):
+16:00:00.100   2:2>Target "CoreCompile" in file "/sdk/Microsoft.CSharp.Core.targets" from project "/src/App/App.csproj" (target "Compile" depends on it):
+16:00:11.900   2:2>Task "Csc"
+16:00:11.900   2:2>  NOTE: Elapsed time may be less than analyzer execution time because analyzers can run concurrently.
+16:00:11.900   2:2>  Total analyzer execution time: 3.000 seconds.
+16:00:11.900   2:2>  Time (s)    %   Analyzer
+16:00:11.900   2:2>  3.000  100   SlowAnalyzer, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+16:00:11.900   2:2>Done executing task "Csc".
+16:00:12.100   2:2>Done building target "CoreCompile" in project "App.csproj".
+16:00:12.200   2:2>Target "_CopyFilesMarkedCopyLocal" in file "/sdk/Microsoft.Common.CurrentVersion.targets" from project "/src/App/App.csproj" (target "CopyFilesToOutputDirectory" depends on it):
+16:00:13.200   2:2>Done building target "_CopyFilesMarkedCopyLocal" in project "App.csproj".
+16:00:13.500     1>Done building target "ResolveProjectReferences" in project "App.Tests.csproj".
+16:00:13.600     1>Target "CoreCompile" in file "/sdk/Microsoft.CSharp.Core.targets" from project "/src/App.Tests/App.Tests.csproj" (target "Compile" depends on it):
+16:00:33.500     1>Task "Csc"
+                   NOTE: Elapsed time may be less than analyzer execution time because analyzers can run concurrently.
+                   Total analyzer execution time: 12.500 seconds.
+                   Time (s)    %   Analyzer
+                   12.000   96   SlowAnalyzer, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+                   11.000   88      SlowAnalyzer.Rules.Expensive (SA0001)
+                   <0.001   <1   TinyAnalyzer, Version=2.0.0.0, Culture=neutral, PublicKeyToken=null
+                   Total generator execution time: 0.900 seconds.
+                   Time (s)    %   Generator
+                   0.800   88   EnumGenerator.Package, Version=1.2.0.0, Culture=neutral, PublicKeyToken=null
+                   0.800   88      EnumGenerator.Package.EnumGenerator
+                 Done executing task "Csc".
+16:00:33.600     1>Done building target "CoreCompile" in project "App.Tests.csproj".
+16:00:33.700     1>Target "Build" in project "/src/App.Tests/App.Tests.csproj" (entry point):
+16:00:59.700     1>Done building target "Build" in project "App.Tests.csproj".
 
 Project Performance Summary:
+    59000 ms  /src/App.slnx   1 calls
     40000 ms  /src/App.Tests/App.Tests.csproj   1 calls
     10943 ms  /src/App/App.csproj   5 calls
                  35 ms  GetTargetFrameworks                        1 calls
@@ -73,11 +86,12 @@ Project Performance Summary:
 Target Performance Summary:
         2 ms  GetAssemblyVersion                         2 calls
      9000 ms  _CopyFilesMarkedCopyLocal                  1 calls
-    16520 ms  CoreCompile                                2 calls
-    35000 ms  ResolveProjectReferences                   2 calls
+    32000 ms  CoreCompile                                2 calls
+    13500 ms  ResolveProjectReferences                   2 calls
+    59000 ms  Build                                      3 calls
 
 Task Performance Summary:
-    16519 ms  Csc                                        2 calls
+    31990 ms  Csc                                        2 calls
     11140 ms  MSBuild                                    6 calls
 
 Build succeeded.
@@ -259,18 +273,23 @@ XML
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "${output}" == *"Slowest build parts (build took 60.0s, warning above 25% of the build or 30s):"* ]]
-    [[ "${output}" == *"40.00s    67%  App.Tests"* ]]
-    [[ "${output}" == *"10.94s    18%  App"* ]]
-    [[ "${output}" == *"16.52s    28%  CoreCompile"* ]]
-    # Waiting for referenced projects is not a slow target of its own.
+    # A project's own targets, not the time it waits for the projects it
+    # references, nor the solution.
+    [[ "${output}" == *"20.00s    33%  App.Tests"* ]]
+    [[ "${output}" == *"13.00s    22%  App"* ]]
+    [[ "${output}" != *"App.slnx"* ]]
+    [[ "${output}" == *"32.00s    53%  CoreCompile"* ]]
+    [[ "${output}" == *"9.00s    15%  _CopyFilesMarkedCopyLocal"* ]]
+    # Targets that only wait for other projects are left out.
     [[ "${output}" != *"ResolveProjectReferences"* ]]
+    [[ "${output}" != *"  Build"* ]]
     # Analyzer time is summed over both compiles; rule rows are not listed.
     [[ "${output}" == *"15.00s    25%  SlowAnalyzer"* ]]
     [[ "${output}" == *"0.00s     0%  TinyAnalyzer"* ]]
     [[ "${output}" != *"SlowAnalyzer.Rules"* ]]
     [[ "${output}" == *"0.80s     1%  EnumGenerator.Package"* ]]
-    [ "$(printf '%s\n' "${output}" | grep '^WARNING')" = "WARNING: slow build part: project App.Tests 40.00s (67% of the build)
-WARNING: slow build part: target CoreCompile 16.52s (28% of the build)" ]
+    [ "$(printf '%s\n' "${output}" | grep '^WARNING')" = "WARNING: slow build part: project App.Tests 20.00s (33% of the build)
+WARNING: slow build part: target CoreCompile 32.00s (53% of the build)" ]
 }
 
 @test "SLOW_BUILD_SHARE_PERCENT and SLOW_BUILD_THRESHOLD_SECONDS change the build warnings" {
@@ -281,7 +300,7 @@ WARNING: slow build part: target CoreCompile 16.52s (28% of the build)" ]
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "${output}" == *"warning above 100% of the build or 10s):"* ]]
     [ "$(printf '%s\n' "${output}" | grep -c '^WARNING: slow build part')" -eq 3 ]
-    [[ "${output}" == *"WARNING: slow build part: project App 10.94s (18% of the build)"* ]]
+    [[ "${output}" == *"WARNING: slow build part: project App 13.00s (22% of the build)"* ]]
 
     run_report report_slow_build "${_log}" SLOW_BUILD_SHARE_PERCENT=100 SLOW_BUILD_THRESHOLD_SECONDS=100
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
@@ -392,10 +411,10 @@ run_buildtest() {
     run_buildtest "${T}"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    grep -q '^build .* -p:ReportAnalyzer=true -flp:logfile=.*/build.log;verbosity=detailed;PerformanceSummary$' "${BATS_TEST_TMPDIR}/dotnet.log"
+    grep -q '^build .* -p:ReportAnalyzer=true -flp:logfile=.*/build.log;verbosity=detailed;PerformanceSummary;ShowTimestamp$' "${BATS_TEST_TMPDIR}/dotnet.log"
     grep -q '^test .* --report-xunit-trx --results-directory ' "${BATS_TEST_TMPDIR}/dotnet.log"
     [[ "${output}" == *"Slowest build parts (build took 60.0s, "* ]]
-    [[ "${output}" == *"WARNING: slow build part: target CoreCompile 16.52s (28% of the build)"* ]]
+    [[ "${output}" == *"WARNING: slow build part: target CoreCompile 32.00s (53% of the build)"* ]]
     [[ "${output}" == *"Slowest tests (top 2 of 2, warning above 2s):"* ]]
     [[ "${output}" == *"WARNING: slow test Foo.Tests.Slow 4.00s"* ]]
     # The reports' temporary files are removed.

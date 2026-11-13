@@ -59,15 +59,16 @@ timed() {
 
 # run_build <dotnet build argument>...
 # Runs dotnet build with a file log that is only read for the slow build parts
-# report, printed whether or not the build succeeds: its PerformanceSummary
-# gives the project and target times, and ReportAnalyzer makes the compiler
-# report analyzer and source generator times, which it logs at detailed
-# verbosity only. The console output is unchanged.
+# report, printed whether or not the build succeeds: ShowTimestamp times
+# each project's own targets, its PerformanceSummary gives the target times,
+# and ReportAnalyzer makes the compiler report analyzer and source generator
+# times, which it logs at detailed verbosity only. The console output is
+# unchanged.
 run_build() {
     _build_status=0
     timed build dotnet build "$@" \
         "-p:ReportAnalyzer=true" \
-        "-flp:logfile=$BUILDTEST_REPORT_DIR/build.log;verbosity=detailed;PerformanceSummary" \
+        "-flp:logfile=$BUILDTEST_REPORT_DIR/build.log;verbosity=detailed;PerformanceSummary;ShowTimestamp" \
         || _build_status=$?
     report_slow_build "$BUILDTEST_REPORT_DIR/build.log"
     return "$_build_status"

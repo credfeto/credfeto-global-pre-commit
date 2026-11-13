@@ -5,8 +5,9 @@
 # Warning-only reports of where a commit's time goes: the slowest tests (from
 # the TRX files `dotnet test --report-xunit-trx` writes, or the JUnit report
 # `bats --report-formatter junit` writes) and the slowest parts of a .NET
-# build (from an MSBuild file log written with PerformanceSummary at detailed
-# verbosity, built with -p:ReportAnalyzer=true). Nothing here ever fails: a
+# build (from an MSBuild file log written with PerformanceSummary and
+# ShowTimestamp at detailed verbosity, built with -p:ReportAnalyzer=true).
+# Nothing here ever fails: a
 # missing python3, a missing or malformed report, or a bad setting prints a
 # WARNING line and the caller carries on.
 #
@@ -50,11 +51,17 @@ import sys
 import xml.etree.ElementTree as ElementTree
 
 BUILD_TOP = 5
-# Targets whose time is spent waiting for other projects to build, so would
-# count those projects a second time.
-WAITING_TARGETS = {"ResolveProjectReferences", "_GetProjectReferenceTargetFrameworkProperties"}
+# Targets whose time is spent waiting for other projects to build (a
+# solution's Build target waits for every project), so would count those
+# projects a second time.
+WAITING_TARGETS = {"Build", "ResolveProjectReferences", "_GetProjectReferenceTargetFrameworkProperties"}
+SOLUTION_SUFFIXES = (".sln", ".slnx", ".metaproj")
 TRX_DURATION = re.compile(r"^(?:(\d+)\.)?(\d+):(\d+):(\d+(?:\.\d+)?)$")
-NODE_PREFIX = re.compile(r"^\s*\d+(?::\d+)?>")
+# A ShowTimestamp line starts with the time and, in a multi-node build, the
+# node or project context the line belongs to.
+LINE_PREFIX = re.compile(r"^(?:(\d+):(\d+):(\d+\.\d+))?\s*(?:(\d+(?::\d+)?)>)?")
+TARGET_STARTED = re.compile(r'^Target "([^"]+)" in (?:file "[^"]*" from )?project "([^"]+)"')
+TARGET_DONE = re.compile(r'^Done building target "([^"]+)" in project ')
 SUMMARY_LINE = re.compile(r"^\s*(\d+) ms\s+(.+?)\s+(\d+) calls\s*$")
 ELAPSED = re.compile(r"^Time Elapsed (\d+):(\d+):(\d+(?:\.\d+)?)\s*$")
 TOTAL_TIME = re.compile(r"^\s*Total (analyzer|generator) execution time: ")
@@ -162,14 +169,42 @@ def add(totals, name, seconds):
     totals[name] = totals.get(name, 0.0) + seconds
 
 
+def target_times(times, stacks, line):
+    """Pairs each target's start and done lines within one project context
+    (targets in a context run one at a time), adding each target's time to
+    its project, unless it only waits for other projects."""
+    prefix = LINE_PREFIX.match(line)
+    if not prefix.group(1):
+        return
+    hours, minutes, seconds, context = prefix.groups()
+    stamp = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    text = line[prefix.end():]
+    started = TARGET_STARTED.match(text)
+    if started:
+        stacks.setdefault(context or "", []).append((started.group(1), started.group(2), stamp))
+        return
+    done = TARGET_DONE.match(text)
+    stack = stacks.get(context or "")
+    if not done or not stack or stack[-1][0] != done.group(1):
+        return
+    target, project, began = stack.pop()
+    if target in WAITING_TARGETS or project.lower().endswith(SOLUTION_SUFFIXES):
+        return
+    # A target running over midnight.
+    add(times, project_name(project), (stamp - began) % 86400)
+
+
 def read_build_log(path):
     sections = {"project": {}, "target": {}, "analyzer": {}, "generator": {}}
+    stacks = {}
     elapsed = None
-    section = None
+    in_targets = False
     table = None
     with open(path, encoding="utf-8", errors="replace") as log:
         for raw in log:
-            line = NODE_PREFIX.sub("", raw.rstrip("\n"))
+            raw = raw.rstrip("\n")
+            target_times(sections["project"], stacks, raw)
+            line = raw[LINE_PREFIX.match(raw).end():]
             stripped = line.strip()
             match = TOTAL_TIME.match(line)
             if match:
@@ -187,32 +222,21 @@ def read_build_log(path):
                     continue
                 table = None
             if stripped.endswith("Performance Summary:"):
-                section = {
-                    "Project Performance Summary:": "project",
-                    "Target Performance Summary:": "target",
-                }.get(stripped)
+                in_targets = stripped == "Target Performance Summary:"
                 continue
             match = ELAPSED.match(stripped)
             if match:
                 hours, minutes, seconds = match.groups()
                 elapsed = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-                section = None
+                in_targets = False
+                continue
+            if not in_targets or not stripped:
                 continue
             match = SUMMARY_LINE.match(line)
-            if not match or section is None:
-                if not stripped:
-                    continue
-                if not match:
-                    section = None
-                continue
-            milliseconds, name = int(match.group(1)), match.group(2)
-            if section == "project":
-                # Only the projects themselves: the targets nested under each
-                # one are the ones other projects called on it.
-                if name.lower().endswith(("proj", ".sln", ".slnx")):
-                    add(sections["project"], project_name(name), milliseconds / 1000)
-            elif name not in WAITING_TARGETS:
-                add(sections["target"], name, milliseconds / 1000)
+            if not match:
+                in_targets = False
+            elif match.group(2) not in WAITING_TARGETS:
+                add(sections["target"], match.group(2), int(match.group(1)) / 1000)
     return sections, elapsed
 
 
@@ -236,7 +260,7 @@ def report_build(path):
     took = f"build took {elapsed:.1f}s, " if elapsed else ""
     print(f"Slowest build parts ({took}warning above {share_limit:g}% of the build or {seconds_limit:g}s):")
     headings = {
-        "project": "Projects (including time spent waiting for the projects they reference)",
+        "project": "Projects (their own targets, not waiting for the projects they reference)",
         "target": "Targets (summed over every project and parallel node)",
         "analyzer": "Analyzers (summed over every project)",
         "generator": "Source generators (summed over every project)",

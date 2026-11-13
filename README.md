@@ -462,15 +462,16 @@ an unreadable report prints a `WARNING:` line, and the commit carries on.
   passed. A bats older than 1.5.0, which has no `--report-formatter`, runs
   as before without the block.
 - **Slowest build parts.** `buildtest`'s build writes a detailed MSBuild file
-  log to a temporary directory, with `PerformanceSummary` and
-  `-p:ReportAnalyzer=true`; the console output is unchanged. It then prints
-  the slowest projects, targets, analyzers and source generators, and a
+  log to a temporary directory, with `PerformanceSummary`, `ShowTimestamp`
+  and `-p:ReportAnalyzer=true`; the console output is unchanged. It then
+  prints the slowest projects, targets, analyzers and source generators, and a
   `WARNING: slow build part: <project|target> <name> <seconds>s (<share>% of
   the build)` line for every project or target over either threshold. The
-  share is of the build's elapsed time. A project's time includes the time it
-  spends waiting for the projects it references, and a target's time is summed
-  over every project and parallel node, so its share can pass 100%. Targets
-  that only wait for other projects (`ResolveProjectReferences`) are left out.
+  share is of the build's elapsed time. A project's time is the time spent in
+  its own targets, not the time it waits for the projects it references, and a
+  target's time is summed over every project and parallel node, so its share
+  can pass 100%. The solution's own targets, and the targets that only wait for
+  other projects (`Build`, `ResolveProjectReferences`), are left out.
   Analyzer and generator times are summed over every project and listed, but
   not warned on.
 - **Step timings.** `buildtest` ends every run, success or failure, with one
