@@ -151,6 +151,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - install --system now works from a read-only, root-owned copy: only files that are not already executable are made executable (retrying with sudo), no per-user run-* wrapper links are created because the shared hook puts the scripts on PATH for every user, and composite-action-lint is copied into /usr/local/bin so every user can run it (#280)
 - Install the pipx hook tools and the npm linters (markdownlint-cli, eslint, stylelint, stylelint-config-standard) once for every account in shared locations (/opt/pipx and /usr/local/bin), running on a Node.js every account can run (pacman nodejs and npm on Arch, or the checksum-verified nodejs.org LTS in /usr/local on Debian/Ubuntu), so system-wide hooks work for every user, and check-setup --system fails npm linters or a node that only resolve under $HOME (#287)
 - dotnet format in pre-commit now applies its IDE style and analyzer fixes to staged .cs files: it was given absolute --include paths, which match nothing, so it silently changed nothing (#302)
+- pipx_ensure upgrades an already-installed package instead of skipping it - #289
 
 ### Changed
 - Benchmark test projects are recognised only by the name *.Benchmark.Tests (case-sensitive); the BenchMark, Bench, singular .Test and other case variants are no longer treated as benchmark projects (#294)
