@@ -94,7 +94,7 @@ LOG
 run_report() {
     local _function="$1" _argument="$2"
     shift 2
-    # shellcheck disable=SC2016 # intentionally literal — expanded by the inner sh, not here
+    # shellcheck disable=SC2016 # intentionally literal, expanded by the inner sh, not here
     run env -u SLOW_TEST_THRESHOLD_SECONDS -u SLOW_TEST_TOP -u SLOW_BUILD_SHARE_PERCENT \
         -u SLOW_BUILD_THRESHOLD_SECONDS "$@" "${SH}" -c '. "$1"; "$2" "$3"' _ "${LIB}" "${_function}" "${_argument}"
 }
@@ -504,7 +504,7 @@ make_bats_repo() {
     local T _shim="${BATS_TEST_TMPDIR}/shim"
     T="$(make_bats_repo 'true')"
     mkdir -p "${_shim}"
-    # shellcheck disable=SC2016 # intentionally literal — expanded by the shim, not here
+    # shellcheck disable=SC2016 # intentionally literal, expanded by the shim, not here
     printf '#!/bin/sh\n[ "$1" = --version ] && { echo "Bats 1.2.1"; exit 0; }\nprintf "%%s\\n" "$*" > "%s"\n' \
         "${BATS_TEST_TMPDIR}/bats-args" > "${_shim}/bats"
     chmod +x "${_shim}/bats"
