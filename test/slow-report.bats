@@ -314,6 +314,24 @@ WARNING: slow build part: target CoreCompile 32.00s (53% of the build)" ]
     [[ "${output}" != *"WARNING"* ]]
 }
 
+@test "CoreCompile is checked against the seconds threshold only, never the share" {
+    local _log="${BATS_TEST_TMPDIR}/build.log"
+    write_build_log "${_log}"
+
+    # CoreCompile is 53% of the build but under 100s: no warning for it,
+    # while App.Tests (33%) still warns on the share.
+    run_report report_slow_build "${_log}" SLOW_BUILD_SHARE_PERCENT=25 SLOW_BUILD_THRESHOLD_SECONDS=100
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"32.00s    53%  CoreCompile"* ]]
+    [[ "${output}" != *"WARNING: slow build part: target CoreCompile"* ]]
+    [[ "${output}" == *"WARNING: slow build part: project App.Tests 20.00s (33% of the build)"* ]]
+
+    # Over the seconds threshold it still warns.
+    run_report report_slow_build "${_log}" SLOW_BUILD_SHARE_PERCENT=25 SLOW_BUILD_THRESHOLD_SECONDS=30
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"WARNING: slow build part: target CoreCompile 32.00s (53% of the build)"* ]]
+}
+
 @test "slowest build parts with no performance summary or no log says so and succeeds" {
     local _log="${BATS_TEST_TMPDIR}/build.log"
     printf 'Build FAILED.\n' > "${_log}"

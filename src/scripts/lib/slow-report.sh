@@ -56,6 +56,10 @@ BUILD_TOP = 5
 # projects a second time. Any other target that runs an MSBuild or CallTarget
 # task is found in the log and treated the same way.
 WAITING_TARGETS = {"Build", "ResolveProjectReferences", "_GetProjectReferenceTargetFrameworkProperties"}
+# Targets whose time is summed over every project and parallel node, so on
+# a large solution their total always exceeds any share of the build's wall
+# time. They are checked against SLOW_BUILD_THRESHOLD_SECONDS only.
+SHARE_EXEMPT_TARGETS = {"CoreCompile"}
 WAITING_TASK = re.compile(r'^Task "(MSBuild|CallTarget)"')
 SOLUTION_SUFFIXES = (".sln", ".slnx", ".metaproj")
 TRX_DURATION = re.compile(r"^(?:(\d+)\.)?(\d+):(\d+):(\d+(?:\.\d+)?)$")
@@ -296,7 +300,8 @@ def report_build(path):
         if kind not in ("project", "target"):
             continue
         for name, seconds in ranked:
-            over_share = elapsed and seconds * 100 / elapsed > share_limit
+            share_checked = not (kind == "target" and name in SHARE_EXEMPT_TARGETS)
+            over_share = share_checked and elapsed and seconds * 100 / elapsed > share_limit
             if over_share or seconds > seconds_limit:
                 percent = f" ({seconds * 100 / elapsed:.0f}% of the build)" if elapsed else ""
                 warnings.append(f"slow build part: {kind} {name} {seconds:.2f}s{percent}")
