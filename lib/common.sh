@@ -261,8 +261,8 @@ install_composite_action_lint() {
 # `dotnet <toolname>` resolution from any repo under $HOME without a per-repo
 # manifest. Runs in a subshell so the caller's working directory is unchanged,
 # and returns non-zero on failure for the caller to report.
-#   $1 = package ID (e.g. PowerShell)
-#   $2 = command the package provides (e.g. pwsh)
+#   $1 = package ID (e.g. Credfeto.DotNet.Repo.Formatter)
+#   $2 = command the package provides (e.g. cscleanup)
 # Requires: dotnet on PATH.
 install_home_dotnet_tool() {
     (
@@ -278,24 +278,6 @@ install_home_dotnet_tool() {
             dotnet tool install "$1"
         fi
     )
-}
-
-# Install or update PowerShell as a local dotnet tool (see
-# install_home_dotnet_tool), plus the PSScriptAnalyzer module it needs, which
-# is installed by the pwsh resolved from $HOME's manifest.
-# Skipped with a warning if dotnet is not on PATH.
-install_pwsh() {
-    info "PowerShell (pwsh, local dotnet tool)"
-    if has dotnet; then
-        (
-            install_home_dotnet_tool PowerShell pwsh || exit 1
-            cd "$HOME" || exit 1
-            dotnet pwsh -NoProfile -NonInteractive -Command \
-                "if (-not (Get-Module PSScriptAnalyzer -ListAvailable)) { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop }"
-        ) || die "failed to install PowerShell dotnet tool or PSScriptAnalyzer module"
-    else
-        warn "dotnet not found, skipping pwsh install"
-    fi
 }
 
 # Install or update the cscleanup C# formatter (Credfeto.DotNet.Repo.Formatter)

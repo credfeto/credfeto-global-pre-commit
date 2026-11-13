@@ -560,65 +560,6 @@ END_OF_FILE_FIXER_CONFIG='repos:
     [ "${status}" -eq 0 ]
 }
 
-# ── PSScriptAnalyzer ──────────────────────────────────────────────────────────
-
-@test "broken PowerShell script (PSAvoidUsingWriteHost) is rejected" {
-    if ! PATH="${TEST_PATH}" command -v dotnet > /dev/null 2>&1; then
-        skip "dotnet not installed or stripped from TEST_PATH"
-    fi
-    if ! (cd "${HOME}" && PATH="${TEST_PATH}" dotnet pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop; exit 0") > /dev/null 2>&1; then
-        skip "pwsh (dotnet local tool) or PSScriptAnalyzer module not installed"
-    fi
-    if ! command -v pre-commit > /dev/null 2>&1; then
-        skip "pre-commit not installed"
-    fi
-    local T PSSCRIPTANALYZER_CONFIG
-    T="$(make_repo feature/broken-ps1-test)"
-    PSSCRIPTANALYZER_CONFIG="repos:
-  - repo: local
-    hooks:
-      - id: run-psscriptanalyzer
-        name: run-psscriptanalyzer
-        entry: ${REPO_DIR}/src/scripts/run-psscriptanalyzer
-        language: system
-        files: \\.(ps1|psm1|psd1)\$
-"
-    printf '%s' "${PSSCRIPTANALYZER_CONFIG}" > "${T}/.pre-commit-config.yaml"
-    printf 'Write-Host "hello"\n' > "${T}/test.ps1"
-    git -C "${T}" add .pre-commit-config.yaml test.ps1
-    run_hook "${T}"
-    [ "${status}" -eq 1 ]
-}
-
-@test "clean PowerShell script passes" {
-    if ! PATH="${TEST_PATH}" command -v dotnet > /dev/null 2>&1; then
-        skip "dotnet not installed or stripped from TEST_PATH"
-    fi
-    if ! (cd "${HOME}" && PATH="${TEST_PATH}" dotnet pwsh -NoProfile -NonInteractive -Command "Import-Module PSScriptAnalyzer -ErrorAction Stop; exit 0") > /dev/null 2>&1; then
-        skip "pwsh (dotnet local tool) or PSScriptAnalyzer module not installed"
-    fi
-    if ! command -v pre-commit > /dev/null 2>&1; then
-        skip "pre-commit not installed"
-    fi
-    local T PSSCRIPTANALYZER_CONFIG
-    T="$(make_repo feature/clean-ps1-test)"
-    PSSCRIPTANALYZER_CONFIG="repos:
-  - repo: local
-    hooks:
-      - id: run-psscriptanalyzer
-        name: run-psscriptanalyzer
-        entry: ${REPO_DIR}/src/scripts/run-psscriptanalyzer
-        language: system
-        files: \\.(ps1|psm1|psd1)\$
-"
-    printf '%s' "${PSSCRIPTANALYZER_CONFIG}" > "${T}/.pre-commit-config.yaml"
-    # shellcheck disable=SC2016
-    printf 'function Get-Greeting {\n    param ([string]$Name)\n    Write-Output "Hello, $Name"\n}\n' > "${T}/test.ps1"
-    git -C "${T}" add .pre-commit-config.yaml test.ps1
-    run_hook "${T}"
-    [ "${status}" -eq 0 ]
-}
-
 # ── eslint ────────────────────────────────────────────────────────────────────
 
 @test "JavaScript with unused variable is rejected" {

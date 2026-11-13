@@ -13,7 +13,7 @@ CURRENT_REPO_NAME=$(git remote get-url origin 2>/dev/null \
     | tr -d '[:space:]' || true)
 
 # Ensure language: system wrappers invoked by bare name (e.g. run-bats,
-# run-eslint, run-stylelint, run-psscriptanalyzer) resolve to the versions
+# run-eslint, run-stylelint) resolve to the versions
 # shipped alongside this hook, independent of the install script's PATH
 # symlinks or any consumer's container ENV/profile setup.
 PATH="$SCRIPTS_DIR:$PATH"
@@ -178,7 +178,6 @@ is_protected_everywhere_file() {
         phpcs.xml) return 0 ;;
         phpstan.neon) return 0 ;;
         psalm.xml) return 0 ;;
-        .powershell-psscriptanalyzer.psd1) return 0 ;;
         .protolintrc.yml) return 0 ;;
         .python-black) return 0 ;;
         .flake8) return 0 ;;

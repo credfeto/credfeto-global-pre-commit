@@ -191,6 +191,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Deprecated
 ### Removed
+- Removed the PSScriptAnalyzer hook and its PowerShell install (#292)
 ### Deployment Changes
 
 ## [0.0.0] - Project created
