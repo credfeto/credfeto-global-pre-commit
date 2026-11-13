@@ -458,6 +458,30 @@ add_fake_composite_action_lint() {
     [ ! -L "${_file}" ]
 }
 
+@test "per-user install removes a stale run-formatter link from the user's bin directory" {
+    local _stale="${BATS_TEST_TMPDIR}/home/.local/bin/run-formatter"
+    mkdir -p "$(dirname "${_stale}")"
+    ln -s "${STAGE}/src/scripts/run-formatter" "${_stale}"
+
+    run_user_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ ! -L "${_stale}" ]
+    [ ! -e "${_stale}" ]
+}
+
+@test "per-user install leaves a regular run-formatter file in the user's bin directory alone" {
+    local _file="${BATS_TEST_TMPDIR}/home/.local/bin/run-formatter"
+    mkdir -p "$(dirname "${_file}")"
+    printf '#!/bin/sh\n' > "${_file}"
+
+    run_user_install
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ -f "${_file}" ]
+    [ ! -L "${_file}" ]
+}
+
 @test "per-user install links composite-action-lint into the user's bin directory" {
     add_fake_composite_action_lint
 

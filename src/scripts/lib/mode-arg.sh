@@ -1,5 +1,5 @@
 #! /bin/sh
-# Shared helper sourced by check-changelog, run-formatter, run-bats and
+# Shared helper sourced by check-changelog, buildtest, run-bats and
 # clean-package-lock-registry (and by hooks/pre-commit itself). Not intended
 # to be run directly. Depends on the caller already defining die().
 #

@@ -607,7 +607,7 @@ if check_files_match '(^|/)CHANGELOG\.md$' && [ "$HAS_DOTNET" -eq 1 ]; then
     sh "$SCRIPTS_DIR/check-changelog" $MODE_ARG || die "changelog lint"
 fi
 
-# ── 4. .NET: format check + build + test if source/project file changes ──────
+# ── 4. .NET: format fix + build + test if source/project file changes ────────
 # The benchmark project name check is a grep, so it needs no dotnet and runs
 # first: a misnamed benchmark project would otherwise run its benchmarks as
 # ordinary tests in buildtest.
@@ -618,11 +618,11 @@ fi
 if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
     sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
-    info "Detected .NET changes — running formatter fix..."
-    # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
-    sh "$SCRIPTS_DIR/run-formatter" $MODE_ARG || die "cscleanup formatter"
+    # buildtest restores once, then formats (dotnet format, then cscleanup)
+    # and re-stages the target .cs/.csproj files, then builds and tests.
     info "Detected .NET changes — running buildtest..."
-    sh "$SCRIPTS_DIR/buildtest" || die "dotnet buildtest"
+    # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
+    sh "$SCRIPTS_DIR/buildtest" $MODE_ARG || die "dotnet buildtest"
 fi
 
 # ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────

@@ -90,7 +90,6 @@ make_executable \
     "$SCRIPTS_DIR/latest-target-framework" \
     "$SCRIPTS_DIR/dacpac-only-solution" \
     "$SCRIPTS_DIR/buildcheck" \
-    "$SCRIPTS_DIR/run-formatter" \
     "$SCRIPTS_DIR/check-changelog" \
     "$SCRIPTS_DIR/check-identity" \
     "$SCRIPTS_DIR/check-ignored-files" \
@@ -214,11 +213,14 @@ if ! $SYSTEM_INSTALL; then
     ln -sf "$SCRIPTS_DIR/run-stylelint"        "$HOME/.local/bin/run-stylelint"
     ln -sf "$SCRIPTS_DIR/run-bats"             "$HOME/.local/bin/run-bats"
     ln -sf "$SCRIPTS_DIR/run-pylint"           "$HOME/.local/bin/run-pylint"
-    # Earlier installs linked this wrapper, which no longer exists; a dangling
-    # link would otherwise stay on PATH.
-    if [ -L "$HOME/.local/bin/run-psscriptanalyzer" ]; then
-        rm -f "$HOME/.local/bin/run-psscriptanalyzer"
-    fi
+    # Wrappers that no longer exist: a link left by an earlier install, or
+    # made by hand to a wrapper in this checkout, would otherwise dangle on
+    # PATH. Only links are removed, never a file the user put there.
+    for _retired in run-psscriptanalyzer run-formatter; do
+        if [ -L "$HOME/.local/bin/$_retired" ]; then
+            rm -f "$HOME/.local/bin/$_retired"
+        fi
+    done
 fi
 
 # SYSTEM_BIN_DIR_TEST_OVERRIDE is a test-only escape hatch, so the tests never

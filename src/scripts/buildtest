@@ -48,21 +48,47 @@ require_dotnet_tool() {
     die "$1 ($2) dotnet tool is not installed"
 }
 
-CLEAR="http-cache"
-
-CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
-[ -z "$CSPROJ" ] && { info "No .csproj files found — skipping"; exit 0; }
-
-SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
-[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
-[ -z "$SOLUTION" ] && { info "No solution file found — skipping"; exit 0; }
-
-SOURCE_DIR=$(dirname "$SOLUTION")
-[ -z "$SOURCE_DIR" ] && die "No Solution dir found in $SOURCE_DIR"
+success() {
+    printf '\n\033[32m✓\033[0m %s\n' "$*"
+}
 
 # Resolved before the cd below so a relative $0 is not re-resolved against the
 # wrong working directory.
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+
+# Usage: buildtest [--all-files]
+#
+# The formatter step (lib/dotnet-format.sh) targets the staged .cs/.csproj
+# files, or every tracked one in --all-files mode (invoked by hooks/pre-commit's
+# own --all-files mode), and re-stages what it changes.
+# shellcheck source=src/scripts/lib/mode-arg.sh
+. "$SCRIPT_DIR/lib/mode-arg.sh"
+parse_all_files_mode_arg "$1"
+# shellcheck source=src/scripts/lib/dotnet-format.sh
+. "$SCRIPT_DIR/lib/dotnet-format.sh"
+
+CLEAR="http-cache"
+
+# With nothing to build, there is no restore and no solution for dotnet
+# format to load, so only cscleanup formats the target files.
+CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
+if [ -z "$CSPROJ" ]; then
+    info "No .csproj files found — skipping build"
+    format_dotnet_sources "" 0
+    exit 0
+fi
+
+SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
+[ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
+if [ -z "$SOLUTION" ]; then
+    info "No solution file found — skipping build"
+    format_dotnet_sources "" 0
+    exit 0
+fi
+
+SOURCE_DIR=$(dirname "$SOLUTION")
+[ -z "$SOURCE_DIR" ] && die "No Solution dir found in $SOURCE_DIR"
+
 BENCH_AFFECTED_SCRIPT="$SCRIPT_DIR/benchmark-test-affected"
 LATEST_FRAMEWORK_SCRIPT="$SCRIPT_DIR/latest-target-framework"
 DACPAC_ONLY_SCRIPT="$SCRIPT_DIR/dacpac-only-solution"
@@ -101,6 +127,18 @@ if [ -f "$SOURCE_DIR/../.globalconfig" ]; then
   RULESET_FILE="$(readlink -f "$SOURCE_DIR/../.globalconfig")"
 fi
 
+# The one restore per commit: the solution in $SOURCE_DIR, exactly what is
+# built and tested below. It runs before the release ruleset override so the
+# formatter sees the repository's own analyzer settings, as a developer's IDE
+# does; restore does not read them.
+info "Restoring..."
+dotnet restore || die "######## Restore Failed ########"
+
+# Formats against the restore above (dotnet format --no-restore), then
+# cscleanup, re-staging the changed files, so the build below compiles and
+# tests what is committed.
+format_dotnet_sources "$SOLUTION" 1
+
 RESTORE=0
 if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
   require_dotnet_tool code-analysis Credfeto.DotNet.Code.Analysis.Overrides.Cmd
@@ -110,9 +148,6 @@ if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
     --changes "$RULESET_ADJUSTMENT_FILE" || die "Failed to update $RULESET_FILE"
   RESTORE=1
 fi
-
-info "Restoring..."
-dotnet restore || die "######## Restore Failed ########"
 
 info "Cleaning..."
 dotnet clean "--nowarn:MSB4241" || die "######## Clean Failed ########"
