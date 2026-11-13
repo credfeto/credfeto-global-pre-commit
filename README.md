@@ -457,8 +457,10 @@ an unreadable report prints a `WARNING:` line, and the commit carries on.
 - **Slowest tests (bats).** `run-bats` runs bats with `--timing`, so each TAP
   line shows how long its test took, and with a JUnit report in a temporary
   directory, from which it prints the same `Slowest tests` block (tests are
-  named `<file>: <test>`). A bats older than 1.5.0, which has no
-  `--report-formatter`, runs as before without the block.
+  named `<file>: <test>`). pre-commit shows a passing hook's output only
+  with `--verbose`, so the hook prints this block again once pre-commit has
+  passed. A bats older than 1.5.0, which has no `--report-formatter`, runs
+  as before without the block.
 - **Slowest build parts.** `buildtest`'s build writes a detailed MSBuild file
   log to a temporary directory, with `PerformanceSummary` and
   `-p:ReportAnalyzer=true`; the console output is unchanged. It then prints
