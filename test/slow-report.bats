@@ -517,6 +517,34 @@ make_bats_repo() {
     [[ "${output}" != *"Slowest tests"* ]]
 }
 
+@test "a commit through the hook prints the bats slowest tests block that pre-commit would hide" {
+    skip_unless_bats
+    command -v pre-commit > /dev/null 2>&1 || skip "pre-commit not installed"
+    local T
+    T="$(make_repo feature/slow-bats)"
+    printf 'repos:
+  - repo: local
+    hooks:
+      - id: bats
+        name: run bats tests
+        entry: %s
+        language: system
+        types: [text]
+        pass_filenames: true
+        require_serial: true
+' "${RUN_BATS}" > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/test"
+    printf '#!/usr/bin/env bats\n@test "naps" {\n  sleep 0.3\n}\n' > "${T}/test/nap.bats"
+    git -C "${T}" add .pre-commit-config.yaml test/nap.bats
+
+    run_isolated "${T}" "${TEST_PATH}" env SLOW_TEST_THRESHOLD_SECONDS=0.2 sh "${HOOK}"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"Slowest tests (top 1 of 1, warning above 0.2s):"* ]]
+    [[ "${output}" =~ WARNING:\ slow\ test\ nap\.bats:\ naps\ 0\.[0-9]{2}s ]]
+    [ ! -e "${T}/.git/run-bats-slowest-tests" ]
+}
+
 skip_unless_bats() {
     command -v bats > /dev/null 2>&1 || skip "bats not installed"
 }

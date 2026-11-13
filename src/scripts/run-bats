@@ -543,14 +543,20 @@ _bats_reports_supported() {
 # Runs bats with the arguments $@ and exits with its status. With --timing
 # each test's TAP line shows how long it took, and the JUnit report written
 # alongside lists the slowest tests (lib/slow-report.sh) once the suite has
-# finished, whether or not it passed. The report is warning-only.
+# finished, whether or not it passed. The report is warning-only. When
+# RUN_BATS_REPORT_FILE is set (src/hooks/pre-commit sets it, since pre-commit
+# hides a passing hook's output), the block is appended to that file too.
 _bats_run() {
     local report status=0
     if ! _bats_reports_supported || ! report=$(mktemp -d "${TMPDIR:-/tmp}/run-bats-report.XXXXXXXXXX"); then
         exec bats "$@"
     fi
     bats --timing --report-formatter junit --output "$report" "$@" || status=$?
-    report_slow_tests_junit "$report/report.xml"
+    if [ -n "${RUN_BATS_REPORT_FILE:-}" ]; then
+        report_slow_tests_junit "$report/report.xml" | tee -a "$RUN_BATS_REPORT_FILE"
+    else
+        report_slow_tests_junit "$report/report.xml"
+    fi
     rm -rf "$report"
     exit "$status"
 }
