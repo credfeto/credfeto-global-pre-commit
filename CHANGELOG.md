@@ -82,6 +82,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - buildtest prints one timings line per run with the time each step took (restore, format, cleanup, build, test, pack), giving per-step commit timings a stable source (#306)
 
 ### Fixed
+- The slow build part report no longer warns on a project's share of a fast build: the share rule applies only when the build took at least SLOW_BUILD_SHARE_MIN_BUILD_SECONDS (default 60), because in a small solution every project is a large share of a quick parallel build (#308)
 - The benchmark project-name guard now treats a project as a benchmark project only when its source runs benchmarks (a `Benchmark<T>()` helper call or `BenchmarkRunner.Run`). BenchmarkDotNet `using` directives and `[Benchmark]` attributes, which analyzer test projects carry inside string literals, no longer trigger it (#297)
 - Run sqlfluff lint after sqlfluff fix to catch violations that cannot be auto-fixed (#120)
 - Invoke changelog tool directly rather than via dotnet prefix (#16)

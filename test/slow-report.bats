@@ -116,7 +116,7 @@ run_report() {
     shift 2
     # shellcheck disable=SC2016 # intentionally literal, expanded by the inner sh, not here
     run env -u SLOW_TEST_THRESHOLD_SECONDS -u SLOW_TEST_TOP -u SLOW_BUILD_SHARE_PERCENT \
-        -u SLOW_BUILD_THRESHOLD_SECONDS "$@" "${SH}" -c '. "$1"; "$2" "$3"' _ "${LIB}" "${_function}" "${_argument}"
+        -u SLOW_BUILD_THRESHOLD_SECONDS -u SLOW_BUILD_SHARE_MIN_BUILD_SECONDS "$@" "${SH}" -c '. "$1"; "$2" "$3"' _ "${LIB}" "${_function}" "${_argument}"
 }
 
 # Counts the lines of $output that list a test: two leading spaces, then
@@ -278,7 +278,7 @@ XML
     run_report report_slow_build "${_log}"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [[ "${output}" == *"Slowest build parts (build took 60.0s, warning above 25% of the build or 30s):"* ]]
+    [[ "${output}" == *"Slowest build parts (build took 60.0s, warning above 25% of a build of 60s or more, or above 30s):"* ]]
     # A project's own targets, not the time it waits for the projects it
     # references, nor the solution.
     [[ "${output}" == *"20.00s    33%  App.Tests"* ]]
@@ -305,7 +305,7 @@ WARNING: slow build part: target CoreCompile 32.00s (53% of the build)" ]
 
     run_report report_slow_build "${_log}" SLOW_BUILD_SHARE_PERCENT=100 SLOW_BUILD_THRESHOLD_SECONDS=10
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [[ "${output}" == *"warning above 100% of the build or 10s):"* ]]
+    [[ "${output}" == *"warning above 100% of a build of 60s or more, or above 10s):"* ]]
     [ "$(printf '%s\n' "${output}" | grep -c '^WARNING: slow build part')" -eq 3 ]
     [[ "${output}" == *"WARNING: slow build part: project App 13.00s (22% of the build)"* ]]
 
@@ -330,6 +330,34 @@ WARNING: slow build part: target CoreCompile 32.00s (53% of the build)" ]
     run_report report_slow_build "${_log}" SLOW_BUILD_SHARE_PERCENT=25 SLOW_BUILD_THRESHOLD_SECONDS=30
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "${output}" == *"WARNING: slow build part: target CoreCompile 32.00s (53% of the build)"* ]]
+}
+
+@test "a build faster than SLOW_BUILD_SHARE_MIN_BUILD_SECONDS gets no share warnings, only seconds ones" {
+    local _log="${BATS_TEST_TMPDIR}/build.log"
+    write_build_log "${_log}"
+
+    # The 60s build is under a 61s floor: App.Tests (33%) is not warned on its
+    # share, while CoreCompile (32s) is still over the 30s threshold.
+    run_report report_slow_build "${_log}" SLOW_BUILD_SHARE_MIN_BUILD_SECONDS=61
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"warning above 25% of a build of 61s or more, or above 30s):"* ]]
+    [[ "${output}" == *"20.00s    33%  App.Tests"* ]]
+    [ "$(printf '%s\n' "${output}" | grep '^WARNING')" = "WARNING: slow build part: target CoreCompile 32.00s (53% of the build)" ]
+
+    # At the floor the share rule applies again.
+    run_report report_slow_build "${_log}" SLOW_BUILD_SHARE_MIN_BUILD_SECONDS=60
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"WARNING: slow build part: project App.Tests 20.00s (33% of the build)"* ]]
+}
+
+@test "an invalid SLOW_BUILD_SHARE_MIN_BUILD_SECONDS falls back to 60 with a warning" {
+    local _log="${BATS_TEST_TMPDIR}/build.log"
+    write_build_log "${_log}"
+
+    run_report report_slow_build "${_log}" SLOW_BUILD_SHARE_MIN_BUILD_SECONDS=soon
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"WARNING: SLOW_BUILD_SHARE_MIN_BUILD_SECONDS=soon is not a non-negative number, using 60"* ]]
+    [[ "${output}" == *"WARNING: slow build part: project App.Tests 20.00s (33% of the build)"* ]]
 }
 
 @test "slowest build parts with no performance summary or no log says so and succeeds" {
@@ -425,7 +453,7 @@ run_buildtest() {
     shift
     cd "${_repo}" || return 1
     run env -u SLOW_TEST_THRESHOLD_SECONDS -u SLOW_TEST_TOP -u SLOW_BUILD_SHARE_PERCENT \
-        -u SLOW_BUILD_THRESHOLD_SECONDS -u CLAUDECODE PATH="${BATS_TEST_TMPDIR}/bin:${TEST_PATH}" \
+        -u SLOW_BUILD_THRESHOLD_SECONDS -u SLOW_BUILD_SHARE_MIN_BUILD_SECONDS -u CLAUDECODE PATH="${BATS_TEST_TMPDIR}/bin:${TEST_PATH}" \
         TMPDIR="${BATS_TEST_TMPDIR}/tmp" "$@" sh "${BUILDTEST}"
 }
 
@@ -454,7 +482,7 @@ run_buildtest() {
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [[ "${output}" == *"Slowest tests (top 1 of 2, warning above 10s):"* ]]
-    [[ "${output}" == *"warning above 90% of the build or 50s):"* ]]
+    [[ "${output}" == *"warning above 90% of a build of 60s or more, or above 50s):"* ]]
     [[ "${output}" != *"WARNING"* ]]
 }
 
