@@ -17,6 +17,10 @@
 #   SLOW_BUILD_SHARE_PERCENT     25  a project or target taking a larger share
 #                                    of the build's elapsed time is slow
 #   SLOW_BUILD_THRESHOLD_SECONDS 30  a project or target taking longer is slow
+#   SLOW_BUILD_SHARE_MIN_BUILD_SECONDS
+#                                60  the share rule applies only to a build
+#                                    that took at least this long; in a fast
+#                                    build every project is a large share
 # The names match the CI template's, so local and CI runs behave alike.
 
 # report_slow_tests_trx <directory>
@@ -273,6 +277,7 @@ def share(seconds, elapsed):
 def report_build(path):
     share_limit = setting("SLOW_BUILD_SHARE_PERCENT", 25, False)
     seconds_limit = setting("SLOW_BUILD_THRESHOLD_SECONDS", 30, False)
+    share_floor = setting("SLOW_BUILD_SHARE_MIN_BUILD_SECONDS", 60, False)
     print()
     if not os.path.isfile(path):
         print("Slowest build parts: no build log found")
@@ -282,7 +287,14 @@ def report_build(path):
         print("Slowest build parts: no build performance summary found")
         return
     took = f"build took {elapsed:.1f}s, " if elapsed else ""
-    print(f"Slowest build parts ({took}warning above {share_limit:g}% of the build or {seconds_limit:g}s):")
+    print(
+        f"Slowest build parts ({took}warning above {share_limit:g}% of a build of {share_floor:g}s or more,"
+        f" or above {seconds_limit:g}s):"
+    )
+    # Projects build in parallel, so in a small solution every project is a
+    # large share of the elapsed time however fast the build is. Only a build
+    # that is itself slow has parts worth flagging by their share.
+    share_applies = bool(elapsed) and elapsed >= share_floor
     headings = {
         "project": "Projects (their own targets, not waiting for the projects they reference)",
         "target": "Targets (summed over every project and parallel node)",
@@ -300,8 +312,8 @@ def report_build(path):
         if kind not in ("project", "target"):
             continue
         for name, seconds in ranked:
-            share_checked = not (kind == "target" and name in SHARE_EXEMPT_TARGETS)
-            over_share = share_checked and elapsed and seconds * 100 / elapsed > share_limit
+            share_checked = share_applies and not (kind == "target" and name in SHARE_EXEMPT_TARGETS)
+            over_share = share_checked and seconds * 100 / elapsed > share_limit
             if over_share or seconds > seconds_limit:
                 percent = f" ({seconds * 100 / elapsed:.0f}% of the build)" if elapsed else ""
                 warnings.append(f"slow build part: {kind} {name} {seconds:.2f}s{percent}")

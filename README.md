@@ -492,6 +492,7 @@ local and CI runs behave alike:
 | `SLOW_TEST_TOP` | `10` | How many of the slowest tests the `Slowest tests` block lists (`0` lists none, warnings still print) |
 | `SLOW_BUILD_SHARE_PERCENT` | `25` | A project or target taking a larger share of the build's elapsed time gets a `WARNING: slow build part` line. `CoreCompile` is exempt, because its time is summed over every project and parallel node; it is checked against the seconds threshold only |
 | `SLOW_BUILD_THRESHOLD_SECONDS` | `30` | A project or target taking longer gets a `WARNING: slow build part` line |
+| `SLOW_BUILD_SHARE_MIN_BUILD_SECONDS` | `60` | The share rule applies only to a build that took at least this long. Projects build in parallel, so in a fast build of a small solution every project is a large share of the elapsed time; the seconds threshold still applies to every build |
 
 The build report lists the 5 slowest of each kind. A value that is not a
 non-negative number is reported with a warning and the default is used.
