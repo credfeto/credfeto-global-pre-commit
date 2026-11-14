@@ -586,8 +586,14 @@ sh "$SCRIPTS_DIR/clean-package-lock-registry" $MODE_ARG \
 # ── 2. Linters via pre-commit ─────────────────────────────────────────────────
 # Use the project's own config if it has one; otherwise run the global linting
 # config bundled with these hooks.
+# pre-commit shows a passing hook's output only with --verbose, so run-bats
+# also writes its slowest tests block to RUN_BATS_REPORT_FILE, printed here
+# once pre-commit has passed (a failing run shows the block itself).
 if [ "$HAS_PRECOMMIT" -eq 1 ]; then
     REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+    RUN_BATS_REPORT_FILE="$(git rev-parse --absolute-git-dir)/run-bats-slowest-tests"
+    export RUN_BATS_REPORT_FILE
+    rm -f "$RUN_BATS_REPORT_FILE"
     if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
         info "Running project pre-commit hooks..."
         # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
@@ -598,6 +604,10 @@ if [ "$HAS_PRECOMMIT" -eq 1 ]; then
         pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" $MODE_ARG \
             || die "pre-commit (global linters)"
     fi
+    if [ -s "$RUN_BATS_REPORT_FILE" ]; then
+        cat "$RUN_BATS_REPORT_FILE"
+    fi
+    rm -f "$RUN_BATS_REPORT_FILE"
 fi
 
 # ── 3. Changelog: lint CHANGELOG.md if changed ───────────────────────────────

@@ -241,7 +241,7 @@ git config --global core.hooksPath
 | `pre-commit` on PATH, repo has `.pre-commit-config.yaml` | Run project pre-commit hooks | `pre-commit run` |
 | `pre-commit` on PATH, no project config | Run global linters (`.pre-commit-config.yaml`) | `pre-commit run --config <global>` |
 | `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets / *.globalconfig / *.ruleset` | Benchmark project naming: a project whose `.cs` files use BenchmarkDotNet (`using BenchmarkDotNet…` or `[Benchmark]`, even when the package only comes in transitively) must be named `<Name>.Benchmark.Tests` and use that namespace, the only benchmark name `buildtest` keeps out of its main test run | `scripts/check-benchmark-project-names` |
-| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | One solution restore, then `dotnet format --no-restore` on the staged `.cs` files and `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) on the staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what they change, then a full .NET build + test (integration tests and all benchmark test projects always excluded from the main run via a static filter; only the benchmark projects staged changes could affect are then run individually and sequentially, see `scripts/benchmark-test-affected`) | `scripts/buildtest` |
+| `*.cs / *.csproj / *.sln / *.slnx / *.props / *.targets` + `dotnet` on PATH | One solution restore, then `dotnet format --no-restore` on the staged `.cs` files and `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) on the staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what they change, then a full .NET build + test (integration tests and all benchmark test projects always excluded from the main run via a static filter; only the benchmark projects staged changes could affect are then run individually and sequentially, see `scripts/benchmark-test-affected`), reporting the slowest tests and build parts and each step's time (see [Slow tests and slow build parts](#slow-tests-and-slow-build-parts)) | `scripts/buildtest` |
 | `*.ts / *.tsx / *.js / *.jsx` + `package.json` + `npm` on PATH | NPM tests | `npm run test:noe2e` (falls back to `npm test`) |
 | `*.sql` + `dotnet` on PATH | T-SQL lint | `dotnet tsqllint .` |
 | `*.sql` + `sqlfluff` on PATH | SQL style fix of staged `*.sql` files, re-staging only those (the commit is blocked if a staged `*.sql` file also has unstaged changes), then SQL style lint | `sqlfluff fix -- <staged *.sql files>`, then `sqlfluff lint .` |
@@ -442,6 +442,60 @@ runs nothing, unless it holds the designated file of a change whose deletion
 triggers the whole suite (see above), in which case that one chunk runs the
 whole suite.
 
+## Slow tests and slow build parts
+
+`buildtest` and `run-bats` report where a commit's time goes. Every part of
+this is warning-only: a slow test, a slow build part, a missing `python3` or
+an unreadable report prints a `WARNING:` line, and the commit carries on.
+
+- **Slowest tests (.NET).** `buildtest`'s test run writes a TRX file per test
+  project into a temporary directory (`--report-xunit-trx`, xunit v3's own TRX
+  report, so no extra package is needed). Once the tests finish, pass or fail,
+  it prints a `Slowest tests` block listing the slowest tests, slowest first,
+  then a `WARNING: slow test <name> <seconds>s` line for every test over the
+  threshold.
+- **Slowest tests (bats).** `run-bats` runs bats with `--timing`, so each TAP
+  line shows how long its test took, and with a JUnit report in a temporary
+  directory, from which it prints the same `Slowest tests` block (tests are
+  named `<file>: <test>`). pre-commit shows a passing hook's output only
+  with `--verbose`, so the hook prints this block again once pre-commit has
+  passed. A bats older than 1.5.0, which has no `--report-formatter`, runs
+  as before without the block.
+- **Slowest build parts.** `buildtest`'s build writes a detailed MSBuild file
+  log to a temporary directory, with `PerformanceSummary`, `ShowTimestamp`
+  and `-p:ReportAnalyzer=true`; the console output is unchanged. It then
+  prints the slowest projects, targets, analyzers and source generators, and a
+  `WARNING: slow build part: <project|target> <name> <seconds>s (<share>% of
+  the build)` line for every project or target over either threshold. The
+  share is of the build's elapsed time. A project's time is the time spent in
+  its own targets, not the time it waits for the projects it references, and a
+  target's time is summed over every project and parallel node, so its share
+  can pass 100%. The solution's own targets, and the targets that only wait for
+  other projects (`Build`, `ResolveProjectReferences` and any other target
+  that runs the `MSBuild` or `CallTarget` task), are left out.
+  Analyzer and generator times are summed over every project and listed, but
+  not warned on.
+- **Step timings.** `buildtest` ends every run, success or failure, with one
+  line naming only the steps that ran, for example
+  `buildtest timings: restore=12s format=31s cleanup=2s build=95s test=40s pack=20s total=230s`.
+  `format` is `dotnet format`, `cleanup` is `cscleanup`, `test` includes the
+  benchmark tests, `publish` appears when something was published, and `total`
+  is the whole of `buildtest`, including the steps not listed.
+
+The thresholds are read from the environment, so a repository or user can
+tune them without editing the scripts. The names are the CI template's, so
+local and CI runs behave alike:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SLOW_TEST_THRESHOLD_SECONDS` | `2` | A test that takes longer gets a `WARNING: slow test` line |
+| `SLOW_TEST_TOP` | `10` | How many of the slowest tests the `Slowest tests` block lists (`0` lists none, warnings still print) |
+| `SLOW_BUILD_SHARE_PERCENT` | `25` | A project or target taking a larger share of the build's elapsed time gets a `WARNING: slow build part` line. `CoreCompile` is exempt, because its time is summed over every project and parallel node; it is checked against the seconds threshold only |
+| `SLOW_BUILD_THRESHOLD_SECONDS` | `30` | A project or target taking longer gets a `WARNING: slow build part` line |
+
+The build report lists the 5 slowest of each kind. A value that is not a
+non-negative number is reported with a warning and the default is used.
+
 ---
 
 ## Baseline mode (`--all-files`)
@@ -508,7 +562,7 @@ system package manager rather than `pre-commit autoupdate`.
 
 | Script | Source |
 | --- | --- |
-| `scripts/buildtest` | Vendored from [credfeto/scripts: buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest), with a local formatter step (`scripts/lib/dotnet-format.sh`) between its restore and its build: `dotnet format --no-restore` on the staged `.cs` files, then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) on the staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what they change |
+| `scripts/buildtest` | Vendored from [credfeto/scripts: buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest), with a local formatter step (`scripts/lib/dotnet-format.sh`) between its restore and its build: `dotnet format --no-restore` on the staged `.cs` files, then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) on the staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what they change; plus the local warning-only slowest tests and slowest build parts reports (`scripts/lib/slow-report.sh`) and its per-step timings line |
 | `scripts/benchmark-test-affected` | Local addition, decides which benchmark test projects `buildtest`'s separate benchmark-only test step should run, from staged git changes alone (no `dotnet` required) |
 | `scripts/check-benchmark-project-names` | Local addition, fails when a project containing BenchmarkDotNet benchmarks is not named `<Name>.Benchmark.Tests` or does not use that namespace (no `dotnet` required) |
 | `scripts/latest-target-framework` | Local addition, prints a multi-targeted `.csproj`'s latest target framework moniker so `buildtest`'s benchmark test step can restrict itself to it (older frameworks are assumed to work); prints nothing for a single-targeted project (no `dotnet` required) |
@@ -519,7 +573,7 @@ system package manager rather than `pre-commit autoupdate`.
 | `scripts/run-eslint` | Wrapper for eslint; skips silently if no `package.json` or eslint config |
 | `scripts/run-stylelint` | Wrapper for stylelint; skips silently if no `package.json` |
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
-| `scripts/run-bats` | Wrapper for bats, runs the `test/` files the staged files affect, or the whole suite when they cannot be narrowed down (see [Bats test selection](#bats-test-selection-run-bats)) |
+| `scripts/run-bats` | Wrapper for bats, runs the `test/` files the staged files affect, or the whole suite when they cannot be narrowed down (see [Bats test selection](#bats-test-selection-run-bats)), then lists the slowest tests (see [Slow tests and slow build parts](#slow-tests-and-slow-build-parts)) |
 | `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |
 
 ---

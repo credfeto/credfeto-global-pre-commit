@@ -78,6 +78,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added test/mode-arg-convention.bats, a regression test enforcing that scripts under src/scripts/ route git file-list selection through the shared all-files helper instead of re-deriving it directly (#234)
 - check-funfair-props pre-commit check that removes src/FunFair.props (git rm if tracked, or delete if untracked) and fails the commit when origin remote's owner is not funfair-tech (#240)
 - sqlfluff hook: runs sqlfluff fix only on staged SQL files in commit mode, re-stages only those, and fails if a staged SQL file has unstaged changes (--all-files mode unchanged) (#258)
+- Pre-commit lists the slowest tests (.NET and bats) and the slowest projects, targets, analyzers and source generators of the .NET build, warning on any over thresholds a repository or user can tune with SLOW_TEST_THRESHOLD_SECONDS, SLOW_TEST_TOP, SLOW_BUILD_SHARE_PERCENT and SLOW_BUILD_THRESHOLD_SECONDS, so slow tests and slow build parts are visible before commits get painful; the warnings never fail a commit (#306)
+- buildtest prints one timings line per run with the time each step took (restore, format, cleanup, build, test, pack), giving per-step commit timings a stable source (#306)
 
 ### Fixed
 - The benchmark project-name guard now treats a project as a benchmark project only when its source runs benchmarks (a `Benchmark<T>()` helper call or `BenchmarkRunner.Run`). BenchmarkDotNet `using` directives and `[Benchmark]` attributes, which analyzer test projects carry inside string literals, no longer trigger it (#297)

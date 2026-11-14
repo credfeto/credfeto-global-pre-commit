@@ -6,10 +6,87 @@ die() {
     exit 1
 }
 
+BUILDTEST_STARTED=$(date +%s)
+BUILDTEST_REPORT_DIR=
+
+# One line per run, success or failure, naming only the steps that ran:
+#   buildtest timings: restore=Ns format=Ns cleanup=Ns build=Ns test=Ns pack=Ns total=Ns
+# format is dotnet format and cleanup is cscleanup (both timed by
+# lib/dotnet-format.sh), test includes the benchmark tests, publish appears
+# between test and pack when something was published, and total is the whole
+# of buildtest, so also covers the steps that are not listed (cache clear,
+# tool restore, clean).
+print_timings() {
+    _timings=
+    for _step in "restore=${RESTORE_SECONDS:-}" "format=${DOTNET_FORMAT_SECONDS:-}" \
+        "cleanup=${CSCLEANUP_SECONDS:-}" "build=${BUILD_SECONDS:-}" "test=${TEST_SECONDS:-}" \
+        "publish=${PUBLISH_SECONDS:-}" "pack=${PACK_SECONDS:-}"; do
+        case "$_step" in
+            *=) ;;
+            *) _timings="${_timings} ${_step}s" ;;
+        esac
+    done
+    printf '\nbuildtest timings:%s total=%ss\n' "$_timings" "$(($(date +%s) - BUILDTEST_STARTED))"
+}
+
 cleanup() {
+    [ -n "$BUILDTEST_REPORT_DIR" ] && rm -rf "$BUILDTEST_REPORT_DIR"
+    print_timings
     [ "$RESTORE" = "1" ] && git checkout "$RULESET_FILE"
 }
 trap cleanup EXIT
+
+# timed <step> <command>...
+# Runs <command>, adds the whole seconds it took to <step>'s total for the
+# timings line, and returns its exit status.
+timed() {
+    _timed_step=$1
+    shift
+    _timed_started=$(date +%s)
+    _timed_status=0
+    "$@" || _timed_status=$?
+    _timed_seconds=$(($(date +%s) - _timed_started))
+    case "$_timed_step" in
+        restore) RESTORE_SECONDS=$((${RESTORE_SECONDS:-0} + _timed_seconds)) ;;
+        build) BUILD_SECONDS=$((${BUILD_SECONDS:-0} + _timed_seconds)) ;;
+        test) TEST_SECONDS=$((${TEST_SECONDS:-0} + _timed_seconds)) ;;
+        publish) PUBLISH_SECONDS=$((${PUBLISH_SECONDS:-0} + _timed_seconds)) ;;
+        pack) PACK_SECONDS=$((${PACK_SECONDS:-0} + _timed_seconds)) ;;
+        *) die "timed: unknown step $_timed_step" ;;
+    esac
+    return "$_timed_status"
+}
+
+# run_build <dotnet build argument>...
+# Runs dotnet build with a file log that is only read for the slow build parts
+# report, printed whether or not the build succeeds: ShowTimestamp times
+# each project's own targets, its PerformanceSummary gives the target times,
+# and ReportAnalyzer makes the compiler report analyzer and source generator
+# times, which it logs at detailed verbosity only. The console output is
+# unchanged.
+run_build() {
+    _build_status=0
+    timed build dotnet build "$@" \
+        "-p:ReportAnalyzer=true" \
+        "-flp:logfile=$BUILDTEST_REPORT_DIR/build.log;verbosity=detailed;PerformanceSummary;ShowTimestamp" \
+        || _build_status=$?
+    report_slow_build "$BUILDTEST_REPORT_DIR/build.log"
+    return "$_build_status"
+}
+
+# run_tests <dotnet test argument>...
+# Runs dotnet test with each test project writing a TRX file (xunit v3's own
+# TRX report, which needs no extra package), then prints the slowest tests
+# report whether or not the tests passed.
+run_tests() {
+    _tests_status=0
+    timed test dotnet test "$@" \
+        --report-xunit-trx \
+        --results-directory "$BUILDTEST_REPORT_DIR/tests" \
+        || _tests_status=$?
+    report_slow_tests_trx "$BUILDTEST_REPORT_DIR/tests"
+    return "$_tests_status"
+}
 
 info() {
     printf '\n\033[32m→\033[0m %s\n' "$*"
@@ -66,6 +143,8 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 parse_all_files_mode_arg "$1"
 # shellcheck source=src/scripts/lib/dotnet-format.sh
 . "$SCRIPT_DIR/lib/dotnet-format.sh"
+# shellcheck source=src/scripts/lib/slow-report.sh
+. "$SCRIPT_DIR/lib/slow-report.sh"
 
 CLEAR="http-cache"
 
@@ -132,7 +211,7 @@ fi
 # formatter sees the repository's own analyzer settings, as a developer's IDE
 # does; restore does not read them.
 info "Restoring..."
-dotnet restore || die "######## Restore Failed ########"
+timed restore dotnet restore || die "######## Restore Failed ########"
 
 # Formats against the restore above (dotnet format --no-restore), then
 # cscleanup, re-staging the changed files, so the build below compiles and
@@ -152,8 +231,12 @@ fi
 info "Cleaning..."
 dotnet clean "--nowarn:MSB4241" || die "######## Clean Failed ########"
 
+# The build and test reports go here; cleanup() removes it.
+BUILDTEST_REPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/buildtest-report.XXXXXXXXXX") \
+    || die "Could not create a directory for the build and test reports"
+
 info "Building..."
-dotnet build \
+run_build \
   --warnaserror \
   --configuration Release \
   --no-restore \
@@ -190,7 +273,7 @@ else
   # affected ones separately. *.Benchmark.Tests is the only accepted benchmark
   # project name and namespace; check-benchmark-project-names fails the commit
   # before this point if any project with benchmarks is named otherwise.
-  dotnet test \
+  run_tests \
     --configuration Release \
     --no-restore \
     --no-build \
@@ -233,7 +316,7 @@ else
           fi
 
           info "Running benchmark tests: $bench_project"
-          dotnet test "$bench_project" \
+          timed test dotnet test "$bench_project" \
             --configuration Release \
             --no-restore \
             --no-build \
@@ -270,7 +353,7 @@ if [ -n "$PUBLISHABLE" ]; then
       fw=$(printf '%s' "$fw" | tr -d '[:space:]')
       [ -z "$fw" ] && continue
       OUTFOLDER=$(mktemp -d "${TMPDIR:-/tmp}/buildtest-publish.XXXXXXXXXX")
-      dotnet publish "$project" \
+      timed publish dotnet publish "$project" \
         --no-restore \
         --warnaserror \
         --configuration Release \
@@ -303,7 +386,7 @@ fi
 
 if [ "$PACK" = "1" ]; then
   info "Packing..."
-  dotnet pack \
+  timed pack dotnet pack \
     --warnaserror \
     --configuration Release \
     --no-restore \
