@@ -270,8 +270,7 @@ else
   # Integration tests are always safe to skip in pre-commit. Every benchmark
   # test project is always excluded here too, regardless of whether it is
   # affected by staged changes; benchmark-test-affected below runs only the
-  # affected ones separately (not for an AI agent's commit, where CI runs
-  # them). *.Benchmark.Tests is the only accepted benchmark
+  # affected ones separately. *.Benchmark.Tests is the only accepted benchmark
   # project name and namespace; check-benchmark-project-names fails the commit
   # before this point if any project with benchmarks is named otherwise.
   run_tests \
