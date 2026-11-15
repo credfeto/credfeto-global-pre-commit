@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Security
 - Pin GitHub Actions uses: references to commit SHA instead of tag (#193)
 ### Added
+- buildtest skips the affected benchmark test step for an AI agent's commit (CLAUDECODE=1), leaving the benchmarks to CI, so an agent's commit hook no longer runs full BenchmarkDotNet suites (#311)
 - Pre-commit fails when a project containing BenchmarkDotNet benchmarks (found by source, so a transitive reference counts) is not named *.Benchmark.Tests or uses another namespace, so its benchmarks no longer run as ordinary tests on every commit (#294)
 - Add acceptance tests for check-merge-conflict hook covering pass and fail cases (#67)
 - Add acceptance tests for check-shebang-scripts-are-executable hook covering pass and fail cases (#75)
