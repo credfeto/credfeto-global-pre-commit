@@ -87,7 +87,14 @@ shared_pipx() {
 # restrictive umask; pipx keeps an existing venv's modes.
 #   $1 = package name
 pipx_ensure() {
-    shared_pipx install "$1" 2>/dev/null || shared_pipx upgrade "$1" || die "failed to install $1"
+    # pipx install exits 0 for a package that is already installed without
+    # upgrading it, so an installed package has to be detected and upgraded.
+    if shared_pipx list --short 2>/dev/null \
+        | awk -v pkg="$1" 'tolower($1)==tolower(pkg){found=1} END{exit !found}'; then
+        shared_pipx upgrade "$1" || die "failed to upgrade $1"
+    else
+        shared_pipx install "$1" || die "failed to install $1"
+    fi
     make_tree_readable_by_all "$PIPX_SHARED_HOME"
 }
 
