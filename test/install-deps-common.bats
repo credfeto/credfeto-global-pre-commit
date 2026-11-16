@@ -284,6 +284,17 @@ chmod -R a+rX ${_prefix}/lib/node_modules root=1"
         || fail_test "shared install not run: $(calls)"
 }
 
+@test "install_npm_globals warns and skips, without installing, when npm is not on PATH" {
+    write_fake_sudo "${FAKE_BIN}"
+
+    FAKE_SUDO_LOG="${CALL_LOG}" run_helper install_npm_globals
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"npm not found, skipping npm global packages"* ]] \
+        || fail_test "missing warning: ${output}"
+    [[ "$(calls)" != *"npm install"* ]] || fail_test "npm install was run: $(calls)"
+}
+
 @test "install_npm_globals fails, without opening the shared prefix, when npm fails" {
     write_npm_fakes
 
