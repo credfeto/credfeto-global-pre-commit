@@ -548,6 +548,12 @@ _bats_reports_supported() {
 # hides a passing hook's output), the block is appended to that file too.
 _bats_run() {
     local report status=0
+    # A caller inside a git hook or worktree exports GIT_DIR and friends, which
+    # redirect every unqualified git command in the tests to the caller's
+    # repository instead of each fixture's. Cleared only now, after the
+    # repo-root and changed-file detection above, which needs them.
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+        GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
     if ! _bats_reports_supported || ! report=$(mktemp -d "${TMPDIR:-/tmp}/run-bats-report.XXXXXXXXXX"); then
         exec bats "$@"
     fi

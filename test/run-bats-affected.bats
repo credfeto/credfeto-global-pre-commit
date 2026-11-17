@@ -581,3 +581,14 @@ run_affected_range() {
     run_affected "${T}" src/scripts/alpha-tool.sh
     assert_ran_only "${status}" "${output}" marker-alpha
 }
+
+@test "run-bats clears inherited GIT_* variables so fixtures cannot write to the caller's repository" {
+    local _sentinel="${BATS_TEST_TMPDIR}/sentinel" _before _after
+    git init --quiet "${_sentinel}"
+    printf '#!/usr/bin/env bats\n@test "marker-leak" {\n  git config sentinel.leak yes\n  git symbolic-ref HEAD refs/heads/leaked\n}\n' > "${T}/test/leak.bats"
+    _before="$(cat "${_sentinel}/.git/config" "${_sentinel}/.git/HEAD"; find "${_sentinel}/.git/refs" | sort)"
+    run_isolated "${T}" "${TEST_PATH}" env GIT_DIR="${_sentinel}/.git" GIT_INDEX_FILE="${_sentinel}/.git/index" \
+        "${REPO_DIR}/src/scripts/run-bats" test/leak.bats
+    _after="$(cat "${_sentinel}/.git/config" "${_sentinel}/.git/HEAD"; find "${_sentinel}/.git/refs" | sort)"
+    [ "${_before}" = "${_after}" ] || fail_with_run_output "${status}" "${output}" "sentinel repository unchanged"
+}
