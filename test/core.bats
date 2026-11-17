@@ -320,6 +320,49 @@ load test_helper
     [ "${status}" -eq 1 ]
 }
 
+@test "staging Directory.Build.targets in non-hooks repo is rejected (issue #277)" {
+    local T
+    T="$(make_repo feature/dbt-root-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    printf '<Project></Project>\n' > "${T}/Directory.Build.targets"
+    git -C "${T}" add .pre-commit-config.yaml Directory.Build.targets
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging src/Directory.Build.targets in non-hooks repo is rejected (issue #277)" {
+    local T
+    T="$(make_repo feature/dbt-src-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/src"
+    printf '<Project></Project>\n' > "${T}/src/Directory.Build.targets"
+    git -C "${T}" add .pre-commit-config.yaml src/Directory.Build.targets
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging src/Directory.Build.props in non-hooks repo is rejected (issue #277)" {
+    local T
+    T="$(make_repo feature/dbp-src-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/src"
+    printf '<Project></Project>\n' > "${T}/src/Directory.Build.props"
+    git -C "${T}" add .pre-commit-config.yaml src/Directory.Build.props
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
+@test "staging src/.globalconfig in non-hooks repo is rejected (issue #277)" {
+    local T
+    T="$(make_repo feature/gc-src2-nonhooks-test)"
+    printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
+    mkdir -p "${T}/src"
+    printf '<Project></Project>\n' > "${T}/src/.globalconfig"
+    git -C "${T}" add .pre-commit-config.yaml src/.globalconfig
+    run_hook "${T}"
+    [ "${status}" -eq 1 ]
+}
+
 @test "staging a file under .github/linters/ in non-hooks repo is now rejected" {
     local T
     T="$(make_repo feature/github-linters-nonhooks-test)"

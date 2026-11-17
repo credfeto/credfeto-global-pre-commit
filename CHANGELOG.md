@@ -157,6 +157,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - dotnet format in pre-commit now applies its IDE style and analyzer fixes to staged .cs files: it was given absolute --include paths, which match nothing, so it silently changed nothing (#302)
 - pipx_ensure now upgrades pipx packages that are already installed (detected with pipx list --short) instead of only installing missing ones, so re-running the install picks up newer versions (#289)
 - install_npm_globals skips with a warning instead of failing the whole install when npm is not on PATH (for example a system node without the separate npm package) (#273)
+- Directory.Build.targets is now protected from being added, changed or deleted in every repo, at any depth, as Directory.Build.props and .globalconfig already were (#277)
 
 ### Changed
 - Benchmark test projects are recognised only by the name *.Benchmark.Tests (case-sensitive); the BenchMark, Bench, singular .Test and other case variants are no longer treated as benchmark projects (#294)

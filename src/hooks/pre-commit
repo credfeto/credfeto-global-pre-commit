@@ -213,7 +213,7 @@ is_protected_everywhere_file() {
         .tsqllint*) return 0 ;;
         .ai-instructions) return 0 ;;
         CONTRIBUTING.md) return 0 ;;
-        Directory.Build.props) return 0 ;;
+        Directory.Build.props | Directory.Build.targets) return 0 ;;
     esac
     return 1
 }
