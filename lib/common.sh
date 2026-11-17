@@ -226,6 +226,12 @@ install_shared_node() {
 # and the packages are then made readable by all, which also repairs a tree an
 # earlier run created under a restrictive umask.
 install_npm_globals() {
+    # Only a missing npm is a reason to skip: the prefix need not be writable
+    # by the caller, because the install runs as root.
+    if ! has npm; then
+        warn "npm not found, skipping npm global packages"
+        return 0
+    fi
     info "npm global packages (shared, $NPM_SHARED_PREFIX)"
     (
         umask 022
