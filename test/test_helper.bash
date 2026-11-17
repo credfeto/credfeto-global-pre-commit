@@ -19,6 +19,13 @@ HOOK="${HOOKS_DIR}/pre-commit"
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_SYSTEM=/dev/null
 
+# ── inherited git repository variables ────────────────────────────────────────
+# A suite started from a git hook or worktree inherits GIT_DIR, GIT_INDEX_FILE
+# and friends, which point every unqualified git command in a test (including
+# `git -C <fixture>`) at the caller's repository, so fixtures would write to it.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
+
 # ── pre-commit store isolation ────────────────────────────────────────────────
 # pre-commit records every config it runs in a SQLite database in its store
 # (default ~/.cache/pre-commit/db.db). Under bats --jobs, concurrent tests all
