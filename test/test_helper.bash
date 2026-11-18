@@ -26,6 +26,14 @@ export GIT_CONFIG_SYSTEM=/dev/null
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
 
+# A suite started from the pre-commit hook inherits the dotnet tool run methods
+# it cached (lib/dotnet-tool.sh), which would make a test's fake dotnet tool
+# list irrelevant, so they are cleared.
+for _dotnet_tool_var in $(compgen -e DOTNET_TOOL_RUN_); do
+    unset "${_dotnet_tool_var}"
+done
+unset _dotnet_tool_var
+
 # ── pre-commit store isolation ────────────────────────────────────────────────
 # pre-commit records every config it runs in a SQLite database in its store
 # (default ~/.cache/pre-commit/db.db). Under bats --jobs, concurrent tests all
