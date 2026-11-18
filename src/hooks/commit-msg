@@ -1,0 +1,70 @@
+#!/bin/sh
+# Global commit-msg hook: adds the step timings the pre-commit hook recorded
+# for this commit to its message as a single Pre-commit-Timings trailer.
+# Installed via: git config --global core.hooksPath /path/to/hooks
+#
+# Never blocks a commit: the timings are diagnostics, so anything that goes
+# wrong leaves the message as it was.
+
+SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
+# shellcheck source=src/scripts/lib/precommit-timings.sh
+. "$SCRIPTS_DIR/lib/precommit-timings.sh"
+
+warn() {
+    printf '\n\033[33m→\033[0m warning: %s\n' "$*" >&2
+}
+
+MESSAGE_FILE=$1
+[ -n "$MESSAGE_FILE" ] || exit 0
+
+TIMINGS_FILE=$(timings_file) || exit 0
+[ -f "$TIMINGS_FILE" ] || exit 0
+
+RECORDED_RUN_ID=
+TIMINGS_VALUE=
+{
+    read -r RECORDED_RUN_ID
+    read -r TIMINGS_VALUE
+} < "$TIMINGS_FILE" 2> /dev/null || true
+# Read once, by whichever commit comes next: a file this commit's own
+# pre-commit run did not write is stale and must not reach this message.
+rm -f "$TIMINGS_FILE"
+
+[ -n "$TIMINGS_VALUE" ] || exit 0
+[ "$RECORDED_RUN_ID" = "$(timings_run_id)" ] || exit 0
+
+WORK_DIR=$(mktemp -d) || {
+    warn "could not create a temporary directory, so the $PRECOMMIT_TIMINGS_KEY trailer was not added"
+    exit 0
+}
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+# `git commit -v` puts the diff below a scissors line, which git cuts off
+# with everything after it, and git interpret-trailers would put the trailer
+# inside the diff. Only the part above the scissors line gets the trailer.
+awk -v message="$WORK_DIR/message" -v tail="$WORK_DIR/tail" '
+    / ------------------------ >8 ------------------------$/ { cut = 1 }
+    cut { print > tail; next }
+    { print > message }
+' "$MESSAGE_FILE" || exit 0
+[ -f "$WORK_DIR/message" ] || : > "$WORK_DIR/message"
+[ -f "$WORK_DIR/tail" ] || : > "$WORK_DIR/tail"
+
+# git aborts a commit whose message is empty once comments are removed, but
+# only after this hook has run, so a trailer here would let it through.
+if [ -z "$(git stripspace --strip-comments < "$WORK_DIR/message")" ]; then
+    exit 0
+fi
+
+# --if-exists replace keeps one trailer when an amend re-runs the hooks.
+if ! git interpret-trailers --in-place --if-exists replace \
+    --trailer "$PRECOMMIT_TIMINGS_KEY: $TIMINGS_VALUE" "$WORK_DIR/message"; then
+    warn "git interpret-trailers failed, so the $PRECOMMIT_TIMINGS_KEY trailer was not added"
+    exit 0
+fi
+
+if ! cat "$WORK_DIR/message" "$WORK_DIR/tail" > "$WORK_DIR/combined" \
+    || ! cat "$WORK_DIR/combined" > "$MESSAGE_FILE"; then
+    warn "could not write the commit message, so the $PRECOMMIT_TIMINGS_KEY trailer may be missing"
+fi
+exit 0

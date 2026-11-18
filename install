@@ -83,6 +83,7 @@ make_executable() {
 
 make_executable \
     "$HOOKS_DIR/pre-commit" \
+    "$HOOKS_DIR/commit-msg" \
     "$HOOKS_DIR/pre-push" \
     "$SCRIPTS_DIR/buildtest" \
     "$SCRIPTS_DIR/benchmark-test-affected" \

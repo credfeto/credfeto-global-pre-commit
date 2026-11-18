@@ -16,6 +16,10 @@ When set, git uses that directory for every repository instead of the
 per-repo `.git/hooks/`. The `install` script sets this once and it applies
 to all present and future clones.
 
+The directory holds three hooks: `pre-commit` runs the checks, `commit-msg`
+adds the [Pre-commit timings](#pre-commit-timings) trailer to the message, and
+`pre-push` guards pushes.
+
 ---
 
 ## Dependencies
@@ -499,6 +503,59 @@ non-negative number is reported with a warning and the default is used.
 
 ---
 
+## Pre-commit timings
+
+Every commit that goes through the hooks records how long each pre-commit step
+took, as one `Pre-commit-Timings` trailer at the end of the commit message, so
+it is pushed with the commit and shows on GitHub. For example (one line in the
+commit message):
+
+```text
+Pre-commit-Timings: total=312s check-identity=1s check-merge-commits=0s check-ignored-files=0s check-funfair-props=0s clean-package-lock-registry=0s pre-commit=14s(check-merge-conflict=0.05s,shellcheck=1.2s,run-bats=skipped) check-changelog=skipped check-benchmark-project-names=0s buildcheck=4s buildtest=290s(restore=40s,format=11s,cleanup=2s,build=120s,test=110s,publish=skipped,pack=skipped) npm-test=skipped tsqllint=skipped sqlfluff=skipped cfn-lint=skipped
+```
+
+The format is stable, so it can be parsed:
+
+- Space-separated `name=value` pairs. `total` comes first and is the whole
+  pre-commit hook. Every other step is listed every time, in the order the
+  hook runs them.
+- A value is a duration in seconds with an `s` suffix, or `skipped` when the
+  step did not run. Scripted steps are timed in whole seconds; the pre-commit
+  framework's hooks keep pre-commit's own precision, up to two decimal
+  places with trailing zeros dropped (`0.3s`, `1.25s`, `0s`).
+- A step with parts lists them in parentheses, comma-separated, in the same
+  `name=value` form: `pre-commit` lists each hook id it ran, in run order (a
+  hook id that runs more than once is listed once, with its times added), and
+  `buildtest` lists its `restore`, `format` (`dotnet format`), `cleanup`
+  (`cscleanup`), `build`, `test`, `publish` and `pack` phases.
+
+The pre-commit hook writes the timings to
+`$(git rev-parse --git-dir)/precommit-timings` when it passes, and the
+`commit-msg` hook adds the trailer and deletes the file. Read the trailers
+with:
+
+```sh
+git log --format='%h %(trailers:key=Pre-commit-Timings,valueonly)'
+```
+
+No trailer is added when:
+
+- the hooks are skipped (`git commit --no-verify`);
+- the pre-commit hook wrote no file, for example in `--all-files` mode;
+- the file was left by an earlier commit that did not finish (it is deleted
+  instead);
+- the message is empty once comments are removed, so git still aborts the
+  commit.
+
+Amending a commit replaces its trailer rather than adding a second one. To
+show passing hooks' output, the pre-commit framework now runs with `--verbose`
+and its output is filtered back to the usual display, so a hook's
+`Name....Passed` line appears when the hook finishes rather than its name
+while it runs, and the output of a hook with `verbose: true` is shown only
+when it fails.
+
+---
+
 ## Baseline mode (`--all-files`)
 
 Run the full check suite against the whole tracked tree, independent of
@@ -522,6 +579,7 @@ a pre-work baseline check before starting a task. Compared to the default
 | Ignored-file / `src/FunFair.props` / dotnet-tools.json / install-location / freshness guards | Runs | Runs (unchanged) |
 | `pre-commit run` | Staged files only | `--all-files` |
 | Changelog / .NET / NPM / SQL / CloudFormation category checks | Gated on staged files | Gated on tracked files |
+| Step timings file for the `Pre-commit-Timings` trailer (see [Pre-commit timings](#pre-commit-timings)) | Written | Not written |
 
 Auto-fixers (`sqlfluff fix`, the .NET formatter, `clean-package-lock-registry`,
 and, in `--all-files` mode only, `check-changelog`'s `--lint --fix`) still
@@ -563,7 +621,7 @@ system package manager rather than `pre-commit autoupdate`.
 
 | Script | Source |
 | --- | --- |
-| `scripts/buildtest` | Vendored from [credfeto/scripts: buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest), with a local formatter step (`scripts/lib/dotnet-format.sh`) between its restore and its build: `dotnet format --no-restore` on the staged `.cs` files, then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) on the staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what they change; plus the local warning-only slowest tests and slowest build parts reports (`scripts/lib/slow-report.sh`) and its per-step timings line |
+| `scripts/buildtest` | Vendored from [credfeto/scripts: buildtest](https://github.com/credfeto/scripts/blob/main/development/buildtest), with a local formatter step (`scripts/lib/dotnet-format.sh`) between its restore and its build: `dotnet format --no-restore` on the staged `.cs` files, then `cscleanup` (`Credfeto.DotNet.Repo.Formatter`) on the staged `.cs`/`.csproj` files (every tracked one in `--all-files` mode), re-staging what they change; plus the local warning-only slowest tests and slowest build parts reports (`scripts/lib/slow-report.sh`) and its per-step timings line, also written to `$BUILDTEST_TIMINGS_FILE` when the pre-commit hook sets it, for the `buildtest` part of the [Pre-commit timings](#pre-commit-timings) trailer |
 | `scripts/benchmark-test-affected` | Local addition, decides which benchmark test projects `buildtest`'s separate benchmark-only test step should run, from staged git changes alone (no `dotnet` required) |
 | `scripts/check-benchmark-project-names` | Local addition, fails when a project containing BenchmarkDotNet benchmarks is not named `<Name>.Benchmark.Tests` or does not use that namespace (no `dotnet` required) |
 | `scripts/latest-target-framework` | Local addition, prints a multi-targeted `.csproj`'s latest target framework moniker so `buildtest`'s benchmark test step can restrict itself to it (older frameworks are assumed to work); prints nothing for a single-targeted project (no `dotnet` required) |
