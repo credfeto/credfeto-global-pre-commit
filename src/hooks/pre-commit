@@ -19,6 +19,11 @@ CURRENT_REPO_NAME=$(git remote get-url origin 2>/dev/null \
 PATH="$SCRIPTS_DIR:$PATH"
 export PATH
 
+# Sourced first so the total in the Pre-commit-Timings trailer covers the
+# whole hook.
+# shellcheck source=src/scripts/lib/precommit-timings.sh
+. "$SCRIPTS_DIR/lib/precommit-timings.sh"
+
 die() {
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
@@ -334,6 +339,22 @@ parse_all_files_mode_arg "$1"
 MODE_ARG=""
 [ "$MODE" = "all-files" ] && MODE_ARG="--all-files"
 
+# Only a commit-mode run that passes writes a timings file, so a file an
+# earlier, aborted commit left behind is removed before anything can fail.
+if [ "$MODE" = "commit" ]; then
+    timings_remove_file
+fi
+
+# finish_commit
+# Exits successfully, first handing this run's timings to the commit-msg hook
+# when this run is part of a commit.
+finish_commit() {
+    if [ "$MODE" = "commit" ]; then
+        timings_write_file
+    fi
+    exit 0
+}
+
 # Abort immediately if nothing is staged — prevents accidental empty commits.
 # Skipped in all-files mode, which is expected to run against a clean tree,
 # and skipped for a --amend (see is_amend above), which legitimately has
@@ -408,7 +429,7 @@ fi
 # Read NUL-separated for the reason given above ALL_STAGED.
 STAGED=$(git diff --cached --name-only --diff-filter=d -z | tr '\000' '\n')
 if [ "$MODE" = "commit" ]; then
-    [ -z "$STAGED" ] && exit 0
+    [ -z "$STAGED" ] && finish_commit
 fi
 
 cd "$REPO_ROOT" || die "cannot cd to repo root"
@@ -565,22 +586,23 @@ if [ "$MODE" = "commit" ]; then
     esac
 
     info "Checking git identity..."
-    sh "$SCRIPTS_DIR/check-identity" || die_blocked "git identity check"
+    timed_step check-identity sh "$SCRIPTS_DIR/check-identity" || die_blocked "git identity check"
 
     info "Checking for merge commits..."
-    sh "$SCRIPTS_DIR/check-merge-commits" || die "merge commit detected"
+    timed_step check-merge-commits sh "$SCRIPTS_DIR/check-merge-commits" || die "merge commit detected"
 fi
 
 info "Checking for ignored files..."
-sh "$SCRIPTS_DIR/check-ignored-files" || die "ignored files found in tracking"
+timed_step check-ignored-files sh "$SCRIPTS_DIR/check-ignored-files" || die "ignored files found in tracking"
 
 info "Checking for src/FunFair.props outside funfair-tech..."
-sh "$SCRIPTS_DIR/check-funfair-props" || die "src/FunFair.props is not permitted outside funfair-tech repositories"
+timed_step check-funfair-props sh "$SCRIPTS_DIR/check-funfair-props" \
+    || die "src/FunFair.props is not permitted outside funfair-tech repositories"
 
 # ── 1. Auto-fixers (normalise content before linting) ────────────────────────
 
 # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
-sh "$SCRIPTS_DIR/clean-package-lock-registry" $MODE_ARG \
+timed_step clean-package-lock-registry sh "$SCRIPTS_DIR/clean-package-lock-registry" $MODE_ARG \
     || die "clean-package-lock-registry"
 
 # ── 2. Linters via pre-commit ─────────────────────────────────────────────────
@@ -589,21 +611,31 @@ sh "$SCRIPTS_DIR/clean-package-lock-registry" $MODE_ARG \
 # pre-commit shows a passing hook's output only with --verbose, so run-bats
 # also writes its slowest tests block to RUN_BATS_REPORT_FILE, printed here
 # once pre-commit has passed (a failing run shows the block itself).
+# pre-commit runs with --verbose for each hook's duration, and
+# run_precommit_timed filters the output back to what a run without it shows.
 if [ "$HAS_PRECOMMIT" -eq 1 ]; then
     REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
     RUN_BATS_REPORT_FILE="$(git rev-parse --absolute-git-dir)/run-bats-slowest-tests"
     export RUN_BATS_REPORT_FILE
     rm -f "$RUN_BATS_REPORT_FILE"
+    PRECOMMIT_LOG="$(git rev-parse --absolute-git-dir)/precommit-timings-run.log"
     if [ -f "$REPO_ROOT/.pre-commit-config.yaml" ]; then
         info "Running project pre-commit hooks..."
-        # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
-        pre-commit run $MODE_ARG || die "pre-commit (project config)"
+        PRECOMMIT_CONFIG="$REPO_ROOT/.pre-commit-config.yaml"
+        PRECOMMIT_FAILURE="pre-commit (project config)"
     else
         info "Running global linters (pre-commit)..."
-        # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
-        pre-commit run --config "$REPO_DIR/.pre-commit-config.yaml" $MODE_ARG \
-            || die "pre-commit (global linters)"
+        PRECOMMIT_CONFIG="$REPO_DIR/.pre-commit-config.yaml"
+        PRECOMMIT_FAILURE="pre-commit (global linters)"
     fi
+    PRECOMMIT_STARTED=$(date +%s)
+    # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
+    if ! run_precommit_timed "$PRECOMMIT_LOG" --config "$PRECOMMIT_CONFIG" $MODE_ARG; then
+        rm -f "$PRECOMMIT_LOG"
+        die "$PRECOMMIT_FAILURE"
+    fi
+    timings_record_with_parts pre-commit "$PRECOMMIT_STARTED" "$(precommit_hook_timings "$PRECOMMIT_LOG")"
+    rm -f "$PRECOMMIT_LOG"
     if [ -s "$RUN_BATS_REPORT_FILE" ]; then
         cat "$RUN_BATS_REPORT_FILE"
     fi
@@ -614,7 +646,7 @@ fi
 if check_files_match '(^|/)CHANGELOG\.md$' && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected CHANGELOG.md changes — running changelog lint..."
     # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
-    sh "$SCRIPTS_DIR/check-changelog" $MODE_ARG || die "changelog lint"
+    timed_step check-changelog sh "$SCRIPTS_DIR/check-changelog" $MODE_ARG || die "changelog lint"
 fi
 
 # ── 4. .NET: format fix + build + test if source/project file changes ────────
@@ -623,25 +655,36 @@ fi
 # ordinary tests in buildtest.
 if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$'; then
     info "Detected .NET changes — checking benchmark project names..."
-    sh "$SCRIPTS_DIR/check-benchmark-project-names" || die "benchmark project naming"
+    timed_step check-benchmark-project-names sh "$SCRIPTS_DIR/check-benchmark-project-names" \
+        || die "benchmark project naming"
 fi
 if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' && [ "$HAS_DOTNET" -eq 1 ]; then
     info "Detected .NET changes — running buildcheck..."
-    sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
+    timed_step buildcheck sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
     # buildtest restores once, then formats (dotnet format, then cscleanup)
-    # and re-stages the target .cs/.csproj files, then builds and tests.
+    # and re-stages the target .cs/.csproj files, then builds and tests. It
+    # writes its phase timings to BUILDTEST_TIMINGS_FILE for the trailer.
     info "Detected .NET changes — running buildtest..."
+    BUILDTEST_TIMINGS_FILE="$(git rev-parse --absolute-git-dir)/precommit-timings-buildtest"
+    export BUILDTEST_TIMINGS_FILE
+    rm -f "$BUILDTEST_TIMINGS_FILE"
+    BUILDTEST_STEP_STARTED=$(date +%s)
     # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
-    sh "$SCRIPTS_DIR/buildtest" $MODE_ARG || die "dotnet buildtest"
+    if ! sh "$SCRIPTS_DIR/buildtest" $MODE_ARG; then
+        rm -f "$BUILDTEST_TIMINGS_FILE"
+        die "dotnet buildtest"
+    fi
+    timings_record_with_parts buildtest "$BUILDTEST_STEP_STARTED" "$(cat "$BUILDTEST_TIMINGS_FILE" 2> /dev/null)"
+    rm -f "$BUILDTEST_TIMINGS_FILE"
 fi
 
 # ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────
 if check_files_match '\.(ts|tsx|js|jsx)$' && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
     info "Detected TypeScript/JS changes — running npm tests..."
     if grep -q '"test:noe2e"' "$REPO_ROOT/package.json"; then
-        npm run test:noe2e || die "npm run test:noe2e"
+        timed_step npm-test npm run test:noe2e || die "npm run test:noe2e"
     else
-        npm test || die "npm test"
+        timed_step npm-test npm test || die "npm test"
     fi
 fi
 
@@ -650,9 +693,10 @@ if check_files_match '\.sql$'; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
         dotnet_tool_installed tsqllint TSQLLint || die_blocked "tsqllint dotnet tool is not installed"
         info "Detected SQL changes — running dotnet tsqllint..."
-        DOTNET_ROLL_FORWARD=Major dotnet tsqllint . || die "dotnet tsqllint"
+        timed_step tsqllint env DOTNET_ROLL_FORWARD=Major dotnet tsqllint . || die "dotnet tsqllint"
     fi
     if [ "$HAS_SQLFLUFF" -eq 1 ] && [ "${SQLFLUFF_EXECUTED:-0}" != "1" ]; then
+        SQLFLUFF_STEP_STARTED=$(date +%s)
         # File lists are NUL-separated end to end (git -z, grep -z, xargs -0),
         # for the reason given above ALL_STAGED, and handed to git with
         # --literal-pathspecs so a name containing a glob character matches
@@ -711,6 +755,7 @@ if check_files_match '\.sql$'; then
         rm -rf "$SQL_LIST_DIR"
         info "Detected SQL changes — running sqlfluff lint..."
         sqlfluff lint . || die "sqlfluff lint"
+        timings_record sqlfluff "$(timings_seconds_since "$SQLFLUFF_STEP_STARTED")s"
         export SQLFLUFF_EXECUTED=1
     fi
 fi
@@ -724,9 +769,11 @@ if [ "$HAS_CFNLINT" -eq 1 ]; then
           done)
     if [ -n "$CFN_FILES" ]; then
         info "Detected CloudFormation changes — running cfn-lint..."
+        CFN_STEP_STARTED=$(date +%s)
         printf '%s\n' "$CFN_FILES" | xargs cfn-lint --include-checks I --template || die "cfn-lint"
+        timings_record cfn-lint "$(timings_seconds_since "$CFN_STEP_STARTED")s"
     fi
 fi
 
 info "All checks passed."
-exit 0
+finish_commit

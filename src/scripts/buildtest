@@ -16,17 +16,29 @@ BUILDTEST_REPORT_DIR=
 # between test and pack when something was published, and total is the whole
 # of buildtest, so also covers the steps that are not listed (cache clear,
 # tool restore, clean).
+#
+# The pre-commit hook sets BUILDTEST_TIMINGS_FILE for its Pre-commit-Timings
+# trailer, which lists every phase, with skipped for a phase that did not
+# run, as one comma-separated line:
+#   restore=Ns,format=Ns,cleanup=Ns,build=Ns,test=Ns,publish=skipped,pack=skipped
 print_timings() {
     _timings=
+    _phases=
     for _step in "restore=${RESTORE_SECONDS:-}" "format=${DOTNET_FORMAT_SECONDS:-}" \
         "cleanup=${CSCLEANUP_SECONDS:-}" "build=${BUILD_SECONDS:-}" "test=${TEST_SECONDS:-}" \
         "publish=${PUBLISH_SECONDS:-}" "pack=${PACK_SECONDS:-}"; do
         case "$_step" in
-            *=) ;;
-            *) _timings="${_timings} ${_step}s" ;;
+            *=) _phases="${_phases:+${_phases},}${_step}skipped" ;;
+            *)
+                _timings="${_timings} ${_step}s"
+                _phases="${_phases:+${_phases},}${_step}s"
+                ;;
         esac
     done
     printf '\nbuildtest timings:%s total=%ss\n' "$_timings" "$(($(date +%s) - BUILDTEST_STARTED))"
+    if [ -n "${BUILDTEST_TIMINGS_FILE:-}" ]; then
+        printf '%s\n' "$_phases" > "$BUILDTEST_TIMINGS_FILE" 2> /dev/null || true
+    fi
 }
 
 cleanup() {
