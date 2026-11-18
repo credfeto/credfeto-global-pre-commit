@@ -20,8 +20,12 @@ MESSAGE_FILE=$1
 TIMINGS_FILE=$(timings_file) || exit 0
 [ -f "$TIMINGS_FILE" ] || exit 0
 
-RECORDED_RUN_ID=$(sed -n 1p "$TIMINGS_FILE" 2> /dev/null)
-TIMINGS_VALUE=$(sed -n 2p "$TIMINGS_FILE" 2> /dev/null)
+RECORDED_RUN_ID=
+TIMINGS_VALUE=
+{
+    read -r RECORDED_RUN_ID
+    read -r TIMINGS_VALUE
+} < "$TIMINGS_FILE" 2> /dev/null || true
 # Read once, by whichever commit comes next: a file this commit's own
 # pre-commit run did not write is stale and must not reach this message.
 rm -f "$TIMINGS_FILE"
