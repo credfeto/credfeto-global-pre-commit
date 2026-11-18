@@ -9,8 +9,8 @@
 # so `dotnet format` can skip a restore of its own and the build compiles the
 # formatted source.
 #
-# Depends on the caller already defining die(), info(), success() and
-# require_dotnet_tool(), and on lib/mode-arg.sh having been sourced and
+# Depends on the caller already defining die(), info() and success(), and
+# on lib/dotnet-tool.sh and lib/mode-arg.sh having been sourced and
 # parse_all_files_mode_arg() having set MODE: the target files are the staged
 # ones, or every tracked one in all-files mode (see git_target_files).
 #
@@ -90,7 +90,7 @@ EOF
 
     info "Applying cscleanup formatting to ${_fmt_scope} .cs and .csproj files..."
     _fmt_started=$(date +%s)
-    dotnet "$FORMATTER_TOOL_CMD" "$@" || die "cscleanup format failed"
+    run_dotnet_tool "$FORMATTER_TOOL_CMD" "$FORMATTER_TOOL_PKG" "$@" || die "cscleanup format failed"
     # shellcheck disable=SC2034 # read by buildtest's timings line
     CSCLEANUP_SECONDS=$(($(date +%s) - _fmt_started))
 

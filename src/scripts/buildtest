@@ -112,31 +112,6 @@ is_ai_agent() {
     [ "${CLAUDECODE}" = "1" ]
 }
 
-# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
-dotnet_tool_installed() {
-    dotnet tool list 2>/dev/null \
-        | awk -v cmd="$1" -v pkg="$2" \
-            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
-        && return 0
-    dotnet tool list --global 2>/dev/null \
-        | awk -v cmd="$1" -v pkg="$2" \
-            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
-        && return 0
-    return 1
-}
-
-require_dotnet_tool() {
-    dotnet_tool_installed "$1" "$2" && return 0
-    if is_ai_agent; then
-        _repo=$(git rev-parse --show-toplevel 2>/dev/null)
-        if [ -n "$_repo" ] && { [ -f "$_repo/.config/dotnet-tools.json" ] || [ -f "$_repo/dotnet-tools.json" ]; }; then
-            die "dotnet-tools.json exists in this repository but $2 ($1) is not installed — add $2 to the manifest and run 'dotnet tool restore'. Do not install it directly."
-        fi
-        die "Required package ($2) is not installed so cannot run $1.  Operator needs to provide this to the environment.  Do not install it yourself"
-    fi
-    die "$1 ($2) dotnet tool is not installed"
-}
-
 success() {
     printf '\n\033[32m✓\033[0m %s\n' "$*"
 }
@@ -153,6 +128,8 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=src/scripts/lib/mode-arg.sh
 . "$SCRIPT_DIR/lib/mode-arg.sh"
 parse_all_files_mode_arg "$1"
+# shellcheck source=src/scripts/lib/dotnet-tool.sh
+. "$SCRIPT_DIR/lib/dotnet-tool.sh"
 # shellcheck source=src/scripts/lib/dotnet-format.sh
 . "$SCRIPT_DIR/lib/dotnet-format.sh"
 # shellcheck source=src/scripts/lib/slow-report.sh
@@ -234,7 +211,7 @@ RESTORE=0
 if [ -n "$RULESET_TYPE" ] && [ -f "$RULESET_ADJUSTMENT_FILE" ]; then
   require_dotnet_tool code-analysis Credfeto.DotNet.Code.Analysis.Overrides.Cmd
   info "Overriding $RULESET_FILE with $RULESET_ADJUSTMENT_FILE"
-  dotnet code-analysis "$RULESET_TYPE" \
+  run_dotnet_tool code-analysis Credfeto.DotNet.Code.Analysis.Overrides.Cmd "$RULESET_TYPE" \
     --ruleset "$RULESET_FILE" \
     --changes "$RULESET_ADJUSTMENT_FILE" || die "Failed to update $RULESET_FILE"
   RESTORE=1
