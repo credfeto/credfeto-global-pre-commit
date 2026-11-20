@@ -31,6 +31,8 @@ info() {
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=src/scripts/lib/mode-arg.sh
 . "$SCRIPT_DIR/lib/mode-arg.sh"
+# shellcheck source=src/scripts/lib/dotnet-tool.sh
+. "$SCRIPT_DIR/lib/dotnet-tool.sh"
 parse_all_files_mode_arg "$1"
 
 # Returns true (0) when running inside a Claude Code Bash-tool session.
@@ -39,31 +41,6 @@ parse_all_files_mode_arg "$1"
 # Source: https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables
 is_ai_agent() {
     [ "${CLAUDECODE}" = "1" ]
-}
-
-# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
-dotnet_tool_installed() {
-    dotnet tool list 2>/dev/null \
-        | awk -v cmd="$1" -v pkg="$2" \
-            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
-        && return 0
-    dotnet tool list --global 2>/dev/null \
-        | awk -v cmd="$1" -v pkg="$2" \
-            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
-        && return 0
-    return 1
-}
-
-require_dotnet_tool() {
-    dotnet_tool_installed "$1" "$2" && return 0
-    if is_ai_agent; then
-        _repo=$(git rev-parse --show-toplevel 2>/dev/null)
-        if [ -n "$_repo" ] && { [ -f "$_repo/.config/dotnet-tools.json" ] || [ -f "$_repo/dotnet-tools.json" ]; }; then
-            die "dotnet-tools.json exists in this repository but $2 ($1) is not installed — add $2 to the manifest and run 'dotnet tool restore'. Do not install it directly."
-        fi
-        die "Required package ($2) is not installed so cannot run $1.  Operator needs to provide this to the environment.  Do not install it yourself"
-    fi
-    die "$1 ($2) dotnet tool is not installed"
 }
 
 require_dotnet_tool "$TOOL_CMD" "$TOOL_PKG"
@@ -79,13 +56,13 @@ while IFS= read -r changelog; do
     [ -f "$changelog" ] || continue
     info "Linting ${changelog}..."
     if [ "$MODE" = "all-files" ]; then
-        if dotnet changelog --lint --fix -f "$changelog"; then
+        if run_dotnet_tool "$TOOL_CMD" "$TOOL_PKG" --lint --fix -f "$changelog"; then
             git diff --quiet -- "$changelog" || git add "$changelog" || die "failed to stage ${changelog}"
         else
             FAILED=1
         fi
     else
-        dotnet changelog --lint -f "$changelog" || FAILED=1
+        run_dotnet_tool "$TOOL_CMD" "$TOOL_PKG" --lint -f "$changelog" || FAILED=1
     fi
 done <<EOF
 $CHANGELOG_FILES
@@ -132,9 +109,9 @@ case "$_REPO_NAME" in
 $(printf '%s\n' "$_out" | sed 's/^/    /')"
         }
         DETAIL=""
-        run_capture "-a Added" dotnet changelog -f "$REF" -a Added -m "__template_blank_check__"
-        run_capture "-r Added" dotnet changelog -f "$REF" -r Added -m "__template_blank_check__"
-        run_capture "--lint --fix" dotnet changelog -f "$REF" --lint --fix
+        run_capture "-a Added" run_dotnet_tool "$TOOL_CMD" "$TOOL_PKG" -f "$REF" -a Added -m "__template_blank_check__"
+        run_capture "-r Added" run_dotnet_tool "$TOOL_CMD" "$TOOL_PKG" -f "$REF" -r Added -m "__template_blank_check__"
+        run_capture "--lint --fix" run_dotnet_tool "$TOOL_CMD" "$TOOL_PKG" -f "$REF" --lint --fix
         [ -s "$REF" ] || die "could not generate reference blank changelog via dotnet changelog:
 $DETAIL"
 

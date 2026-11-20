@@ -21,6 +21,7 @@ bats_require_minimum_version 1.5.0
 BUILDTEST="${REPO_DIR}/src/scripts/buildtest"
 LIB="${REPO_DIR}/src/scripts/lib/dotnet-format.sh"
 MODE_LIB="${REPO_DIR}/src/scripts/lib/mode-arg.sh"
+TOOL_LIB="${REPO_DIR}/src/scripts/lib/dotnet-tool.sh"
 
 # Writes a stub `dotnet` to <dir>/dotnet that logs each call to <log> as one
 # line (the subcommand and its arguments, space-separated) and succeeds. It
@@ -105,12 +106,13 @@ run_format_dotnet_sources() {
         die() { printf "DIED: %s\n" "$*"; exit 1; }
         info() { printf "%s\n" "$*"; }
         success() { printf "%s\n" "$*"; }
-        require_dotnet_tool() { return 0; }
+        is_ai_agent() { return 1; }
         . "$1"
         . "$2"
-        parse_all_files_mode_arg "$5"
-        format_dotnet_sources "$3" "$4"
-    ' _ "${MODE_LIB}" "${LIB}" "$@"
+        . "$3"
+        parse_all_files_mode_arg "$6"
+        format_dotnet_sources "$4" "$5"
+    ' _ "${MODE_LIB}" "${TOOL_LIB}" "${LIB}" "$@"
 }
 
 # ── buildtest ─────────────────────────────────────────────────────────────────
@@ -359,6 +361,10 @@ run_format_dotnet_sources() {
     mkdir -p "${STUBDIR}"
     cat > "${STUBDIR}/dotnet" << 'STUB'
 #!/bin/sh
+[ "$1" = "tool" ] && {
+    printf 'credfeto.dotnet.repo.formatter    1.0.0        cscleanup\n'
+    exit 0
+}
 [ "$1" = "format" ] && [ "$2" != "--version" ] && {
     sed -i 's/var value =/int value =/' src/Foo.cs
     exit 1
