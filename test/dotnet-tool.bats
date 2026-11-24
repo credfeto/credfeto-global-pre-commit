@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Acceptance tests for src/scripts/lib/dotnet-tool.sh: where dotnet_tool_installed
-# finds a dotnet tool (a local manifest in the working directory or in HOME, a
-# global install on PATH, or a global install reached through
+# finds a dotnet tool (a local manifest in the working directory, a global
+# install on PATH, or a global install reached through
 # $HOME/.dotnet/tools), how run_dotnet_tool runs it from there, and how the
 # method found is cached in an exported DOTNET_TOOL_RUN_<CMD> variable.
 #
@@ -90,15 +90,12 @@ tool_list_calls() {
     [ "${lines[1]}" = "child=local" ]
 }
 
-@test "a tool in HOME's local manifest is found from a directory without one and runs as dotnet <cmd>" {
-    run_lib 'run_dotnet_tool widget Acme.Widget.Tool x; printf "cached=%s\n" "$DOTNET_TOOL_RUN_WIDGET"' \
+@test "a tool only in HOME's local manifest is not found from a directory without one" {
+    run_lib 'if dotnet_tool_installed widget Acme.Widget.Tool; then printf "found\n"; else printf "missing cached=[%s]\n" "${DOTNET_TOOL_RUN_WIDGET:-}"; fi' \
         FAKE_LOCAL_DIR="$(cd "${FAKE_HOME}" && pwd -P)"
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ "${lines[0]}" = "dotnet ran: widget x" ]
-    [ "${lines[1]}" = "cached=local" ]
-    # The tool runs from the working directory, not from HOME.
-    grep -qx "$(cd "${WORK}" && pwd -P)|widget x" "${LOG}"
+    [ "${output}" = "missing cached=[]" ]
 }
 
 @test "a global tool on PATH runs as <cmd> and is cached as global" {
@@ -161,7 +158,7 @@ SCRIPT
     [ "${lines[0]}" = "missing cached=[]" ]
     [ "${lines[1]}" = "DIED: widget (Acme.Widget.Tool) dotnet tool is not installed" ]
     # The failed lookup is not cached, so the second call looks again.
-    [ "$(tool_list_calls)" -eq 6 ]
+    [ "$(tool_list_calls)" -eq 4 ]
 }
 
 @test "a listed command from a different package does not count as installed" {

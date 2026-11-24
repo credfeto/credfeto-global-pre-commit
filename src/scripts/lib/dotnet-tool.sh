@@ -4,7 +4,7 @@
 #
 # dotnet_tool_installed() finds where a dotnet tool is installed, and
 # run_dotnet_tool() runs it from there:
-#   1. a local tool manifest, from the working directory or from $HOME: run
+#   1. a local tool manifest found from the working directory: run
 #      as `dotnet <cmd>`;
 #   2. a global install whose command is on PATH: run as `<cmd>`;
 #   3. a global install that is not on PATH: run as $HOME/.dotnet/tools/<cmd>.
@@ -70,7 +70,7 @@ dotnet_tool_method() {
 dotnet_tool_installed() {
     [ -n "$(dotnet_tool_method "$1")" ] && return 0
 
-    if _dotnet_tool_listed "$1" "$2" || (cd "$HOME" 2>/dev/null && _dotnet_tool_listed "$1" "$2"); then
+    if _dotnet_tool_listed "$1" "$2"; then
         _dti_method=local
     elif _dotnet_tool_listed "$1" "$2" --global; then
         _dti_method=$(_dotnet_tool_global_method "$1")
