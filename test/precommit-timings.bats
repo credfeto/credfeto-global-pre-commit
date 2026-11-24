@@ -49,6 +49,19 @@ EOF
 
 # ── timings_value ─────────────────────────────────────────────────────────────
 
+@test "timings_print shows the total and each step that ran, one per line, and leaves out skipped steps" {
+    run_lib 'timings_record check-identity 1s
+        timings_record pre-commit "3s(a=0.5s,b=skipped)"
+        timings_print'
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"Pre-commit timings"* ]]
+    [[ "${output}" =~ "    total="[0-9]+"s" ]]
+    [[ "${output}" == *"    check-identity=1s"* ]]
+    [[ "${output}" == *"    pre-commit=3s(a=0.5s,b=skipped)"* ]]
+    [[ "${output}" != *"buildtest=skipped"* ]]
+}
+
 @test "timings_value lists the total first, then every step in order, with skipped for steps that did not run" {
     run_lib 'timings_record check-identity 1s
         timings_record pre-commit "3s(a=0.5s,b=skipped)"

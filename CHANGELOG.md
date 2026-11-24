@@ -83,6 +83,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - buildtest prints one timings line per run with the time each step took (restore, format, cleanup, build, test, pack), giving per-step commit timings a stable source (#306)
 - Pre-commit records how long each step took and attaches the timings to each commit as a Pre-commit-Timings trailer added by a new commit-msg hook, so slow steps can be seen in the commit history (#300)
 - Dotnet tools used by the pre-commit hook, buildcheck, buildtest, the changelog check and the dotnet-format library are now run through one shared helper that finds a tool in the working directory's local tool manifest and falls back to a global install on PATH or in $HOME/.dotnet/tools, so these checks work whichever way the tool was installed (#272)
+- Pre-commit output shows how long each hook and runner step took (#279)
 
 ### Fixed
 - The slow build part report no longer warns on a project's share of a fast build: the share rule applies only when the build took at least SLOW_BUILD_SHARE_MIN_BUILD_SECONDS (default 60), because in a small solution every project is a large share of a quick parallel build (#308)
