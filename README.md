@@ -634,6 +634,7 @@ system package manager rather than `pre-commit autoupdate`.
 | `scripts/run-shellcheck-libraries` | Wrapper for shellcheck that lints extensionless, shebang-less shell libraries whose first line is a `# shellcheck shell=...` directive |
 | `scripts/run-bats` | Wrapper for bats, runs the `test/` files the staged files affect, or the whole suite when they cannot be narrowed down (see [Bats test selection](#bats-test-selection-run-bats)), then lists the slowest tests (see [Slow tests and slow build parts](#slow-tests-and-slow-build-parts)) |
 | `scripts/run-pylint` | Wrapper for pylint, runs it from a cached venv layered on the system pylint when the repo declares Python dependencies (`requirements.txt` or `pyproject.toml`) so the repo's own imports resolve, otherwise runs system pylint directly |
+| `scripts/lib/dotnet-tool.sh` | Local addition, finds and runs the dotnet tools the hook and `buildcheck`, `buildtest` and `check-changelog` use: from a local tool manifest found from the working directory (run as `dotnet <command>`), else a global install on `PATH` (run as `<command>`), else a global install in `$HOME/.dotnet/tools`, failing with a not installed error otherwise. The method found is exported as `DOTNET_TOOL_RUN_<COMMAND>` (the command upper-cased, other characters as `_`), so the scripts the hook runs reuse it without looking the tool up again |
 
 ---
 

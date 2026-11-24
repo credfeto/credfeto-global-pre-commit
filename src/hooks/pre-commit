@@ -118,18 +118,17 @@ die_blocked() {
     fi
 }
 
-# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
-dotnet_tool_installed() {
-    dotnet tool list 2>/dev/null \
-        | awk -v cmd="$1" -v pkg="$2" \
-            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
-        && return 0
-    dotnet tool list --global 2>/dev/null \
-        | awk -v cmd="$1" -v pkg="$2" \
-            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
-        && return 0
-    return 1
-}
+# shellcheck source=src/scripts/lib/dotnet-tool.sh
+. "$SCRIPTS_DIR/lib/dotnet-tool.sh"
+
+# Runs tsqllint with DOTNET_ROLL_FORWARD=Major. env cannot run the
+# run_dotnet_tool shell function, so the setting is exported in a subshell,
+# which keeps it from reaching the hook's later steps.
+# shellcheck disable=SC2329 # called through timed_step
+run_tsqllint() (
+    export DOTNET_ROLL_FORWARD=Major
+    run_dotnet_tool tsqllint TSQLLint .
+)
 
 # Protected in ALL repos: linter/style/shared config that defines conformance
 # rules and must not be modified or removed to silence a check — fix the
@@ -693,7 +692,7 @@ if check_files_match '\.sql$'; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
         dotnet_tool_installed tsqllint TSQLLint || die_blocked "tsqllint dotnet tool is not installed"
         info "Detected SQL changes — running dotnet tsqllint..."
-        timed_step tsqllint env DOTNET_ROLL_FORWARD=Major dotnet tsqllint . || die "dotnet tsqllint"
+        timed_step tsqllint run_tsqllint || die "dotnet tsqllint"
     fi
     if [ "$HAS_SQLFLUFF" -eq 1 ] && [ "${SQLFLUFF_EXECUTED:-0}" != "1" ]; then
         SQLFLUFF_STEP_STARTED=$(date +%s)

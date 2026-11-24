@@ -18,33 +18,10 @@ is_ai_agent() {
     [ "${CLAUDECODE}" = "1" ]
 }
 
-# Returns 0 if $1 (command name) and $2 (package ID) match the same row in local or global dotnet tool list.
-dotnet_tool_installed() {
-    dotnet tool list 2>/dev/null \
-        | awk -v cmd="$1" -v pkg="$2" \
-            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
-        && return 0
-    dotnet tool list --global 2>/dev/null \
-        | awk -v cmd="$1" -v pkg="$2" \
-            'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}' \
-        && return 0
-    return 1
-}
-
-require_dotnet_tool() {
-    dotnet_tool_installed "$1" "$2" && return 0
-    if is_ai_agent; then
-        _repo=$(git rev-parse --show-toplevel 2>/dev/null)
-        if [ -n "$_repo" ] && { [ -f "$_repo/.config/dotnet-tools.json" ] || [ -f "$_repo/dotnet-tools.json" ]; }; then
-            die "dotnet-tools.json exists in this repository but $2 ($1) is not installed — add $2 to the manifest and run 'dotnet tool restore'. Do not install it directly."
-        fi
-        die "Required package ($2) is not installed so cannot run $1.  Operator needs to provide this to the environment.  Do not install it yourself"
-    fi
-    die "$1 ($2) dotnet tool is not installed"
-}
-
 # shellcheck source=src/scripts/lib/dotnet-sdk-check.sh
 . "$(dirname "$(readlink -f "$0")")/lib/dotnet-sdk-check.sh"
+# shellcheck source=src/scripts/lib/dotnet-tool.sh
+. "$(dirname "$(readlink -f "$0")")/lib/dotnet-tool.sh"
 
 require_compatible_dotnet_sdk
 
@@ -54,4 +31,4 @@ SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
 [ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 [ -z "$SOLUTION" ] && { info "No solution file found — skipping"; exit 0; }
 
-dotnet buildcheck -Solution "$SOLUTION" -WarningAsErrors true -PreReleaseBuild true || die "Check failed"
+run_dotnet_tool buildcheck FunFair.BuildCheck -Solution "$SOLUTION" -WarningAsErrors true -PreReleaseBuild true || die "Check failed"
