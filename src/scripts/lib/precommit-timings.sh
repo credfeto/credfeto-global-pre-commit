@@ -111,6 +111,14 @@ timings_value() {
         }'
 }
 
+# timings_print
+# Prints the total and each step's timing, one per line, so the commit output
+# shows where the time went. Steps that did not run are left out.
+timings_print() {
+    printf '\n\033[32m->\033[0m Pre-commit timings\n'
+    timings_value | tr ' ' '\n' | grep -v '=skipped$' | sed 's/^/    /'
+}
+
 # timings_write_file
 # Writes the run id and the trailer value to the timings file, for the
 # commit-msg hook. Never fails the commit: the timings are diagnostics.

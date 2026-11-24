@@ -25,6 +25,7 @@ export PATH
 . "$SCRIPTS_DIR/lib/precommit-timings.sh"
 
 die() {
+    timings_print >&2
     printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
     exit 1
 }
@@ -348,6 +349,7 @@ fi
 # Exits successfully, first handing this run's timings to the commit-msg hook
 # when this run is part of a commit.
 finish_commit() {
+    timings_print
     if [ "$MODE" = "commit" ]; then
         timings_write_file
     fi
