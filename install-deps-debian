@@ -1,8 +1,9 @@
 #!/bin/bash
 # Install dependencies for credfeto-global-pre-commit on Debian / Ubuntu.
 # Safe to run multiple times: apt is idempotent, binary installs are skipped
-# if the tool is already present, Node.js is skipped when the shared copy is
-# already the latest LTS, and pipx and npm upgrade already-installed packages.
+# if the tool is already present, Node.js and actionlint are skipped when the
+# shared copy is already the latest release, and pipx, npm and dotnet upgrade
+# already-installed packages.
 #
 # Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 
@@ -95,16 +96,13 @@ info "Binary tools from GitHub releases"
 
 install_release_linters
 
-# actionlint: prefer go install, fall back to binary download
+# actionlint comes from its checksum-verified release, shared in /usr/local/bin,
+# rather than from go install into $HOME, which other users cannot run.
+install_shared_actionlint
+
 if has go; then
-    if ! has actionlint; then
-        go install github.com/rhysd/actionlint/cmd/actionlint@latest || die "failed to install actionlint"
-    else
-        info "actionlint already installed, skipping"
-    fi
     install_composite_action_lint
 else
-    install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
     warn "go not found, skipping composite-action-lint (install go and rerun)"
 fi
 

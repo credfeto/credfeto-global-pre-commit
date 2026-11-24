@@ -41,10 +41,11 @@ helper is needed and nothing is built with `makepkg`.
 | Source | Packages |
 | -------- | ---------- |
 | `pacman` | `git`, `bats`, `go`, `pre-commit`, `shellcheck`, `yamllint`, `python-flake8`, `python-pylint`, `ansible-lint`, `libxml2`, `python-pipx`, `trivy`, `parallel`, `curl`, `nvm`, `nodejs`, `npm`, `sqlfluff`, `python-cfn-lint` |
-| GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
+| GitHub releases | `hadolint`, `dotenv-linter`, `trufflehog` (downloaded to `/usr/local/bin`) |
+| GitHub releases (shared, see below) | `actionlint`, checksum-verified and installed to `/usr/local/bin` |
 | `pipx` (shared, see below) | `pre-commit-hooks` (no AUR package exists) |
 | `npm -g` (shared, see below) | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
-| `dotnet tool` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool` (shared, see below) | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint` |
 
 The `pacman` `nvm` package does not load nvm into the shell. The hook linters do not
@@ -68,15 +69,13 @@ Tested on Ubuntu 22.04 LTS and Debian 12 (Bookworm).
 | -------- | ---------- |
 | `apt` | `git`, `bats`, `pre-commit`, `shellcheck`, `yamllint`, `python3-flake8`, `python3-venv`, `libxml2-utils`, `curl`, `gpg`, `pipx`, `parallel`, `xz-utils` |
 | `apt` (fallback: shared `pipx`) | `ansible-lint`, `python3-pylint` (`pylint` from `pipx`), installed via `pipx` on releases where the `apt` package is unavailable |
-| GitHub releases | `hadolint`, `actionlint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
+| GitHub releases | `hadolint`, `dotenv-linter`, `trufflehog`, `trivy` (downloaded to `/usr/local/bin`) |
+| GitHub releases (shared, see below) | `actionlint`, checksum-verified and installed to `/usr/local/bin` |
 | nodejs.org | Node.js (`node`, `npm`), the latest LTS tarball, checksum-verified and unpacked into `/usr/local` |
 | `pipx` (shared, see below) | `pre-commit-hooks`, `sqlfluff`, `cfn-lint` |
 | `npm -g` (shared, see below) | `markdownlint-cli`, `eslint`, `stylelint`, `stylelint-config-standard` |
-| `dotnet tool` | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
+| `dotnet tool` (shared, see below) | `Credfeto.DotNet.Repo.Formatter` (`cscleanup`), skipped with a warning if `dotnet` is not on `PATH` |
 | `go install` | `composite-action-lint`, skipped with a warning if `go` is not on `PATH` |
-
-If `go` is on `PATH`, `actionlint` is installed via `go install` instead of a
-binary download.
 
 `nvm` is not in `apt`, so it is installed using nvm's official install script.
 The `apt` `nodejs` is older than the npm linters support, so Node.js is installed from
@@ -88,10 +87,20 @@ LTS and a real file, not a link (e.g. into an nvm Node under `$HOME`).
 - Safe to run multiple times: each step is idempotent.
 - The .NET SDK is not installed: install it separately and the script will pick it up
   automatically.
-- `cscleanup` is installed as a local `dotnet` tool in the `$HOME`-scoped
-  tool manifest (`~/.config/dotnet-tools.json` or `~/dotnet-tools.json`, whichever the
-  SDK uses; one is created if neither exists). It runs as `dotnet cscleanup` from any
-  directory under `$HOME` and needs no `PATH` change.
+- `cscleanup` is installed twice. The first copy is a local `dotnet` tool in the
+  `$HOME`-scoped tool manifest (`~/.config/dotnet-tools.json` or `~/dotnet-tools.json`,
+  whichever the SDK uses; one is created if neither exists), so it runs as
+  `dotnet cscleanup` from any directory under `$HOME`. The second is a shared copy for
+  every account: installed as root with `--tool-path /opt/dotnet-tools` under
+  `umask 022`, after which `/opt/dotnet-tools` is made readable by all users
+  (`chmod -R a+rX`), with a `/usr/local/bin/cscleanup` wrapper that runs it. The hooks
+  use the shared copy when no per-user copy is found, which is what lets
+  `./install --system` hooks run it for every user. A copy under `$HOME` does not stop
+  the shared install.
+- `actionlint` is downloaded from its GitHub release, verified against the release's
+  checksums file, and installed to `/usr/local/bin` with mode `0755`. It is skipped only
+  when `/usr/local/bin/actionlint` is already the latest release and a real file, not a
+  link; a copy elsewhere (e.g. under `$HOME`) does not stop the shared install.
 - `pipx` packages are installed once for every account, not per user: as root, with
   `PIPX_HOME=/opt/pipx`, `PIPX_BIN_DIR=/usr/local/bin` and
   `PIPX_MAN_DIR=/usr/local/share/man`, under `umask 022`, after which `/opt/pipx` is
@@ -141,8 +150,14 @@ To install for every user on the machine instead, run `./install --system` (need
 6. Print a status table of every check showing which are active and which need a system tool installed
    - With `--system`: a `pipx` tool (`pre-commit-hooks`, `sqlfluff`, `cfn-lint`, `pylint`, `ansible-lint`) found only under `$HOME`, or whose shared `/opt/pipx` venv other users cannot read, is marked as failing, because other users cannot run it
    - With `--system`: an npm tool (`markdownlint`, `eslint`, `stylelint`) found only under `$HOME`, whose shared `/usr/local/lib/node_modules` package other users cannot read, or whose `node` is only under `$HOME` or not executable by other users, is marked as failing for the same reason
+   - With `--system`: `pre-commit`, `yamllint`, `flake8`, `actionlint` and `cscleanup` found only under `$HOME`, or whose shared copy other users cannot run, are marked as failing for the same reason
 
-`pre-commit` must be installed for linting to run (`pip install pre-commit`).
+`pre-commit` must be installed for linting to run. Install it shared for every user with
+`pipx`, as described above:
+
+```sh
+(umask 022 && sudo env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install pre-commit) && sudo chmod -R a+rX /opt/pipx
+```
 
 ### Why every hook is `language: system`
 

@@ -1,13 +1,14 @@
 #!/usr/bin/env bats
 # Acceptance tests for src/scripts/lib/dotnet-tool.sh: where dotnet_tool_installed
 # finds a dotnet tool (a local manifest in the working directory, a global
-# install on PATH, or a global install reached through
-# $HOME/.dotnet/tools), how run_dotnet_tool runs it from there, and how the
-# method found is cached in an exported DOTNET_TOOL_RUN_<CMD> variable.
+# install on PATH, a global install reached through $HOME/.dotnet/tools, or a
+# shared install in the shared tool path), how run_dotnet_tool runs it from
+# there, and how the method found is cached in an exported
+# DOTNET_TOOL_RUN_<CMD> variable.
 #
 # Uses a fake `dotnet` on PATH that logs every call and lists the widget tool
-# locally only when run from $FAKE_LOCAL_DIR, and globally only when
-# $FAKE_GLOBAL is set.
+# locally only when run from $FAKE_LOCAL_DIR, globally only when $FAKE_GLOBAL
+# is set, and in the per-test shared tool path only when $FAKE_SHARED is set.
 
 # The scripts run_lib is given are expanded by the inner sh, not here.
 # shellcheck disable=SC2016
@@ -24,6 +25,8 @@ setup() {
     FAKE_HOME="${BATS_TEST_TMPDIR}/home"
     WORK="${BATS_TEST_TMPDIR}/work"
     LOG="${BATS_TEST_TMPDIR}/dotnet.log"
+    SHARED_TOOLS="${BATS_TEST_TMPDIR}/opt/dotnet-tools"
+    export DOTNET_SHARED_TOOLS_TEST_OVERRIDE="${SHARED_TOOLS}"
     mkdir -p "${BIN}" "${TOOL_BIN}" "${FAKE_HOME}" "${WORK}"
     : > "${LOG}"
     cat > "${BIN}/dotnet" << 'STUB'
@@ -34,6 +37,9 @@ if [ "$1" = tool ] && [ "$2" = list ]; then
     printf -- '--------------------------------------------\n'
     if [ "$3" = --global ]; then
         [ -n "$FAKE_GLOBAL" ] && printf 'acme.widget.tool    1.0.0        widget\n'
+    elif [ "$3" = --tool-path ]; then
+        [ "$4" = "$DOTNET_SHARED_TOOLS_TEST_OVERRIDE" ] && [ -n "$FAKE_SHARED" ] \
+            && printf 'acme.widget.tool    1.0.0        widget\n'
     elif [ -n "$FAKE_LOCAL_DIR" ] && [ "$(pwd -P)" = "$FAKE_LOCAL_DIR" ]; then
         printf 'acme.widget.tool    1.0.0        widget      dotnet-tools.json\n'
     fi
@@ -123,6 +129,43 @@ tool_list_calls() {
     write_tool "${TOOL_BIN}/widget" "path widget"
 
     run_lib 'run_dotnet_tool widget Acme.Widget.Tool z' FAKE_GLOBAL=1
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "${output}" = "home widget ran: z" ]
+}
+
+@test "a tool only in the shared tool path runs from there and is cached as shared" {
+    write_tool "${SHARED_TOOLS}/widget" "shared widget"
+
+    run_lib 'run_dotnet_tool widget Acme.Widget.Tool s; sh -c "printf \"child=%s\n\" \"\$DOTNET_TOOL_RUN_WIDGET\""' FAKE_SHARED=1
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "${lines[0]}" = "shared widget ran: s" ]
+    [ "${lines[1]}" = "child=shared" ]
+}
+
+@test "a cached shared run method runs the tool from the shared tool path without looking it up" {
+    write_tool "${SHARED_TOOLS}/widget" "shared widget"
+
+    run_lib 'run_dotnet_tool widget Acme.Widget.Tool t' DOTNET_TOOL_RUN_WIDGET=shared
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "${output}" = "shared widget ran: t" ]
+    [ "$(tool_list_calls)" -eq 0 ]
+}
+
+@test "a tool listed in the shared tool path without its command there is not installed" {
+    run_lib 'if dotnet_tool_installed widget Acme.Widget.Tool; then printf "found\n"; else printf "missing\n"; fi' FAKE_SHARED=1
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ "${output}" = "missing" ]
+}
+
+@test "a global tool is preferred over the shared copy" {
+    write_tool "${FAKE_HOME}/.dotnet/tools/widget" "home widget"
+    write_tool "${SHARED_TOOLS}/widget" "shared widget"
+
+    run_lib 'run_dotnet_tool widget Acme.Widget.Tool z' FAKE_GLOBAL=1 FAKE_SHARED=1
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
     [ "${output}" = "home widget ran: z" ]

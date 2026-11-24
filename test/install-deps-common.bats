@@ -1,12 +1,14 @@
 #!/usr/bin/env bats
 # Acceptance tests for the install helpers in lib/common.sh shared by
 # install-deps-arch and install-deps-debian: install_release_linters,
-# install_shared_node, install_npm_globals, install_composite_action_lint,
-# install_cscleanup, ensure_root_pipx and pipx_ensure.
+# install_shared_node, install_shared_actionlint, install_npm_globals,
+# install_composite_action_lint, install_cscleanup, ensure_root_pipx and
+# pipx_ensure.
 #
 # Never installs anything: each helper runs in a bash whose PATH holds only
 # fakes, so the host's own node, npm, go or dotnet can never be found, the
-# shared npm prefix is a per-test directory,
+# shared npm prefix, dotnet tool path and bin directory are per-test
+# directories,
 # install_github_release is replaced by a function that records its arguments,
 # and HOME is a per-test directory, so the host's own dotnet tool manifest is
 # never seen.
@@ -40,21 +42,49 @@ EOF
     chmod +x "${FAKE_BIN}/go"
 }
 
+# write_install_fake
+# Writes a fake install(1) for `install -m <mode> <source> <destination>` that
+# records its arguments and whether it runs as root, then copies the source to
+# the destination, so a test can inspect what was installed.
+write_install_fake() {
+    cat > "${FAKE_BIN}/install" <<'EOF'
+#!/bin/sh
+printf 'install %s root=%s\n' "$*" "${FAKE_SUDO_AS_ROOT:-}" >> "$CALL_LOG"
+cat "$3" > "$4"
+EOF
+    "$(type -P chmod)" +x "${FAKE_BIN}/install"
+    link_host_tool cat "${FAKE_BIN}"
+}
+
 # write_dotnet_fake
 # Writes a fake dotnet. `dotnet tool list` prints the column headings and then
 # FAKE_DOTNET_TOOLS (one "<package> <version> <command> <manifest>" row per
-# line). Every other call is recorded with the directory it ran in, and fails
-# when its arguments start with FAKE_DOTNET_FAIL (e.g. "tool install").
+# line); `dotnet tool list --tool-path <dir>` prints FAKE_SHARED_DOTNET_TOOLS
+# (one "<package> <version> <command>" row per line) instead. Every other call
+# is recorded with the directory it ran in, and, when run through sudo, with
+# root=1 and its umask; it fails when its arguments start with FAKE_DOTNET_FAIL
+# (e.g. "tool install"). Also writes the fakes the shared install needs: a
+# recording sudo, chmod (see write_chmod_fake) and install (see
+# write_install_fake), and sets the shared tool path and bin directory to
+# per-test directories.
 write_dotnet_fake() {
     cat > "${FAKE_BIN}/dotnet" <<'EOF'
 #!/bin/sh
-if [ "$*" = "tool list" ]; then
+if [ "$1 $2" = "tool list" ]; then
     printf 'Package Id      Version      Commands      Manifest\n'
     printf -- '----------------------------------------------------\n'
-    [ -z "${FAKE_DOTNET_TOOLS:-}" ] || printf '%s\n' "$FAKE_DOTNET_TOOLS"
+    if [ "${3:-}" = "--tool-path" ]; then
+        [ -z "${FAKE_SHARED_DOTNET_TOOLS:-}" ] || printf '%s\n' "$FAKE_SHARED_DOTNET_TOOLS"
+    else
+        [ -z "${FAKE_DOTNET_TOOLS:-}" ] || printf '%s\n' "$FAKE_DOTNET_TOOLS"
+    fi
     exit 0
 fi
-printf 'dotnet %s (in %s)\n' "$*" "$PWD" >> "$CALL_LOG"
+if [ -n "${FAKE_SUDO_AS_ROOT:-}" ]; then
+    printf 'dotnet %s root=1 umask=%s\n' "$*" "$(umask)" >> "$CALL_LOG"
+else
+    printf 'dotnet %s (in %s)\n' "$*" "$PWD" >> "$CALL_LOG"
+fi
 case "$*" in
     "${FAKE_DOTNET_FAIL:-no failure requested}"*) exit 1 ;;
 esac
@@ -64,6 +94,20 @@ EOF
     # The installed-tool check pipes `dotnet tool list` through awk, which the
     # fakes-only PATH would otherwise hide.
     link_host_tool awk "${FAKE_BIN}"
+    write_fake_sudo "${FAKE_BIN}"
+    write_chmod_fake
+    write_install_fake
+    link_host_tool mktemp "${FAKE_BIN}"
+    link_host_tool rm "${FAKE_BIN}"
+    export DOTNET_SHARED_TOOLS_TEST_OVERRIDE="${BATS_TEST_TMPDIR}/opt/dotnet-tools"
+    export SHARED_BIN_DIR_TEST_OVERRIDE="${BATS_TEST_TMPDIR}/usr/local/bin"
+    mkdir -p "${SHARED_BIN_DIR_TEST_OVERRIDE}"
+}
+
+# home_dotnet_calls
+# Prints the recorded dotnet calls made as the caller, for the $HOME manifest.
+home_dotnet_calls() {
+    grep -v ' root=' "${CALL_LOG}"
 }
 
 # write_pipx_fakes
@@ -472,13 +516,13 @@ node_temp_removed() {
 
 @test "install_shared_node removes its temporary directory" {
     write_node_fakes ""
-    export TMPDIR="${BATS_TEST_TMPDIR}/tmp"
-    mkdir -p "${TMPDIR}"
+    local _tmp="${BATS_TEST_TMPDIR}/tmp"
+    mkdir -p "${_tmp}"
 
-    ARCH_UNAME=x86_64 run_helper install_shared_node
+    TMPDIR="${_tmp}" ARCH_UNAME=x86_64 run_helper install_shared_node
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ -z "$(ls -A "${TMPDIR}")" ] || fail_test "temporary files left: $(ls -A "${TMPDIR}")"
+    [ -z "$(ls -A "${_tmp}")" ] || fail_test "temporary files left: $(ls -A "${_tmp}")"
 }
 
 @test "install_composite_action_lint go installs composite-action-lint when it is missing" {
@@ -525,7 +569,7 @@ node_temp_removed() {
     local _expected
     _expected="dotnet new tool-manifest (in ${FAKE_HOME})
 dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
-    [ "$(calls)" = "${_expected}" ]
+    [ "$(home_dotnet_calls)" = "${_expected}" ] || fail_test "unexpected calls: $(calls)"
     [[ "${output}" != *"warning:"* ]]
 }
 
@@ -538,7 +582,8 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
         run_helper install_cscleanup
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ "$(calls)" = "dotnet tool update Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})" ]
+    [ "$(home_dotnet_calls)" = "dotnet tool update Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})" ] \
+        || fail_test "unexpected calls: $(calls)"
 }
 
 @test "install_cscleanup installs cscleanup when only another package provides a cscleanup command" {
@@ -549,7 +594,8 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
         run_helper install_cscleanup
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [ "$(calls)" = "dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})" ]
+    [ "$(home_dotnet_calls)" = "dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})" ] \
+        || fail_test "unexpected calls: $(calls)"
 }
 
 @test "install_cscleanup skips the install when dotnet is not on PATH" {
@@ -579,6 +625,324 @@ dotnet tool install Credfeto.DotNet.Repo.Formatter (in ${FAKE_HOME})"
     [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
     [[ "${output}" == *"failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"* ]]
     [ "$(calls)" = "dotnet new tool-manifest (in ${FAKE_HOME})" ]
+}
+
+@test "install_cscleanup installs the shared copy as root with umask 022, opens it to all users and adds a wrapper" {
+    write_dotnet_fake
+    local _shared="${DOTNET_SHARED_TOOLS_TEST_OVERRIDE}"
+    local _wrapper="${SHARED_BIN_DIR_TEST_OVERRIDE}/cscleanup"
+
+    umask 077
+    run_helper install_cscleanup
+    umask 022
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"dotnet tool install --tool-path ${_shared} Credfeto.DotNet.Repo.Formatter root=1 umask=0022"* ]] \
+        || fail_test "shared install not run: $(calls)"
+    [[ "$(calls)" == *"chmod -R a+rX ${_shared} root=1"* ]] || fail_test "shared tool path not opened: $(calls)"
+    [[ "$(calls)" == *"/cscleanup ${_wrapper} root=1"* ]] || fail_test "wrapper not installed: $(calls)"
+    local _expected_wrapper
+    _expected_wrapper="#!/bin/sh
+exec \"${_shared}/cscleanup\" \"\$@\""
+    [ "$(cat "${_wrapper}")" = "${_expected_wrapper}" ] || fail_test "unexpected wrapper: $(cat "${_wrapper}")"
+}
+
+@test "install_cscleanup runs dotnet by its full path under sudo" {
+    write_dotnet_fake
+
+    FAKE_SUDO_LOG="${CALL_LOG}" run_helper install_cscleanup
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"${FAKE_BIN}/dotnet tool install --tool-path ${DOTNET_SHARED_TOOLS_TEST_OVERRIDE} Credfeto.DotNet.Repo.Formatter"* ]] \
+        || fail_test "dotnet not run by its full path: $(calls)"
+}
+
+@test "install_cscleanup updates, without reinstalling, a shared copy that is already installed" {
+    write_dotnet_fake
+
+    FAKE_SHARED_DOTNET_TOOLS="credfeto.dotnet.repo.formatter 1.0.0 cscleanup" run_helper install_cscleanup
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"dotnet tool update --tool-path ${DOTNET_SHARED_TOOLS_TEST_OVERRIDE} Credfeto.DotNet.Repo.Formatter root=1 umask=0022"* ]] \
+        || fail_test "shared update not run: $(calls)"
+    [[ "$(calls)" != *"tool install --tool-path"* ]] || fail_test "shared install run for an installed tool: $(calls)"
+}
+
+@test "install_cscleanup installs the shared copy even when the HOME manifest already has cscleanup" {
+    write_dotnet_fake
+    : > "${FAKE_HOME}/dotnet-tools.json"
+
+    FAKE_DOTNET_TOOLS="credfeto.dotnet.repo.formatter 1.0.0 cscleanup ${FAKE_HOME}/dotnet-tools.json" \
+        run_helper install_cscleanup
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"dotnet tool install --tool-path ${DOTNET_SHARED_TOOLS_TEST_OVERRIDE} Credfeto.DotNet.Repo.Formatter root=1"* ]] \
+        || fail_test "shared install not run: $(calls)"
+}
+
+@test "install_cscleanup fails, without opening the shared tool path, when the shared install fails" {
+    write_dotnet_fake
+
+    FAKE_DOTNET_FAIL="tool install --tool-path" run_helper install_cscleanup
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install the shared Credfeto.DotNet.Repo.Formatter dotnet tool"* ]]
+    [[ "$(calls)" != *"chmod"* ]] || fail_test "tool path opened after a failed install: $(calls)"
+    [[ "$(calls)" != *"install -m"* ]] || fail_test "wrapper installed after a failed install: $(calls)"
+}
+
+@test "install_cscleanup fails, without adding the wrapper, when the shared tool path cannot be made readable by all users" {
+    write_dotnet_fake
+
+    FAKE_CHMOD_FAIL=1 run_helper install_cscleanup
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to make ${DOTNET_SHARED_TOOLS_TEST_OVERRIDE} readable by all users"* ]]
+    [[ "$(calls)" != *"install -m"* ]] || fail_test "wrapper installed: $(calls)"
+}
+
+@test "install_cscleanup fails when the wrapper cannot be installed" {
+    write_dotnet_fake
+
+    FAKE_SUDO_FAIL_COMMAND=install run_helper install_cscleanup
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install the shared Credfeto.DotNet.Repo.Formatter dotnet tool"* ]]
+}
+
+@test "install_cscleanup removes the wrapper's temporary directory" {
+    write_dotnet_fake
+    local _tmp="${BATS_TEST_TMPDIR}/tmp"
+    mkdir -p "${_tmp}"
+
+    TMPDIR="${_tmp}" run_helper install_cscleanup
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ -z "$(ls -A "${_tmp}")" ] || fail_test "temporary files left: $(ls -A "${_tmp}")"
+}
+
+# write_actionlint_fakes <installed version>
+# Writes the fakes install_shared_actionlint needs: a recording sudo, a fake
+# curl that prints a GitHub latest-release response for v1.7.12 and writes a
+# stand-in tarball and its checksums file for -o downloads, failing for a URL
+# containing FAKE_CURL_FAIL, a fake tar that records its arguments and writes a
+# stand-in actionlint, and a recording install (see write_install_fake). A
+# shared actionlint reporting <installed version> is written unless it is
+# empty. The real sha256sum checks the stand-in tarball, whose listed checksum
+# is wrong when FAKE_BAD_CHECKSUM is set.
+write_actionlint_fakes() {
+    write_fake_sudo "${FAKE_BIN}"
+    export FAKE_SUDO_LOG="${CALL_LOG}"
+    export SHARED_BIN_DIR_TEST_OVERRIDE="${BATS_TEST_TMPDIR}/usr/local/bin"
+    mkdir -p "${SHARED_BIN_DIR_TEST_OVERRIDE}"
+    cat > "${FAKE_BIN}/curl" <<'EOF'
+#!/bin/sh
+for _arg in "$@"; do
+    case "$_arg" in
+        https://*) _url="$_arg" ;;
+    esac
+done
+printf 'curl %s\n' "$_url" >> "$CALL_LOG"
+case "$_url" in
+    *"${FAKE_CURL_FAIL:-no failure requested}"*) exit 22 ;;
+    https://api.github.com/*)
+        printf '{"tag_name":"v1.7.12"}\n'
+        exit 0
+        ;;
+esac
+while [ "$#" -gt 0 ]; do
+    [ "$1" = "-o" ] && _out="$2"
+    shift
+done
+case "$_url" in
+    *_checksums.txt)
+        _sum=$(sha256sum "$(dirname "$_out")"/actionlint_*.tar.gz | cut -d' ' -f1)
+        [ -z "${FAKE_BAD_CHECKSUM:-}" ] || _sum=0000000000000000000000000000000000000000000000000000000000000000
+        printf '%s  actionlint_1.7.12_darwin_amd64.tar.gz\n%s  actionlint_1.7.12_linux_amd64.tar.gz\n%s  actionlint_1.7.12_linux_arm64.tar.gz\n' \
+            1111111111111111111111111111111111111111111111111111111111111111 "$_sum" "$_sum" > "$_out"
+        ;;
+    *)
+        printf 'stand-in tarball\n' > "$_out"
+        ;;
+esac
+EOF
+    cat > "${FAKE_BIN}/tar" <<'EOF'
+#!/bin/sh
+printf 'tar %s root=%s\n' "$*" "${FAKE_SUDO_AS_ROOT:-}" >> "$CALL_LOG"
+printf '#!/bin/sh\necho 1.7.12\n' > "$4/$5"
+EOF
+    "$(type -P chmod)" +x "${FAKE_BIN}/curl" "${FAKE_BIN}/tar"
+    write_install_fake
+    if [ -n "$1" ]; then
+        write_tool "${SHARED_BIN_DIR_TEST_OVERRIDE}" actionlint "echo $1"
+    fi
+    local _tool
+    for _tool in python3 mktemp rm grep sha256sum cut dirname head mkdir; do
+        link_host_tool "${_tool}" "${FAKE_BIN}" || return 1
+    done
+}
+
+@test "install_shared_actionlint installs the verified release into the shared bin directory as root on x86_64" {
+    write_actionlint_fakes ""
+    local _base="https://github.com/rhysd/actionlint/releases/download/v1.7.12"
+
+    ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"curl ${_base}/actionlint_1.7.12_linux_amd64.tar.gz"* ]] \
+        || fail_test "tarball not downloaded: $(calls)"
+    [[ "$(calls)" == *"curl ${_base}/actionlint_1.7.12_checksums.txt"* ]] \
+        || fail_test "checksums not downloaded: $(calls)"
+    grep -q '^tar -xzf .*/actionlint_1\.7\.12_linux_amd64\.tar\.gz -C .*/extracted actionlint root=$' "${CALL_LOG}" \
+        || fail_test "actionlint not extracted as the caller: $(calls)"
+    [[ "$(calls)" == *"/extracted/actionlint ${SHARED_BIN_DIR_TEST_OVERRIDE}/actionlint root=1"* ]] \
+        || fail_test "actionlint not installed as root: $(calls)"
+}
+
+@test "install_shared_actionlint downloads the arm64 tarball on aarch64" {
+    write_actionlint_fakes ""
+
+    ARCH_GO=arm64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"curl https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz"* ]] \
+        || fail_test "arm64 tarball not downloaded: $(calls)"
+}
+
+@test "install_shared_actionlint skips the install when the shared copy is already the latest release" {
+    write_actionlint_fakes 1.7.12
+
+    ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"actionlint 1.7.12 already installed in ${SHARED_BIN_DIR_TEST_OVERRIDE}, skipping"* ]]
+    [ "$(calls)" = "curl https://api.github.com/repos/rhysd/actionlint/releases/latest" ] \
+        || fail_test "unexpected calls: $(calls)"
+}
+
+@test "install_shared_actionlint skips the install when the shared copy reports the latest release with a leading v" {
+    write_actionlint_fakes v1.7.12
+
+    ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"already installed"* ]] || fail_with_run_output "${status}" "${output}" 0
+}
+
+@test "install_shared_actionlint upgrades an older shared copy even when the latest release is on PATH under HOME" {
+    write_actionlint_fakes 1.7.0
+    write_tool "${FAKE_HOME}/go/bin" actionlint "echo v1.7.12"
+
+    ARCH_GO=amd64 run_helper install_shared_actionlint "${FAKE_HOME}/go/bin"
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"install -m 0755 "* ]] || fail_test "shared actionlint not installed: $(calls)"
+}
+
+@test "install_shared_actionlint replaces a shared copy that links to the latest release under HOME" {
+    write_actionlint_fakes ""
+    write_tool "${FAKE_HOME}/go/bin" actionlint "echo v1.7.12"
+    ln -s "${FAKE_HOME}/go/bin/actionlint" "${SHARED_BIN_DIR_TEST_OVERRIDE}/actionlint"
+
+    ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" != *"already installed"* ]] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"install -m 0755 "* ]] || fail_test "linked actionlint not replaced: $(calls)"
+}
+
+# Runs install_shared_actionlint under the errexit and pipefail options the
+# install-deps scripts set, which run_helper does not.
+run_actionlint_strict() {
+    # shellcheck disable=SC2016 # expanded by the inner bash, not here
+    run env --default-signal=INT PATH="${FAKE_BIN}" HOME="${FAKE_HOME}" ARCH_GO=amd64 "${BASH}" -c '
+        set -euo pipefail
+        . "$1"
+        install_shared_actionlint
+        echo "install_shared_actionlint returned"
+    ' _ "${REPO_DIR}/lib/common.sh"
+}
+
+@test "install_shared_actionlint installs under errexit and pipefail when there is no shared copy" {
+    write_actionlint_fakes ""
+
+    run_actionlint_strict
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"install_shared_actionlint returned"* ]] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"install -m 0755 "* ]] || fail_test "shared actionlint not installed: $(calls)"
+}
+
+@test "install_shared_actionlint replaces a shared copy whose --version fails under errexit and pipefail" {
+    write_actionlint_fakes ""
+    write_tool "${SHARED_BIN_DIR_TEST_OVERRIDE}" actionlint "exit 3"
+
+    run_actionlint_strict
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" == *"install_shared_actionlint returned"* ]] || fail_with_run_output "${status}" "${output}" 0
+    [[ "$(calls)" == *"install -m 0755 "* ]] || fail_test "broken shared actionlint not replaced: $(calls)"
+}
+
+@test "install_shared_actionlint fails when the latest version cannot be fetched" {
+    write_actionlint_fakes ""
+
+    FAKE_CURL_FAIL=api.github.com ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to fetch the latest actionlint version"* ]]
+    [[ "$(calls)" != *"install -m"* ]] || fail_test "actionlint installed: $(calls)"
+}
+
+@test "install_shared_actionlint fails, without installing, when the tarball download fails" {
+    write_actionlint_fakes ""
+
+    FAKE_CURL_FAIL=.tar.gz ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to download actionlint 1.7.12"* ]]
+    [[ "$(calls)" != *"install -m"* ]] || fail_test "actionlint installed: $(calls)"
+}
+
+@test "install_shared_actionlint fails, without installing, when the checksums download fails" {
+    write_actionlint_fakes ""
+
+    FAKE_CURL_FAIL=checksums ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to download the actionlint 1.7.12 checksums"* ]]
+    [[ "$(calls)" != *"install -m"* ]] || fail_test "actionlint installed: $(calls)"
+}
+
+@test "install_shared_actionlint fails, without extracting or installing, when the tarball does not match its checksum" {
+    write_actionlint_fakes ""
+
+    FAKE_BAD_CHECKSUM=1 ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"actionlint 1.7.12 download failed checksum verification"* ]]
+    [[ "$(calls)" != *"tar "* ]] || fail_test "unverified tarball extracted: $(calls)"
+    [[ "$(calls)" != *"install -m"* ]] || fail_test "unverified actionlint installed: $(calls)"
+}
+
+@test "install_shared_actionlint fails when the binary cannot be installed" {
+    write_actionlint_fakes ""
+
+    FAKE_SUDO_FAIL_COMMAND=install ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"failed to install actionlint"* ]]
+}
+
+@test "install_shared_actionlint removes its temporary directory" {
+    write_actionlint_fakes ""
+    local _tmp="${BATS_TEST_TMPDIR}/tmp"
+    mkdir -p "${_tmp}"
+
+    TMPDIR="${_tmp}" ARCH_GO=amd64 run_helper install_shared_actionlint
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [ -z "$(ls -A "${_tmp}")" ] || fail_test "temporary files left: $(ls -A "${_tmp}")"
 }
 
 

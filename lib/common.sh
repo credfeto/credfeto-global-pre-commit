@@ -167,6 +167,53 @@ install_release_linters() {
         && install_github_release trufflehog trufflesecurity/trufflehog "trufflehog_VERSION_linux_ARCH.tar.gz"
 }
 
+# Installs the latest actionlint release into the shared bin directory, so every
+# account can run it, after verifying it against the release's checksums. Skips
+# only when the shared copy is already that version and a real file: a copy
+# elsewhere on PATH, such as a `go install` one under $HOME, is never a reason
+# to skip, because other users cannot run it. A `go install` build reports its
+# version with a leading v, so that is stripped before comparing.
+# Requires: detect_arch called beforehand (sets ARCH_GO).
+install_shared_actionlint() {
+    local ver
+    ver=$(curl -sSf https://api.github.com/repos/rhysd/actionlint/releases/latest \
+        | python3 -c "import json,sys; print(json.load(sys.stdin)['tag_name'].lstrip('v'))") \
+        || die "failed to fetch the latest actionlint version"
+    # A missing or broken shared copy means install, so a failed probe must not
+    # trip the callers' errexit and pipefail.
+    local installed
+    installed=$("$SHARED_BIN_DIR/actionlint" --version 2>/dev/null | head -1) || installed=""
+    if [ ! -L "$SHARED_BIN_DIR/actionlint" ] && [ "${installed#v}" = "$ver" ]; then
+        info "actionlint $ver already installed in $SHARED_BIN_DIR, skipping"
+        return
+    fi
+    local asset="actionlint_${ver}_linux_${ARCH_GO}.tar.gz"
+    local checksums="actionlint_${ver}_checksums.txt"
+    local base="https://github.com/rhysd/actionlint/releases/download/v${ver}"
+    info "Installing actionlint $ver into $SHARED_BIN_DIR..."
+    (
+        tmp=$(mktemp -d) || die "failed to create a temporary directory for actionlint"
+        trap 'rm -rf "$tmp"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        curl -sSfL "$base/$asset" -o "$tmp/$asset" \
+            || die "failed to download actionlint $ver"
+        curl -sSfL "$base/$checksums" -o "$tmp/$checksums" \
+            || die "failed to download the actionlint $ver checksums"
+        (cd "$tmp" && grep " $asset\$" "$checksums" | sha256sum -c -) \
+            || die "actionlint $ver download failed checksum verification"
+        # Extracted as the caller rather than root, so the archive's recorded
+        # owner and mode are never applied.
+        mkdir "$tmp/extracted" || die "failed to create the extraction directory for actionlint"
+        tar -xzf "$tmp/$asset" -C "$tmp/extracted" actionlint \
+            || die "failed to extract actionlint"
+        # install(1) sets the owner and mode itself, and replaces a link at the
+        # destination rather than writing through it.
+        sudo install -m 0755 "$tmp/extracted/actionlint" "$SHARED_BIN_DIR/actionlint" \
+            || die "failed to install actionlint"
+    ) || exit
+}
+
 # Test-only override, so the suite never inspects the real /usr/local.
 NPM_SHARED_PREFIX="${NPM_SHARED_PREFIX_TEST_OVERRIDE:-/usr/local}"
 
@@ -293,15 +340,59 @@ install_home_dotnet_tool() {
     )
 }
 
+# Test-only overrides, so the suite never writes to the real shared locations.
+DOTNET_SHARED_TOOLS="${DOTNET_SHARED_TOOLS_TEST_OVERRIDE:-/opt/dotnet-tools}"
+SHARED_BIN_DIR="${SHARED_BIN_DIR_TEST_OVERRIDE:-/usr/local/bin}"
+
+# Install or update a dotnet tool as root into the shared tool path, so every
+# account can run it: the $HOME manifest copy is unreachable for every user but
+# the installer, whom the system-wide hooks also serve. A per-user copy is never
+# a reason to skip. dotnet runs by its full path, because sudo's PATH may not
+# hold it. sudo keeps the caller's umask, so 022 is set first, and the tool path
+# is then made readable by all, which also repairs a tree an earlier run created
+# under a restrictive umask. A wrapper in the shared bin directory lets every
+# account run the tool by name; it is a script rather than a link, so the tool's
+# shim always runs from its real path and finds its .store directory beside it.
+#   $1 = package ID (e.g. Credfeto.DotNet.Repo.Formatter)
+#   $2 = command the package provides (e.g. cscleanup)
+# Requires: dotnet on PATH.
+install_shared_dotnet_tool() {
+    local dotnet_path
+    dotnet_path=$(command -v dotnet) || return 1
+    (
+        umask 022
+        if sudo "$dotnet_path" tool list --tool-path "$DOTNET_SHARED_TOOLS" 2>/dev/null \
+            | awk -v pkg="$1" -v cmd="$2" \
+                'tolower($3)==tolower(cmd) && tolower($1)==tolower(pkg){found=1} END{exit !found}'; then
+            sudo "$dotnet_path" tool update --tool-path "$DOTNET_SHARED_TOOLS" "$1"
+        else
+            sudo "$dotnet_path" tool install --tool-path "$DOTNET_SHARED_TOOLS" "$1"
+        fi
+    ) || return 1
+    make_tree_readable_by_all "$DOTNET_SHARED_TOOLS"
+    (
+        tmp=$(mktemp -d) || exit 1
+        trap 'rm -rf "$tmp"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        printf '#!/bin/sh\nexec "%s/%s" "$@"\n' "$DOTNET_SHARED_TOOLS" "$2" > "$tmp/$2" || exit 1
+        sudo install -m 0755 "$tmp/$2" "$SHARED_BIN_DIR/$2"
+    )
+}
+
 # Install or update the cscleanup C# formatter (Credfeto.DotNet.Repo.Formatter)
 # as a local dotnet tool (see install_home_dotnet_tool), which is how
-# buildtest's formatter step invokes it (`dotnet cscleanup`).
+# buildtest's formatter step invokes it for the installing user
+# (`dotnet cscleanup`), and as a shared one (see install_shared_dotnet_tool),
+# which is how it runs for every other account.
 # Skipped with a warning if dotnet is not on PATH.
 install_cscleanup() {
-    info "cscleanup (Credfeto.DotNet.Repo.Formatter, local dotnet tool)"
+    info "cscleanup (Credfeto.DotNet.Repo.Formatter, local and shared dotnet tool)"
     if has dotnet; then
         install_home_dotnet_tool Credfeto.DotNet.Repo.Formatter cscleanup \
             || die "failed to install Credfeto.DotNet.Repo.Formatter dotnet tool"
+        install_shared_dotnet_tool Credfeto.DotNet.Repo.Formatter cscleanup \
+            || die "failed to install the shared Credfeto.DotNet.Repo.Formatter dotnet tool"
     else
         warn "dotnet not found, skipping cscleanup install"
     fi

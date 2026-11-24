@@ -1,10 +1,12 @@
 #!/usr/bin/env bats
 # Acceptance tests for check-setup's cscleanup detection: cscleanup counts as
 # installed when it is a local dotnet tool in the $HOME manifest or, failing
-# that, a global dotnet tool; when it is neither, the local-install hint shows.
-# Also covers the pipx and npm tools under --system: a copy that only resolves
-# under $HOME, a shared venv or npm package other users cannot read, or an npm
-# tool whose node other users cannot run, is reported as failing.
+# that, a global or shared dotnet tool; when it is none of them, the
+# local-install hint shows. Under --system only a shared copy every user can
+# read counts. Also covers the pipx and npm tools and actionlint under
+# --system: a copy that only resolves under $HOME, a shared venv, npm package
+# or binary other users cannot read, or an npm tool whose node other users
+# cannot run, is reported as failing.
 #
 # Runs check-setup with a PATH holding only a fake dotnet and the few
 # utilities check-setup itself needs, and a per-test HOME, so the host's own
@@ -24,7 +26,12 @@ setup() {
 
     # `tool list` reports cscleanup only when run from HOME with
     # FAKE_LOCAL_CSCLEANUP set; `tool list --global` only with
-    # FAKE_GLOBAL_CSCLEANUP set. Every other dotnet call fails.
+    # FAKE_GLOBAL_CSCLEANUP set; `tool list --tool-path <shared tool path>`
+    # only with FAKE_SHARED_CSCLEANUP set. Every other dotnet call fails.
+    SHARED_TOOLS="${BATS_TEST_TMPDIR}/opt/dotnet-tools"
+    SHARED_BIN_DIR="${BATS_TEST_TMPDIR}/usr/local/bin"
+    export DOTNET_SHARED_TOOLS_TEST_OVERRIDE="${SHARED_TOOLS}"
+    export SHARED_BIN_DIR_TEST_OVERRIDE="${SHARED_BIN_DIR}"
     cat > "${FAKE_BIN}/dotnet" <<'FAKE'
 #!/bin/sh
 case "$*" in
@@ -39,6 +46,11 @@ case "$*" in
         printf 'Package Id      Version      Commands\n'
         [ -z "${FAKE_GLOBAL_CSCLEANUP:-}" ] \
             || printf 'credfeto.dotnet.repo.formatter 9.9.9 cscleanup\n'
+        ;;
+    "tool list --tool-path $DOTNET_SHARED_TOOLS_TEST_OVERRIDE")
+        printf 'Package Id      Version      Commands\n'
+        [ -z "${FAKE_SHARED_CSCLEANUP:-}" ] \
+            || printf 'credfeto.dotnet.repo.formatter 3.4.5 cscleanup\n'
         ;;
     *) exit 1 ;;
 esac
@@ -114,6 +126,152 @@ output_line() {
     [[ "${_line}" != *"--global"* ]] \
         || fail_with_run_output "${status}" "${output}" "any"
     [ "${status}" -ne 0 ]
+}
+
+# write_shared_cscleanup
+# Lays out a stand-in for the shared dotnet tool path, readable by every user.
+write_shared_cscleanup() {
+    write_tool "${SHARED_TOOLS}" cscleanup
+    chmod -R a+rX "${SHARED_TOOLS}"
+}
+
+@test "check-setup reports cscleanup installed when it is only a shared tool" {
+    write_shared_cscleanup
+
+    run_check_setup FAKE_SHARED_CSCLEANUP=1
+    local _line
+    _line="$(output_line 'cscleanup (\*.cs)')"
+
+    [[ "${_line}" == *"v3.4.5"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system fails a cscleanup that is only in the HOME manifest, giving the shared install command" {
+    run_check_setup_system FAKE_LOCAL_CSCLEANUP=1 FAKE_GLOBAL_CSCLEANUP=1
+    local _line
+    _line="$(output_line 'cscleanup (\*.cs)')"
+
+    [[ "${_line}" == *"not installed for every user; run: ./install-deps-arch or ./install-deps-debian (installs cscleanup for every user)"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [ "${status}" -ne 0 ]
+}
+
+@test "check-setup --system accepts a shared cscleanup every user can read" {
+    write_shared_cscleanup
+
+    run_check_setup_system FAKE_SHARED_CSCLEANUP=1
+    local _line
+    _line="$(output_line 'cscleanup (\*.cs)')"
+
+    [[ "${_line}" == *"v3.4.5"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${_line}" != *"other users"* && "${_line}" != *"not installed"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system fails a shared cscleanup that other users cannot run" {
+    write_shared_cscleanup
+    chmod 0744 "${SHARED_TOOLS}/cscleanup"
+
+    run_check_setup_system FAKE_SHARED_CSCLEANUP=1
+    local _line
+    _line="$(output_line 'cscleanup (\*.cs)')"
+
+    [[ "${_line}" == *"${SHARED_TOOLS} is not readable and executable by other users, so they cannot run it"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [ "${status}" -ne 0 ]
+}
+
+@test "check-setup --system fails a shared cscleanup whose parent directory other users cannot enter" {
+    write_shared_cscleanup
+    chmod 0750 "${SHARED_TOOLS%/*}"
+
+    run_check_setup_system FAKE_SHARED_CSCLEANUP=1
+    chmod 0755 "${SHARED_TOOLS%/*}"
+    local _line
+    _line="$(output_line 'cscleanup (\*.cs)')"
+
+    [[ "${_line}" == *"is not readable and executable by other users"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system fails an actionlint that is only under HOME, giving the shared install command" {
+    write_tool "${FAKE_HOME}/go/bin" actionlint "echo 1.7.12"
+
+    run_check_setup_system PATH="${FAKE_HOME}/go/bin:${FAKE_BIN}"
+    local _line
+    _line="$(output_line 'VALIDATE_GITHUB_ACTIONS workflows')"
+
+    [[ "${_line}" == *"installed only under ${FAKE_HOME}, so other users cannot run it; run: ./install-deps-arch or ./install-deps-debian (installs actionlint for every user)"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${output}" == *"  actionlint:             ./install-deps-arch or ./install-deps-debian (installs actionlint for every user)"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${output}" != *"go install"*"actionlint"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [ "${status}" -ne 0 ]
+}
+
+@test "check-setup accepts an actionlint under HOME for a per-user install" {
+    write_tool "${FAKE_HOME}/go/bin" actionlint "echo 1.7.12"
+
+    run_check_setup PATH="${FAKE_HOME}/go/bin:${FAKE_BIN}"
+    local _line
+    _line="$(output_line 'VALIDATE_GITHUB_ACTIONS workflows')"
+
+    [[ "${_line}" == *"1.7.12"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${output}" != *"  actionlint: "* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system accepts a shared actionlint every user can run" {
+    write_tool "${SHARED_BIN_DIR}" actionlint "echo 1.7.12"
+
+    run_check_setup_system PATH="${SHARED_BIN_DIR}:${FAKE_BIN}"
+    local _line
+    _line="$(output_line 'VALIDATE_GITHUB_ACTIONS workflows')"
+
+    [[ "${_line}" == *"1.7.12"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [[ "${output}" != *"  actionlint: "* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+}
+
+@test "check-setup --system fails a shared actionlint that other users cannot run" {
+    write_tool "${SHARED_BIN_DIR}" actionlint "echo 1.7.12"
+    chmod 0744 "${SHARED_BIN_DIR}/actionlint"
+
+    run_check_setup_system PATH="${SHARED_BIN_DIR}:${FAKE_BIN}"
+    local _line
+    _line="$(output_line 'VALIDATE_GITHUB_ACTIONS workflows')"
+
+    [[ "${_line}" == *"${SHARED_BIN_DIR}/actionlint is not readable and executable by other users"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [ "${status}" -ne 0 ]
+}
+
+@test "check-setup --system fails a pre-commit that is only under HOME" {
+    write_tool "${FAKE_HOME}/.local/bin" pre-commit
+
+    run_check_setup_system PATH="${FAKE_HOME}/.local/bin:${FAKE_BIN}"
+    local _line
+    _line="$(output_line 'pre-commit linters')"
+
+    [[ "${_line}" == *"pre-commit installed only under ${FAKE_HOME}, so other users cannot run it"*"pipx install pre-commit"* ]] \
+        || fail_with_run_output "${status}" "${output}" "any"
+    [ "${status}" -ne 0 ]
+}
+
+@test "check-setup gives the shared pipx install commands for a missing pre-commit, yamllint and flake8" {
+    run_check_setup
+
+    local _tool
+    for _tool in pre-commit yamllint flake8; do
+        [[ "${output}" == *"  ${_tool}: "*"(umask 022 && sudo env PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin PIPX_MAN_DIR=/usr/local/share/man pipx install ${_tool}) && sudo chmod -R a+rX /opt/pipx"* ]] \
+            || fail_with_run_output "${status}" "${output}" "any"
+        [[ "${output}" != *"pip install ${_tool}"* ]] \
+            || fail_with_run_output "${status}" "${output}" "any"
+    done
 }
 
 @test "check-setup --system fails a pre-commit-hooks copy that is only under HOME, giving the shared install command" {
