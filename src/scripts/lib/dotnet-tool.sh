@@ -7,13 +7,19 @@
 #   1. a local tool manifest found from the working directory: run
 #      as `dotnet <cmd>`;
 #   2. a global install whose command is on PATH: run as `<cmd>`;
-#   3. a global install that is not on PATH: run as $HOME/.dotnet/tools/<cmd>.
+#   3. a global install that is not on PATH: run as $HOME/.dotnet/tools/<cmd>;
+#   4. a shared install in $DOTNET_SHARED_TOOLS, which every account can
+#      reach: run as $DOTNET_SHARED_TOOLS/<cmd>.
 #
 # The method found is exported as DOTNET_TOOL_RUN_<CMD> (see
 # dotnet_tool_cache_var), so the scripts the pre-commit hook runs as child
 # processes reuse it instead of running `dotnet tool list` again.
 #
 # Depends on the caller already defining die() and is_ai_agent().
+
+# Where install-deps-arch/-debian install the dotnet tools shared by every
+# account. Test-only override, so the suite never inspects the real one.
+DOTNET_SHARED_TOOLS="${DOTNET_SHARED_TOOLS_TEST_OVERRIDE:-/opt/dotnet-tools}"
 
 # dotnet_tool_cache_var <cmd>
 # Prints the name of the variable caching <cmd>'s run method: <cmd> upper-cased,
@@ -52,14 +58,14 @@ _dotnet_tool_global_method() {
 }
 
 # dotnet_tool_method <cmd>
-# Prints <cmd>'s cached run method (local, global or home), or nothing when it
+# Prints <cmd>'s cached run method (local, global, home or shared), or nothing when it
 # has not been resolved yet.
 dotnet_tool_method() {
     _dtm_var=$(dotnet_tool_cache_var "$1")
     _dtm_value=
     eval "_dtm_value=\${$_dtm_var:-}"
     case "$_dtm_value" in
-        local | global | home) printf '%s' "$_dtm_value" ;;
+        local | global | home | shared) printf '%s' "$_dtm_value" ;;
     esac
 }
 
@@ -74,6 +80,9 @@ dotnet_tool_installed() {
         _dti_method=local
     elif _dotnet_tool_listed "$1" "$2" --global; then
         _dti_method=$(_dotnet_tool_global_method "$1")
+    elif [ -x "$DOTNET_SHARED_TOOLS/$1" ] \
+        && _dotnet_tool_listed "$1" "$2" --tool-path "$DOTNET_SHARED_TOOLS"; then
+        _dti_method=shared
     else
         return 1
     fi
@@ -108,6 +117,7 @@ run_dotnet_tool() {
     case "$(dotnet_tool_method "$_rnt_cmd")" in
         local) dotnet "$_rnt_cmd" "$@" ;;
         global) "$_rnt_cmd" "$@" ;;
+        shared) "$DOTNET_SHARED_TOOLS/$_rnt_cmd" "$@" ;;
         *) "$HOME/.dotnet/tools/$_rnt_cmd" "$@" ;;
     esac
 }

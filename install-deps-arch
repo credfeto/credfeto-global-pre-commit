@@ -1,7 +1,8 @@
 #!/bin/bash
 # Install dependencies for credfeto-global-pre-commit on Arch Linux.
 # Safe to run multiple times: pacman --needed skips already-installed packages,
-# the release and go installs skip tools already present, and pipx and npm
+# the release and go installs skip tools already present, actionlint is skipped
+# when the shared copy is already the latest release, and pipx, npm and dotnet
 # upgrade packages already installed.
 #
 # Expects Chaotic-AUR to be configured as a pacman repo, because some of the
@@ -52,11 +53,12 @@ sudo pacman -S --needed --noconfirm \
     || die "pacman install failed"
 
 # ── Binary tools from GitHub releases ────────────────────────────────────────
+# install_shared_actionlint installs actionlint shared for every user, and
 # install_release_linters installs hadolint, dotenv-linter and trufflehog.
 # hadolint and dotenv-linter are in neither the official repos nor Chaotic-AUR,
 # and trufflehog is not in the official repos.
 info "Binary tools from GitHub releases"
-install_github_release actionlint rhysd/actionlint "actionlint_VERSION_linux_ARCH.tar.gz"
+install_shared_actionlint
 install_release_linters
 
 # ── Go tools ──────────────────────────────────────────────────────────────────

@@ -9,8 +9,8 @@
 #
 # Run standalone at any time, or automatically at the end of ./install.
 # Pass --system when the hooks were installed system-wide: the pipx- and
-# npm-installed tools must then be runnable by every user, not only from this
-# user's $HOME.
+# npm-installed tools, cscleanup and actionlint must then be runnable by every
+# user, not only from this user's $HOME.
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_DIR="$REPO_DIR/src/hooks"
@@ -149,6 +149,37 @@ npm_tool_usable() {
     return 0
 }
 
+# Test-only overrides, so the suite never inspects the real shared locations.
+DOTNET_SHARED_TOOLS="${DOTNET_SHARED_TOOLS_TEST_OVERRIDE:-/opt/dotnet-tools}"
+SHARED_BIN_DIR="${SHARED_BIN_DIR_TEST_OVERRIDE:-/usr/local/bin}"
+
+# The scripts that install tool $1 shared for every user.
+shared_install_deps_hint() {
+    printf './install-deps-arch or ./install-deps-debian (installs %s for every user)' "$1"
+}
+
+# Prints the version of the shared dotnet tool providing command $1, or nothing
+# when it is not installed there.
+shared_dotnet_tool_version() {
+    dotnet tool list --tool-path "$DOTNET_SHARED_TOOLS" 2>/dev/null \
+        | awk -v cmd="$1" 'tolower($3)==tolower(cmd){print $2}'
+}
+
+# Succeeds when the shared dotnet tool providing command $1 is usable by every
+# user, printing its version. Otherwise fails, printing why.
+shared_dotnet_tool_usable() {
+    _version=$(shared_dotnet_tool_version "$1")
+    if [ -z "$_version" ]; then
+        printf 'not installed for every user; run: %s' "$(shared_install_deps_hint "$1")"
+        return 1
+    fi
+    if ! dirs_searchable_by_all "${DOTNET_SHARED_TOOLS%/*}" || ! tree_usable_by_all "$DOTNET_SHARED_TOOLS"; then
+        printf '%s is not readable and executable by other users, so they cannot run it; run: %s' "$DOTNET_SHARED_TOOLS" "$(shared_install_deps_hint "$1")"
+        return 1
+    fi
+    printf '%s' "$_version"
+}
+
 # Count of failed checks (invalid config or missing tool).  Any non-zero total
 # makes the script exit 1.
 ISSUES=0
@@ -218,14 +249,25 @@ else
     cross ".NET build + test (*.cs/csproj/sln)"    "dotnet not installed"
 fi
 
-# The local check runs from $HOME so it finds the $HOME tool manifest the
-# install-deps scripts write to, whatever directory check-setup is run from.
-CSCLEANUP_VERSION=$(cd "$HOME" && dotnet tool list 2>/dev/null | awk 'tolower($3)=="cscleanup"{print $2}')
-[ -z "$CSCLEANUP_VERSION" ] && CSCLEANUP_VERSION=$(dotnet tool list --global 2>/dev/null | awk 'tolower($3)=="cscleanup"{print $2}')
-if [ -n "$CSCLEANUP_VERSION" ]; then
-    skip  "C# format — cscleanup (*.cs)"           "v${CSCLEANUP_VERSION}"
+# Under --system only the shared copy counts, because every other user cannot
+# reach this user's $HOME manifest or global tools. Otherwise the local check
+# runs from $HOME so it finds the $HOME tool manifest the install-deps scripts
+# write to, whatever directory check-setup is run from.
+if $SYSTEM_INSTALL; then
+    if CSCLEANUP_RESULT=$(shared_dotnet_tool_usable cscleanup); then
+        skip  "C# format — cscleanup (*.cs)"           "v${CSCLEANUP_RESULT}"
+    else
+        cross "C# format — cscleanup (*.cs)"           "$CSCLEANUP_RESULT"
+    fi
 else
-    cross "C# format — cscleanup (*.cs)"           "not installed: run from ~ (after 'dotnet new tool-manifest' if ~ has none): dotnet tool install Credfeto.DotNet.Repo.Formatter"
+    CSCLEANUP_VERSION=$(cd "$HOME" && dotnet tool list 2>/dev/null | awk 'tolower($3)=="cscleanup"{print $2}')
+    [ -z "$CSCLEANUP_VERSION" ] && CSCLEANUP_VERSION=$(dotnet tool list --global 2>/dev/null | awk 'tolower($3)=="cscleanup"{print $2}')
+    [ -z "$CSCLEANUP_VERSION" ] && CSCLEANUP_VERSION=$(shared_dotnet_tool_version cscleanup)
+    if [ -n "$CSCLEANUP_VERSION" ]; then
+        skip  "C# format — cscleanup (*.cs)"           "v${CSCLEANUP_VERSION}"
+    else
+        cross "C# format — cscleanup (*.cs)"           "not installed: run from ~ (after 'dotnet new tool-manifest' if ~ has none): dotnet tool install Credfeto.DotNet.Repo.Formatter"
+    fi
 fi
 
 if has npm; then
@@ -256,10 +298,12 @@ else
     cross "CloudFormation — cfn-lint"               "${CFN_LINT_PROBLEM:-not installed}"
 fi
 
-if has pre-commit; then
+PRE_COMMIT_OK=false
+if PRE_COMMIT_PROBLEM=$(pipx_tool_usable pre-commit pre-commit); then
+    PRE_COMMIT_OK=true
     skip  "pre-commit linters"                      "$(pre-commit --version 2>/dev/null)"
 else
-    cross "pre-commit linters"                      "pre-commit not installed — linting skipped"
+    cross "pre-commit linters"                      "pre-commit ${PRE_COMMIT_PROBLEM:-not installed — linting skipped}"
 fi
 
 # ── Super-linter equivalent via pre-commit ────────────────────────────────────
@@ -284,16 +328,20 @@ else
     cross "VALIDATE_BASH — shellcheck       (system)" "not installed"
 fi
 
-if has yamllint; then
+YAMLLINT_OK=false
+if YAMLLINT_PROBLEM=$(pipx_tool_usable yamllint yamllint); then
+    YAMLLINT_OK=true
     skip  "VALIDATE_YAML — yamllint         (system)" "$(yamllint --version 2>/dev/null)"
 else
-    cross "VALIDATE_YAML — yamllint         (system)" "not installed"
+    cross "VALIDATE_YAML — yamllint         (system)" "${YAMLLINT_PROBLEM:-not installed}"
 fi
 
-if has flake8; then
+FLAKE8_OK=false
+if FLAKE8_PROBLEM=$(pipx_tool_usable flake8 flake8); then
+    FLAKE8_OK=true
     skip  "VALIDATE_PYTHON — flake8         (system)" "$(flake8 --version 2>/dev/null | head -1)"
 else
-    cross "VALIDATE_PYTHON — flake8         (system)" "not installed"
+    cross "VALIDATE_PYTHON — flake8         (system)" "${FLAKE8_PROBLEM:-not installed}"
 fi
 
 MARKDOWNLINT_OK=false
@@ -319,10 +367,12 @@ else
     cross "VALIDATE_DOCKERFILE — hadolint   (system)" "not installed"
 fi
 
-if has actionlint; then
-    skip  "VALIDATE_GITHUB_ACTIONS workflows — actionlint        (system)" "$(actionlint --version 2>/dev/null)"
+ACTIONLINT_OK=false
+if ACTIONLINT_PROBLEM=$(shared_tool_usable actionlint shared_install_deps_hint actionlint "$SHARED_BIN_DIR" "$SHARED_BIN_DIR"); then
+    ACTIONLINT_OK=true
+    skip  "VALIDATE_GITHUB_ACTIONS workflows — actionlint        (system)" "$(actionlint --version 2>/dev/null | head -1)"
 else
-    cross "VALIDATE_GITHUB_ACTIONS workflows — actionlint        (system)" "not installed"
+    cross "VALIDATE_GITHUB_ACTIONS workflows — actionlint        (system)" "${ACTIONLINT_PROBLEM:-not installed}"
 fi
 
 if has composite-action-lint; then
@@ -390,17 +440,18 @@ fi
 
 # ── Optional tool install hints ───────────────────────────────────────────────
 MISSING_SYSTEM=""
+$PRE_COMMIT_OK            || MISSING_SYSTEM="$MISSING_SYSTEM pre-commit"
 $PRE_COMMIT_HOOKS_OK      || MISSING_SYSTEM="$MISSING_SYSTEM pre-commit-hooks"
 has shellcheck    || MISSING_SYSTEM="$MISSING_SYSTEM shellcheck"
-has yamllint      || MISSING_SYSTEM="$MISSING_SYSTEM yamllint"
-has flake8        || MISSING_SYSTEM="$MISSING_SYSTEM flake8"
+$YAMLLINT_OK      || MISSING_SYSTEM="$MISSING_SYSTEM yamllint"
+$FLAKE8_OK        || MISSING_SYSTEM="$MISSING_SYSTEM flake8"
 $MARKDOWNLINT_OK  || MISSING_SYSTEM="$MISSING_SYSTEM markdownlint"
 $ANSIBLE_LINT_OK  || MISSING_SYSTEM="$MISSING_SYSTEM ansible-lint"
 has trufflehog    || MISSING_SYSTEM="$MISSING_SYSTEM trufflehog"
 $SQLFLUFF_OK      || MISSING_SYSTEM="$MISSING_SYSTEM sqlfluff"
 $CFN_LINT_OK      || MISSING_SYSTEM="$MISSING_SYSTEM cfn-lint"
 has hadolint      || MISSING_SYSTEM="$MISSING_SYSTEM hadolint"
-has actionlint             || MISSING_SYSTEM="$MISSING_SYSTEM actionlint"
+$ACTIONLINT_OK             || MISSING_SYSTEM="$MISSING_SYSTEM actionlint"
 has composite-action-lint  || MISSING_SYSTEM="$MISSING_SYSTEM composite-action-lint"
 $PYLINT_OK        || MISSING_SYSTEM="$MISSING_SYSTEM pylint"
 $STYLELINT_OK     || MISSING_SYSTEM="$MISSING_SYSTEM stylelint"
@@ -414,15 +465,16 @@ has parallel      || MISSING_SYSTEM="$MISSING_SYSTEM parallel"
 if [ -n "$MISSING_SYSTEM" ]; then
     echo ""
     echo "To install missing system tools:"
+    $PRE_COMMIT_OK    || echo "  pre-commit:     $(shared_pipx_hint pre-commit)  # or apt install pre-commit"
     $PRE_COMMIT_HOOKS_OK || echo "  pre-commit-hooks: $(shared_pipx_hint pre-commit-hooks)  # provides ~20 individual check-* / end-of-file-fixer / etc. bins"
     has shellcheck    || echo "  shellcheck:     apt install shellcheck  # or brew install shellcheck"
-    has yamllint      || echo "  yamllint:       pip install yamllint  # or apt install yamllint"
-    has flake8        || echo "  flake8:         pip install flake8    # or apt install flake8"
+    $YAMLLINT_OK      || echo "  yamllint:       $(shared_pipx_hint yamllint)  # or apt install yamllint"
+    $FLAKE8_OK        || echo "  flake8:         $(shared_pipx_hint flake8)  # or apt install python3-flake8"
     $MARKDOWNLINT_OK  || echo "  markdownlint:   $(shared_npm_hint markdownlint-cli)"
     $ANSIBLE_LINT_OK  || echo "  ansible-lint:   $(shared_pipx_hint ansible-lint)  # or apt install ansible-lint"
     has trufflehog    || echo "  trufflehog:     curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin"
     has hadolint      || echo "  hadolint:       brew install hadolint  # or https://github.com/hadolint/hadolint/releases"
-    has actionlint             || echo "  actionlint:             brew install actionlint  # or https://github.com/rhysd/actionlint/releases"
+    $ACTIONLINT_OK             || echo "  actionlint:             $(shared_install_deps_hint actionlint)  # the checksum-verified release in $SHARED_BIN_DIR"
     has composite-action-lint  || echo "  composite-action-lint:  go install github.com/bettermarks/composite-action-lint/cmd/composite-action-lint@latest"
     $PYLINT_OK        || echo "  pylint:         $(shared_pipx_hint pylint)"
     $STYLELINT_OK     || echo "  stylelint:      $(shared_npm_hint "stylelint stylelint-config-standard")"

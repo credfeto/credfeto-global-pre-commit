@@ -64,6 +64,18 @@ A per-user install links the `run-*` wrappers already listed in the *Symlink sys
 5. Never take Node.js from the Debian / Ubuntu `nodejs` package, because it is older than the linters' `engines` allow, and never link to an nvm Node, because other users cannot read `$HOME`.
 6. When adding an npm-installed tool, check it in `check-setup` with `npm_tool_usable` rather than `has`, so `check-setup --system` fails a copy that only resolves under `$HOME`, a shared package other users cannot read, or a tool whose `node` other users cannot run, and gives the shared install command (`shared_npm_hint`) as the fix.
 
+## dotnet tools and actionlint are installed shared (MANDATORY)
+
+`install-deps-arch` and `install-deps-debian` install `cscleanup` through `install_cscleanup` in `lib/common.sh`, which installs it twice: into the `$HOME`-scoped tool manifest (`install_home_dotnet_tool`), so `dotnet cscleanup` keeps working, and shared for every account (`install_shared_dotnet_tool`), as root with `--tool-path /opt/dotnet-tools` under `umask 022`, then `chmod -R a+rX /opt/dotnet-tools`, plus an exec wrapper in `/usr/local/bin`. They install `actionlint` through `install_shared_actionlint`, which downloads the latest release tarball, verifies it against the release's checksums file and installs it to `/usr/local/bin` with `sudo install -m 0755`. The rules that follow from this:
+
+1. Never install a dotnet tool for the hooks only into `$HOME` (a manifest or `~/.dotnet/tools`), and never install `actionlint` with `go install` into `$HOME`, because a `--system` install serves every account and a per-user copy is unreachable for all of them but one.
+2. Never skip the shared install because the command already resolves, because that copy may be a per-user one; skip `actionlint` only when `/usr/local/bin/actionlint` is already the latest release and a real file, not a link.
+3. Keep the `umask 022` and the `chmod -R a+rX`, because sudo keeps the caller's umask, so only the `chmod` repairs a tool path an earlier run created unreadable.
+4. Run `dotnet` under sudo by its full path, because sudo's `secure_path` may not contain the caller's SDK.
+5. The `/usr/local/bin` wrapper is a local exception to the rule against putting dotnet tools on `PATH`: it is an `exec` script, not a symlink, so the tool's own apphost resolves its files from `/opt/dotnet-tools`, and the hooks still reach the tool through `src/scripts/lib/dotnet-tool.sh`, whose `shared` method runs `/opt/dotnet-tools/<command>` when no per-user copy is found.
+6. Never drop the checksum verification of a downloaded release, and never install from a download whose checksum line is missing.
+7. When adding a shared dotnet tool, check it in `check-setup` with `shared_dotnet_tool_usable`, and a shared release binary with `shared_tool_usable`, rather than `has`, so `check-setup --system` fails a copy that only resolves under `$HOME`, or a shared copy other users cannot run, and points to `./install-deps-arch` or `./install-deps-debian` (`shared_install_deps_hint`) as the fix.
+
 ## Purpose of `--all-files` mode (MANDATORY)
 
 `hooks/pre-commit --all-files` (invoked via the `pre-commit-check` wrapper) exists to detect, and wherever a fixer script exists for the problem silently *fix*, every issue across the whole tracked tree, with no commit in progress. It is the supported way to get a trustworthy "everything in the repo is clean" signal, e.g. as the mandatory pre-work baseline check before starting a task (see `ai/global/git.instructions.md`'s "Pre-Work Baseline Check"). A false "all checks passed" result from `--all-files` defeats that purpose for every consumer of this repo's hooks, so this is treated as a correctness bug, not a nice-to-have, whenever it happens.
