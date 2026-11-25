@@ -84,7 +84,7 @@ EOF
     T="$(make_repo feature/clean-lockfile-test)"
     printf '%s' "${TRIVY_CONFIG}" > "${T}/.pre-commit-config.yaml"
     # No third-party packages, so there is nothing for the vulnerability
-    # database to ever flag — unlike pinning a real package version, this
+    # database to ever flag; unlike pinning a real package version, this
     # can't be broken by a future CVE being published against it.
     cat > "${T}/package-lock.json" <<'EOF'
 {

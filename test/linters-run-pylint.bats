@@ -7,7 +7,7 @@ load test_helper
 
 # Own scoped config for the run-pylint wrapper tests below (entry: run-pylint
 # rather than entry: pylint), per linters.instructions.md's "own scoped
-# config" rule — these exercise the wrapper's venv/manifest handling, not
+# config" rule; these exercise the wrapper's venv/manifest handling, not
 # pylint itself, and must not be masked by PYLINT_CONFIG's direct entry.
 PYLINT_WRAPPER_CONFIG='repos:
   - repo: local

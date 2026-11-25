@@ -1,7 +1,7 @@
 #!/bin/sh
 # Flags docker-compose / compose volume short-syntax entries
 # (SOURCE:TARGET:MODE) whose trailing MODE isn't a value Docker actually
-# recognises — most commonly ":r" typed in place of ":ro". Neither YAML
+# recognises, most commonly ":r" typed in place of ":ro". Neither YAML
 # syntax checking nor the official compose-spec JSON schema catch this: the
 # schema treats the whole entry as a free-form string, so the typo is only
 # ever discovered when someone tries to run the stack.
@@ -34,7 +34,7 @@ for FILE in "$@"; do
         REST=${ENTRY#*:}
         MODE=$(printf '%s\n' "$REST" | sed -E 's/^[[:space:]]*-[[:space:]]*"?[^":[:space:]]+:\/[^":[:space:]]+:([A-Za-z][A-Za-z,]*)"?[[:space:]]*$/\1/')
         if ! is_valid_mode "$MODE"; then
-            VIOLATIONS="${VIOLATIONS}  ${FILE}:${LINE_NO}: invalid volume mount mode \"${MODE}\" — did you mean \"ro\" or \"rw\"?
+            VIOLATIONS="${VIOLATIONS}  ${FILE}:${LINE_NO}: invalid volume mount mode \"${MODE}\"; did you mean \"ro\" or \"rw\"?
 "
         fi
     done <<EOF

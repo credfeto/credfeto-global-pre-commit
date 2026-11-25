@@ -3,11 +3,11 @@
 # requirements.txt or a PEP 621 pyproject.toml [project.dependencies] array,
 # builds/reuses a --system-site-packages venv (inherits the pinned system
 # pylint + its deps) with those dependencies layered on top, then runs pylint
-# via that venv's own Python — so pylint's import resolution can see the
+# via that venv's own Python, so pylint's import resolution can see the
 # repo's own dependencies, which the system pylint's site-packages never can
 # (every repo can declare arbitrary Python deps; there is no fixed list to
 # bake into the shared container image). If neither manifest is present,
-# execs system pylint directly — current behaviour, zero overhead. If venv
+# execs system pylint directly: current behaviour, zero overhead. If venv
 # creation or dependency install fails for any reason, falls back to system
 # pylint with a stderr warning rather than hard-failing every commit in the
 # repo (possible E0401 false positives on the repo's own imports, same as
@@ -80,7 +80,7 @@ fi
 if [ "$MANIFEST" = "$PYPROJECT_TOML" ]; then
     GENERATED_DEPS=$(extract_pyproject_deps "$PYPROJECT_TOML")
     if [ -z "$GENERATED_DEPS" ]; then
-        # No [project.dependencies] key — nothing to install.
+        # No [project.dependencies] key; nothing to install.
         fallback "$@"
     fi
 fi
@@ -96,7 +96,7 @@ else
 fi
 
 if ! python3 -m venv --system-site-packages "$VENV_DIR" 2>/dev/null; then
-    info "warning: run-pylint: failed to create venv — check python3-venv is installed"
+    info "warning: run-pylint: failed to create venv; check python3-venv is installed"
     fallback "$@"
 fi
 

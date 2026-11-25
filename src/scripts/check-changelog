@@ -1,7 +1,7 @@
 #!/bin/sh
 # Lints staged CHANGELOG.md files using `dotnet changelog --lint`.
 # In `*-template` repositories (e.g. cs-template) also enforces that
-# CHANGELOG.md stays blank — those repos are copied into every new project,
+# CHANGELOG.md stays blank; those repos are copied into every new project,
 # so a real entry there would leak into every consumer's history.
 #
 # Usage: check-changelog [--all-files]
@@ -128,14 +128,14 @@ $DETAIL"
             printf '%s\n' "$(cat "$ACTUAL_NORM")" > "$ACTUAL_NORM"
             printf '%s\n' "$(cat "$REF_NORM")" > "$REF_NORM"
             if ! diff -q "$REF_NORM" "$ACTUAL_NORM" >/dev/null; then
-                printf '\n\033[31m✗\033[0m %s\n' "${changelog} has entries — *-template repos must keep CHANGELOG.md blank:" >&2
+                printf '\n\033[31m✗\033[0m %s\n' "${changelog} has entries; *-template repos must keep CHANGELOG.md blank:" >&2
                 diff "$REF_NORM" "$ACTUAL_NORM" | sed 's/^/  /' >&2
                 BLANK_FAILED=1
             fi
         done <<EOF
 $CHANGELOG_FILES
 EOF
-        [ "$BLANK_FAILED" -eq 0 ] || die "remove the entries from CHANGELOG.md — *-template repos must not carry changelog entries"
+        [ "$BLANK_FAILED" -eq 0 ] || die "remove the entries from CHANGELOG.md; *-template repos must not carry changelog entries"
         ;;
 esac
 

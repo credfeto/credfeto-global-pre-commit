@@ -42,14 +42,14 @@ jobs:
         with:
           go-version: "1.25"
           # No go.mod in this repo (tools are installed via `go install ...@latest`),
-          # so module caching has nothing to key on — disable it to avoid a warning.
+          # so module caching has nothing to key on; disable it to avoid a warning.
           cache: false
 
       - name: "Install"
         shell: bash
         # check-setup (run last by install) exits non-zero when an optional tool
         # is missing on the runner; the hooks are still installed, so don't fail
-        # the step on it — the acceptance tests below are the real gate.
+        # the step on it; the acceptance tests below are the real gate.
         run: ./install || true
 
       - name: "Run Acceptance Tests"

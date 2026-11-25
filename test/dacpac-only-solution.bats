@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # Acceptance tests for src/scripts/dacpac-only-solution, the pure file-analysis
 # helper buildtest uses to decide whether the solution's only project is a
-# SQL Server database project (dacpac) — in which case there is nothing
-# testable and `dotnet test` should be skipped. Invoked directly — no dotnet
+# SQL Server database project (dacpac), in which case there is nothing
+# testable and `dotnet test` should be skipped. Invoked directly: no dotnet
 # required.
 
 load test_helper

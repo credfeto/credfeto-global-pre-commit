@@ -110,7 +110,7 @@ run_check_identity() {
     # A no-op project .pre-commit-config.yaml keeps this test scoped to
     # check-identity's wiring into the hook, rather than incidentally
     # exercising (and being exposed to flakiness in) the bundled global
-    # linter set — see freshness.bats for the same pattern.
+    # linter set; see freshness.bats for the same pattern.
     printf 'repos: []\n' > "${T}/.pre-commit-config.yaml"
     printf 'hello\n' > "${T}/file.txt"
     git -C "${T}" add .pre-commit-config.yaml file.txt

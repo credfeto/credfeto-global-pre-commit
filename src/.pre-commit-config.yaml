@@ -18,8 +18,8 @@
 # the run-pylint wrapper rather than pylint directly, because the system
 # pylint's site-packages can never see a consuming repo's own Python
 # dependencies (declared via requirements.txt or pyproject.toml). The wrapper
-# still runs as `language: system` — it does not opt into pre-commit's own
-# venv machinery — it just builds/reuses its own venv on top of the system
+# still runs as `language: system`; it does not opt into pre-commit's own
+# venv machinery; it just builds/reuses its own venv on top of the system
 # pylint when the repo declares dependencies. See src/scripts/run-pylint.
 #
 # VALIDATE_SQLFLUFF and VALIDATE_CLOUDFORMATION are handled by dedicated
@@ -91,7 +91,7 @@ repos:
         # still caught.
         exclude: ^certs/([^/]*\.local|localhost)\.(pem|key)$
 
-      # ── Secrets scanning — TruffleHog ─────────────────────────────────────
+      # ── Secrets scanning: TruffleHog ──────────────────────────────────────
       # Mirrors the official hook from trufflesecurity/trufflehog
       # (.pre-commit-hooks.yaml) but uses language: system so pre-commit
       # does not clone/build the Go binary on each ephemeral container.
@@ -166,14 +166,14 @@ repos:
         types: [text]
         exclude_types: [shell]
 
-      # ── VALIDATE_YAML — full style lint ───────────────────────────────────
+      # ── VALIDATE_YAML: full style lint ────────────────────────────────────
       - id: yamllint
         name: yamllint
         entry: yamllint
         language: system
         types: [yaml]
 
-      # ── VALIDATE_PYTHON — flake8 ──────────────────────────────────────────
+      # ── VALIDATE_PYTHON: flake8 ───────────────────────────────────────────
       - id: flake8
         name: flake8
         entry: flake8
@@ -181,8 +181,8 @@ repos:
         types: [python]
         require_serial: true
 
-      # ── VALIDATE_MD — markdownlint ────────────────────────────────────────
-      # MD013 (line length) is disabled for parity with PR #2 — see commit
+      # ── VALIDATE_MD: markdownlint ─────────────────────────────────────────
+      # MD013 (line length) is disabled for parity with PR #2; see commit
       # fe486d5 ("fix: repair ansible-lint crash and relax markdownlint
       # line length"). The `--` separates flag args from filenames.
       - id: markdownlint
@@ -196,7 +196,7 @@ repos:
         # to avoid MD022/MD032 false positives.
         exclude: ^CHANGELOG\.md$
 
-      # ── VALIDATE_ANSIBLE — ansible-lint ───────────────────────────────────
+      # ── VALIDATE_ANSIBLE: ansible-lint ────────────────────────────────────
       # Mirrors the upstream ansible-lint hook config: don't pass filenames
       # (it scans the project itself), always run.
       - id: ansible-lint
@@ -214,21 +214,21 @@ repos:
         files: (^|/)Dockerfile[^/]*$
         args: [--config, .github/linters/.hadolint.yaml]
 
-      # ── Compose volume mount modes — not part of Super-linter's VALIDATE_*
+      # ── Compose volume mount modes: not part of Super-linter's VALIDATE_*
       # set; added independently. Catches typo'd short-syntax modes (e.g.
       # ":r" instead of ":ro") that neither YAML parsing nor the official
       # compose-spec JSON schema catch, since the schema treats the whole
-      # entry as a free-form string. Bundled script — no external tool.
+      # entry as a free-form string. Bundled script: no external tool.
       - id: check-compose-volumes
         name: check-compose-volumes
         entry: check-compose-volumes
         language: system
         files: (^|/)(docker-)?compose(\.[^/]+)?\.ya?ml$
 
-      # ── MSBuild path separators — backslash is a legal filename character
+      # ── MSBuild path separators: backslash is a legal filename character
       # on Linux, not a separator, so a hand-typed backslash path in a
       # project file silently never resolves on Linux self-hosted runners
-      # even though it looks correct on Windows. Bundled script — no
+      # even though it looks correct on Windows. Bundled script: no
       # external tool. .sln is deliberately excluded: it is not XML, and
       # `dotnet sln add` legitimately writes backslash-separated relative
       # paths into it on every OS, including Linux.
@@ -238,7 +238,7 @@ repos:
         language: system
         files: \.(props|targets|csproj|slnx)$
 
-      # ── VALIDATE_GITHUB_ACTIONS — workflows ──────────────────────────────
+      # ── VALIDATE_GITHUB_ACTIONS: workflows ───────────────────────────────
       # require_serial: true avoids sharding shellcheck invocations (which
       # actionlint shells out to per embedded `run:` script) across concurrent
       # pre-commit processes. On hosts where shellcheck is firejail-wrapped,
@@ -252,7 +252,7 @@ repos:
         files: ^\.github/workflows/.*\.(yml|yaml)$
         require_serial: true
 
-      # ── VALIDATE_GITHUB_ACTIONS — composite actions ───────────────────────
+      # ── VALIDATE_GITHUB_ACTIONS: composite actions ────────────────────────
       - id: composite-action-lint
         name: composite-action-lint
         entry: composite-action-lint
@@ -266,7 +266,7 @@ repos:
         language: system
         types: [python]
 
-      # ── VALIDATE_CSS — wrapper skips silently if no package.json ─────────
+      # ── VALIDATE_CSS: wrapper skips silently if no package.json ──────────
       - id: stylelint
         name: stylelint
         entry: run-stylelint
@@ -280,14 +280,14 @@ repos:
         language: system
         files: (^|/)\.env(\.[^/]+)?$
 
-      # ── VALIDATE_TYPESCRIPT_ES — wrapper skips silently if no eslint cfg ─
+      # ── VALIDATE_TYPESCRIPT_ES: wrapper skips silently if no eslint cfg ──
       - id: eslint
         name: eslint
         entry: run-eslint
         language: system
         files: \.(ts|tsx|js|jsx)$
 
-      # ── VALIDATE_XML — full xmllint validation (supplements check-xml) ────
+      # ── VALIDATE_XML: full xmllint validation (supplements check-xml) ─────
       - id: xmllint
         name: xmllint
         entry: xmllint
@@ -295,7 +295,7 @@ repos:
         language: system
         types: [xml]
 
-      # ── VALIDATE_BATS — run bats test suite ──────────────────────────────
+      # ── VALIDATE_BATS: run bats test suite ───────────────────────────────
       # run-bats runs only the bats files the passed-in files can affect, and
       # falls back to bats --recursive test/ when a file cannot be narrowed
       # down. README.md, "Bats test selection (run-bats)", is the full and
@@ -322,7 +322,7 @@ repos:
         pass_filenames: true
         require_serial: true
 
-      # ── Dependency vulnerability scanning — Trivy ─────────────────────────
+      # ── Dependency vulnerability scanning: Trivy ──────────────────────────
       # Scans dependency lockfiles for known CVEs. Not part of Super-Linter's
       # VALIDATE_* set; added independently. Deliberately scoped to
       # `--scanners vuln` only: Trivy's secret scanner overlaps with the

@@ -103,7 +103,7 @@ BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
     T="$(make_repo feature/tmpdir-location)"
     printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
-    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
+    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here; it's written
     # into the generated bats file below and only expands when that file runs.
     printf '#!/usr/bin/env bats\n@test "dump tmpdir" {\n  printf "%%s\\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"\n  false\n}\n' "${T}" > "${T}/test/dump.bats"
     git -C "${T}" add .pre-commit-config.yaml test/dump.bats
@@ -128,12 +128,12 @@ BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
     T="$(make_repo feature/xdg-remote)"
     git -C "${T}" remote add origin "git@github.com:acme/widget.git"
     # Deliberately short and flat, like a real XDG_RUNTIME_DIR (e.g.
-    # /run/user/1000) — not nested under BATS_TEST_TMPDIR, which would make it
+    # /run/user/1000), not nested under BATS_TEST_TMPDIR, which would make it
     # unrealistically long and risk tripping the #169 length safety net below.
     _fake_xdg="$(mktemp -d /tmp/xdg.XXXXXX)"
     printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
-    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
+    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here; it's written
     # into the generated bats file below and only expands when that file runs.
     printf '#!/usr/bin/env bats\n@test "dump tmpdir" {\n  printf "%%s\\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"\n  false\n}\n' "${T}" > "${T}/test/dump.bats"
     git -C "${T}" add .pre-commit-config.yaml test/dump.bats
@@ -156,12 +156,12 @@ BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
     local T _fake_xdg
     T="$(make_repo feature/xdg-local)"
     # Deliberately short and flat, like a real XDG_RUNTIME_DIR (e.g.
-    # /run/user/1000) — not nested under BATS_TEST_TMPDIR, which would make it
+    # /run/user/1000), not nested under BATS_TEST_TMPDIR, which would make it
     # unrealistically long and risk tripping the #169 length safety net below.
     _fake_xdg="$(mktemp -d /tmp/xdg.XXXXXX)"
     printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
-    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
+    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here; it's written
     # into the generated bats file below and only expands when that file runs.
     printf '#!/usr/bin/env bats\n@test "dump tmpdir" {\n  printf "%%s\\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"\n  false\n}\n' "${T}" > "${T}/test/dump.bats"
     git -C "${T}" add .pre-commit-config.yaml test/dump.bats
@@ -190,7 +190,7 @@ BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
     _fake_xdg="$(mktemp -d /tmp/xdg.XXXXXX)"
     printf '%s\n' "${BATS_TRIGGER_CONFIG}" > "${T}/.pre-commit-config.yaml"
     mkdir -p "${T}/test"
-    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here — it's written
+    # shellcheck disable=SC2016 # $BATS_TMPDIR is meant literally here; it's written
     # into the generated bats file below and only expands when that file runs.
     printf '#!/usr/bin/env bats\n@test "dump tmpdir" {\n  printf "%%s\\n" "$BATS_TMPDIR" > "%s/tmpdir-used.txt"\n  false\n}\n' "${T}" > "${T}/test/dump.bats"
     git -C "${T}" add .pre-commit-config.yaml test/dump.bats
@@ -255,7 +255,7 @@ BATS_TRIGGER_CONFIG="$(bats_hook_config "${REPO_DIR}/src/scripts/run-bats")"
     # Reproduces #173: entry is a bare command name (as in the real
     # src/.pre-commit-config.yaml), and PATH is stripped of every directory
     # that could resolve it (the repo's own src/scripts, and any install
-    # symlink dir such as ~/.local/bin) — only the hook's own PATH= prepend
+    # symlink dir such as ~/.local/bin); only the hook's own PATH= prepend
     # can make this resolve.
     _stripped_path="$(printf '%s' "${TEST_PATH}" | tr ':' '\n' \
         | grep -Fxv "${REPO_DIR}/src/scripts" \

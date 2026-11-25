@@ -7,7 +7,7 @@ load test_helper
 
 # entry is the script's absolute path (not a bare name) because these tests
 # invoke `pre-commit run` directly rather than going through src/hooks/pre-commit
-# (which puts SCRIPTS_DIR on PATH) — see the check-msbuild-path-separator
+# (which puts SCRIPTS_DIR on PATH); see the check-msbuild-path-separator
 # section below for why.
 CHECK_MSBUILD_PATH_SEPARATOR_CONFIG="repos:
   - repo: local

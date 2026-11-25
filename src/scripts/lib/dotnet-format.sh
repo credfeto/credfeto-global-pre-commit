@@ -54,7 +54,7 @@ format_dotnet_sources() {
     _fmt_cs_files=$(printf '%s\n' "$_fmt_files" | grep -E '\.cs$')
     if [ -n "$_fmt_cs_files" ]; then
         if [ -z "$_fmt_solution" ]; then
-            info "No solution file found — skipping dotnet format"
+            info "No solution file found, skipping dotnet format"
         else
             dotnet format --version > /dev/null 2>&1 \
                 || die "dotnet format is not available in this SDK (missing dotnet-format component): cannot format ${_fmt_scope} .cs files"

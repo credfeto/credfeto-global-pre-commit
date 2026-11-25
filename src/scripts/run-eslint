@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wrapper for eslint — skips silently if no package.json or no eslint config.
+# Wrapper for eslint: skips silently if no package.json or no eslint config.
 REPO_ROOT=$(git rev-parse --show-toplevel)
 [ -f "$REPO_ROOT/package.json" ] || exit 0
 for cfg in .eslintrc .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml \

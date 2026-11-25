@@ -192,14 +192,14 @@ Always-on:
   ✓  No merge conflict markers
   ✓  No case sensitivity conflicts
   ✓  No ignored files tracked
-  ✗  Secret scanning (trufflehog)        not installed — see install instructions below
+  ✗  Secret scanning (trufflehog)        not installed; see install instructions below
 
 Conditional (triggered by file type + tool availability):
   –  .NET build + test (*.cs/csproj/sln)  dotnet 10.0.203
   –  NPM tests (*.ts/tsx/js/jsx)          npm 10.9.7
-  –  T-SQL lint — dotnet tsqllint (*.sql) dotnet 10.0.203
-  ✗  SQL style — sqlfluff (*.sql)         not installed
-  ✗  CloudFormation — cfn-lint            not installed
+  –  T-SQL lint: dotnet tsqllint (*.sql)  dotnet 10.0.203
+  ✗  SQL style: sqlfluff (*.sql)          not installed
+  ✗  CloudFormation: cfn-lint             not installed
   –  pre-commit framework                 delegated if .pre-commit-config.yaml present
 
 To install missing tools:

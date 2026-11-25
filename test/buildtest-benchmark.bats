@@ -85,7 +85,7 @@ run_buildtest() {
     run_buildtest "${T}" CLAUDECODE=1
 
     [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
-    [[ "${output}" == *"AI agent commit — skipping benchmark tests (CI runs them)"* ]]
+    [[ "${output}" == *"AI agent commit, skipping benchmark tests (CI runs them)"* ]]
     [[ "${output}" != *"Determining which benchmarks are affected"* ]]
     [[ "${output}" != *"Running benchmark tests"* ]]
     [ "$(grep -c "^test ${BENCH_REL}" "${BATS_TEST_TMPDIR}/dotnet.log")" -eq 0 ]

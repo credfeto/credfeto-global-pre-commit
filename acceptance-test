@@ -12,7 +12,7 @@ die() {
 
 [ -x "${HOOK}" ] || die "hook not found or not executable: ${HOOK}"
 command -v git > /dev/null 2>&1 || die "git is not installed"
-command -v bats > /dev/null 2>&1 || die "bats is not installed — run ./install-deps-debian or ./install-deps-arch"
+command -v bats > /dev/null 2>&1 || die "bats is not installed; run ./install-deps-debian or ./install-deps-arch"
 
 # GNU parallel is bats' own prerequisite for --jobs; without it (or without a
 # usable CPU count) fall through to today's unmodified serial run rather than
