@@ -46,13 +46,38 @@ SCRIPTS_DIR="$REPO_DIR/src/scripts"
 # ── Refuse cross-scope install ────────────────────────────────────────────────
 # Installing at one scope while the other already has a hooksPath configured
 # would leave two conflicting installs in place, so require the existing one
-# removed first rather than silently layering another on top.
+# removed first rather than silently layering another on top. git config
+# --get exits 1 when the key is unset, but a file it cannot read either makes
+# it exit with another status or only warns on stderr and still exits 1, so
+# an unset key is trusted only when git printed nothing: treating an
+# unreadable config as unset would let the install layer on top of the one it
+# should refuse. stderr is captured on its own, so a warning never becomes
+# the hooksPath value, and the value is read only once the read is known
+# clean. Without git, which the dependency step installs, no scope can be set.
+#
+# SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE is a test-only escape hatch, so the
+# tests can exercise the fallback without touching the real /etc/gitconfig;
+# never set it in production shells.
+SYSTEM_GIT_CONFIG_FALLBACK="${SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE:-/etc/gitconfig}"
 if $SYSTEM_INSTALL; then
     _other_scope=global
-    _other_hooks_path=$(git config --global --get core.hooksPath 2>/dev/null || true)
+    _other_config="${GIT_CONFIG_GLOBAL:-$HOME/.gitconfig}"
 else
     _other_scope=system
-    _other_hooks_path=$(git config --system --get core.hooksPath 2>/dev/null || true)
+    _other_config="${GIT_CONFIG_SYSTEM:-$SYSTEM_GIT_CONFIG_FALLBACK}"
+fi
+_other_hooks_path=
+if command -v git > /dev/null 2>&1; then
+    _other_status=0
+    _other_error=$(git config "--${_other_scope}" --get core.hooksPath 2>&1 > /dev/null) \
+        || _other_status=$?
+    if [ "$_other_status" -gt 1 ] || [ -n "$_other_error" ]; then
+        die "Failed to read the ${_other_scope} git config (${_other_config}) to check for an existing core.hooksPath: ${_other_error:-git exited ${_other_status}}
+Make it readable with: sudo chmod 644 ${_other_config}"
+    fi
+    if [ "$_other_status" -eq 0 ]; then
+        _other_hooks_path=$(git config "--${_other_scope}" --get core.hooksPath)
+    fi
 fi
 if [ -n "$_other_hooks_path" ]; then
     die "Refusing to install: a ${_other_scope} core.hooksPath is already configured (${_other_hooks_path}).
@@ -109,11 +134,6 @@ make_executable \
     "$REPO_DIR/install-deps-debian"
 
 # ── System git config helpers ────────────────────────────────────────────────
-# SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE is a test-only escape hatch, so the
-# tests can exercise the fallback without touching the real /etc/gitconfig;
-# never set it in production shells.
-SYSTEM_GIT_CONFIG_FALLBACK="${SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE:-/etc/gitconfig}"
-
 # Sets SYSTEM_GIT_CONFIG to the system git config's path, whether or not the
 # file exists, without ever starting an editor. sudo is checked on its own
 # first, so a sudo failure dies naming sudo rather than being mistaken for a

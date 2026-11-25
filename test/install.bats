@@ -6,7 +6,8 @@
 # runs git as the user. Only read bits are added, so other mode bits an admin
 # chose are kept. Also covers making the listed files executable (with a sudo
 # retry for --system) and linking or copying the wrappers and
-# composite-action-lint for each install mode, and guards that
+# composite-action-lint for each install mode, refusing a cross-scope install
+# or dying when the other scope's config cannot be read, and guards that
 # install-deps-arch never calls an AUR helper or makepkg, since everything it
 # installs comes from pacman repos or releases.
 #
@@ -71,7 +72,11 @@ EOF
     # would be for a root-owned file. var GIT_CONFIG_SYSTEM prints the path
     # whether or not the file exists, as git 2.42+ does, or with
     # FAKE_GIT_FAIL_VAR set rejects the variable with exit 129, as older git
-    # does.
+    # does. The other scope's core.hooksPath is unset unless
+    # FAKE_GIT_OTHER_SCOPE_STATUS gives the exit status of reading it, with
+    # FAKE_GIT_OTHER_SCOPE_VALUE printed when that status is 0 and
+    # FAKE_GIT_OTHER_SCOPE_STDERR printed to stderr when set, as real git
+    # warns about a config it cannot open.
     cat > "${FAKE_BIN}/git" <<'EOF'
 #!/bin/sh
 system_config_unreadable() {
@@ -83,7 +88,10 @@ system_config_unreadable() {
 }
 case "$*" in
     "config --global --get core.hooksPath" | "config --system --get core.hooksPath")
-        exit 1
+        _status="${FAKE_GIT_OTHER_SCOPE_STATUS:-1}"
+        [ -z "${FAKE_GIT_OTHER_SCOPE_STDERR:-}" ] || printf '%s\n' "$FAKE_GIT_OTHER_SCOPE_STDERR" >&2
+        [ "$_status" -ne 0 ] || printf '%s\n' "$FAKE_GIT_OTHER_SCOPE_VALUE"
+        exit "$_status"
         ;;
     "config --global core.hooksPath "*)
         ;;
@@ -389,6 +397,91 @@ system_config_has_hooks_path() {
     [[ "${output}" != *"even with sudo"* ]]
     [ ! -e "${_sudo_log}" ]
     [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+@test "per-user install proceeds when no system core.hooksPath is set" {
+    run_user_install FAKE_GIT_OTHER_SCOPE_STATUS=1
+
+    [ "${status}" -eq 0 ] || fail_with_run_output "${status}" "${output}" 0
+    [[ "${output}" != *"Refusing to install"* ]]
+    [ -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+@test "per-user install refuses when a system core.hooksPath is already set" {
+    run_user_install FAKE_GIT_OTHER_SCOPE_STATUS=0 FAKE_GIT_OTHER_SCOPE_VALUE=/opt/hooks
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Refusing to install: a system core.hooksPath is already configured (/opt/hooks)."* ]]
+    [[ "${output}" == *"Remove it first with: git config --system --unset core.hooksPath"* ]]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+@test "per-user install dies naming the system git config when reading it exits with an error status" {
+    run_user_install FAKE_GIT_OTHER_SCOPE_STATUS=128 GIT_CONFIG_SYSTEM= \
+        SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE="${FAKE_SYSTEM_GITCONFIG}"
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Failed to read the system git config (${FAKE_SYSTEM_GITCONFIG}) to check for an existing core.hooksPath: git exited 128"* ]]
+    [[ "${output}" == *"Make it readable with: sudo chmod 644 ${FAKE_SYSTEM_GITCONFIG}"* ]]
+    [[ "${output}" != *"Refusing to install"* ]]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+@test "per-user install dies with git's own error when reading the system git config fails" {
+    local _error="fatal: unable to access '${FAKE_SYSTEM_GITCONFIG}': Permission denied"
+
+    run_user_install FAKE_GIT_OTHER_SCOPE_STATUS=128 FAKE_GIT_OTHER_SCOPE_STDERR="${_error}" \
+        GIT_CONFIG_SYSTEM= SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE="${FAKE_SYSTEM_GITCONFIG}"
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Failed to read the system git config (${FAKE_SYSTEM_GITCONFIG}) to check for an existing core.hooksPath: ${_error}"* ]]
+    [[ "${output}" != *"git exited"* ]]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+@test "per-user install dies when git only warns that it cannot read the system git config" {
+    local _warning="warning: unable to access '${FAKE_SYSTEM_GITCONFIG}': Permission denied"
+
+    run_user_install FAKE_GIT_OTHER_SCOPE_STATUS=1 FAKE_GIT_OTHER_SCOPE_STDERR="${_warning}" \
+        GIT_CONFIG_SYSTEM= SYSTEM_GIT_CONFIG_FALLBACK_TEST_OVERRIDE="${FAKE_SYSTEM_GITCONFIG}"
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Failed to read the system git config (${FAKE_SYSTEM_GITCONFIG}) to check for an existing core.hooksPath: ${_warning}"* ]]
+    [[ "${output}" == *"Make it readable with: sudo chmod 644 ${FAKE_SYSTEM_GITCONFIG}"* ]]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+}
+
+@test "per-user install names the GIT_CONFIG_SYSTEM file when the system git config cannot be read" {
+    local _config="${BATS_TEST_TMPDIR}/custom system gitconfig"
+
+    run_user_install FAKE_GIT_OTHER_SCOPE_STATUS=128 GIT_CONFIG_SYSTEM="${_config}"
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Failed to read the system git config (${_config})"* ]]
+    [[ "${output}" == *"Make it readable with: sudo chmod 644 ${_config}"* ]]
+}
+
+@test "system install refuses when a global core.hooksPath is already set" {
+    run_system_install FAKE_GIT_OTHER_SCOPE_STATUS=0 FAKE_GIT_OTHER_SCOPE_VALUE=/opt/hooks
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Refusing to install: a global core.hooksPath is already configured (/opt/hooks)."* ]]
+    [[ "${output}" == *"Remove it first with: git config --global --unset core.hooksPath"* ]]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+    [ ! -e "${FAKE_SYSTEM_GITCONFIG}" ]
+}
+
+@test "system install dies naming the global git config when it cannot be read" {
+    local _config="${BATS_TEST_TMPDIR}/home/.gitconfig"
+
+    run_system_install FAKE_GIT_OTHER_SCOPE_STATUS=128 GIT_CONFIG_GLOBAL=
+
+    [ "${status}" -eq 1 ] || fail_with_run_output "${status}" "${output}" 1
+    [[ "${output}" == *"Failed to read the global git config (${_config}) to check for an existing core.hooksPath: git exited 128"* ]]
+    [[ "${output}" == *"Make it readable with: sudo chmod 644 ${_config}"* ]]
+    [[ "${output}" != *"Refusing to install"* ]]
+    [ ! -e "${FAKE_DEPS_RAN_MARKER}" ]
+    [ ! -e "${FAKE_SYSTEM_GITCONFIG}" ]
 }
 
 WRAPPER_LINKS="run-eslint run-stylelint run-bats run-pylint"
