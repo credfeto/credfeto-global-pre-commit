@@ -121,6 +121,7 @@ make_executable \
     "$SCRIPTS_DIR/check-ignored-files" \
     "$SCRIPTS_DIR/check-funfair-props" \
     "$SCRIPTS_DIR/check-merge-commits" \
+    "$SCRIPTS_DIR/check-reference-repo" \
     "$SCRIPTS_DIR/clean-package-lock-registry" \
     "$SCRIPTS_DIR/check-msbuild-path-separator" \
     "$SCRIPTS_DIR/run-eslint" \

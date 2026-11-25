@@ -326,7 +326,7 @@ is_maintained_elsewhere() {
 # (invoked as `pre-commit --all-files`): it runs every category check against
 # the full tracked tree (git ls-files) regardless of what is staged, and skips
 # the guards that only make sense mid-commit (empty-stage abort, branch check,
-# identity check, merge-commit guard).
+# reference clone check, identity check, merge-commit guard).
 # shellcheck source=src/scripts/lib/mode-arg.sh
 . "$SCRIPTS_DIR/lib/mode-arg.sh"
 parse_all_files_mode_arg "$1"
@@ -343,6 +343,13 @@ MODE_ARG=""
 # earlier, aborted commit left behind is removed before anything can fail.
 if [ "$MODE" = "commit" ]; then
     timings_remove_file
+fi
+
+# Runs before every other guard, because a reference clone sits on main and
+# the branch guard would otherwise hide the reason the commit is refused.
+if [ "$MODE" = "commit" ]; then
+    info "Checking for a reference clone..."
+    sh "$SCRIPTS_DIR/check-reference-repo" || die "commit in a read-only reference clone"
 fi
 
 # finish_commit

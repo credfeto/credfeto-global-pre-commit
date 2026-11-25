@@ -1,0 +1,42 @@
+#!/bin/sh
+# Refuses to let a commit or push run in a read-only reference clone: any
+# repository whose top level is the reference root or beneath it.
+# Reference clones are refreshed by `git pull` alone, so a local commit there
+# makes the next pull diverge.
+# REFERENCE_REPO_ROOT overrides the reference root (default:
+# $HOME/work/reference).
+
+die() {
+    printf '\n\033[31m✗\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+REFERENCE_ROOT="${REFERENCE_REPO_ROOT:-$HOME/work/reference}"
+PERSONAL_ROOT="$HOME/work/personal"
+
+# Both paths are resolved, so a subdirectory, a symlinked checkout or a
+# symlink anywhere in the root cannot hide a reference clone. A root or top
+# level that cannot be resolved (a root that does not exist, or a bare
+# repository) has no reference clone to protect, and an empty root would
+# otherwise match every path.
+REAL_ROOT=$(readlink -f "$REFERENCE_ROOT" 2>/dev/null) || exit 0
+[ -n "$REAL_ROOT" ] && [ -d "$REAL_ROOT" ] || exit 0
+
+TOP_LEVEL=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+REAL_TOP_LEVEL=$(readlink -f "$TOP_LEVEL" 2>/dev/null) || exit 0
+[ -n "$REAL_TOP_LEVEL" ] || exit 0
+
+case "$REAL_TOP_LEVEL" in
+    "$REAL_ROOT")
+        REPO_NAME=""
+        ;;
+    "$REAL_ROOT"/*)
+        REPO_PATH="${REAL_TOP_LEVEL#"$REAL_ROOT"/}"
+        REPO_NAME="${REPO_PATH%%/*}"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+die "reference repository rule: commits and pushes are not allowed in read-only reference clones under ${REFERENCE_ROOT} (${REAL_TOP_LEVEL}) — make the change in the matching ${PERSONAL_ROOT}/${REPO_NAME:-<repo>} checkout instead"

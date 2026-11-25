@@ -18,7 +18,7 @@ to all present and future clones.
 
 The directory holds three hooks: `pre-commit` runs the checks, `commit-msg`
 adds the [Pre-commit timings](#pre-commit-timings) trailer to the message, and
-`pre-push` guards pushes.
+`pre-push` guards pushes (see [What is always blocked](#what-is-always-blocked)).
 
 ---
 
@@ -233,6 +233,7 @@ git config --global core.hooksPath
 
 | Check | Script | What it catches |
 | --- | --- | --- |
+| No commits in reference clones | `scripts/check-reference-repo` | Blocks a commit when the repository's top level, with symlinks resolved, is the reference root or beneath it (see [What is always blocked](#what-is-always-blocked)). Skipped in `--all-files` mode |
 | No merge commits | `scripts/check-merge-commits` | Blocks if `MERGE_HEAD` is present (rebase instead of merge) |
 | No ignored files tracked | `scripts/check-ignored-files` | Fails if a tracked file is matched by `.gitignore` rules |
 | No `src/FunFair.props` outside funfair-tech | `scripts/check-funfair-props` | When the `origin` remote's owner is not `funfair-tech` (case-insensitive; skipped when there is no `origin`), `git rm`s a tracked `src/FunFair.props` (staging the removal) or deletes an untracked one, then fails so the commit can be re-run with the removal included. Under `git commit -a`, `-i` or `<paths>`, git discards index changes made by a failing hook, so the file is only deleted and the message gives the `git rm` command to stage it. Also runs in `--all-files` mode |
@@ -589,6 +590,7 @@ a pre-work baseline check before starting a task. Compared to the default
 | File list checks run against | Staged files (`git diff --cached`) | Every tracked file (`git ls-files`) |
 | Empty stage | Aborts (`nothing is staged`) | Runs normally |
 | Branch guard (`main`/`master`) | Blocks | Skipped |
+| Reference clone guard | Blocks | Skipped |
 | Git identity/GPG check | Runs | Skipped |
 | Merge-commit guard | Runs | Skipped |
 | Ignored-file / `src/FunFair.props` / dotnet-tools.json / install-location / freshness guards | Runs | Runs (unchanged) |
@@ -615,7 +617,21 @@ message; the default no-argument invocation is unaffected by this mode.
 
 ## What is always blocked
 
-`pre-push` unconditionally blocks all pushes regardless of repo or content.
+`pre-push` blocks a direct push to `main` or `master` in every repository.
+
+Read-only reference clones are refreshed only by `git pull`, so a local commit
+there would make the next pull diverge. `pre-commit` blocks every commit and
+`pre-push` blocks every push in a repository whose top level is the reference
+root or beneath it. The failure message names the rule and points to the
+matching `~/work/personal/<repo>` checkout, where the change belongs. The
+top level and the root are both resolved with `readlink -f` before they are
+compared, so running from a subdirectory, through a symlinked checkout or
+through a symlinked root does not get around the check. Pulls, fetches and
+checkouts are unaffected.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `REFERENCE_REPO_ROOT` | `$HOME/work/reference` | Directory holding the read-only reference clones. The check is skipped when it does not exist |
 
 ---
 
@@ -643,6 +659,7 @@ system package manager rather than `pre-commit autoupdate`.
 | `scripts/buildcheck` | Vendored from [credfeto/scripts: buildcheck](https://github.com/credfeto/scripts/blob/main/development/buildcheck) |
 | `scripts/check-ignored-files` | Port of [check-no-ignored-files](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-ignored-files/action.yml) |
 | `scripts/check-funfair-props` | Local addition, removes `src/FunFair.props` from repositories whose `origin` remote is not owned by `funfair-tech` |
+| `scripts/check-reference-repo` | Local addition, fails when the repository is a read-only reference clone under `$REFERENCE_REPO_ROOT` (default `$HOME/work/reference`); run by both `pre-commit` and `pre-push` |
 | `scripts/check-merge-commits` | Port of [check-no-merge-commits](https://github.com/funfair-tech/funfair-server-template/blob/main/.github/actions/check-no-merge-commits/action.yml) |
 | `scripts/run-eslint` | Wrapper for eslint; skips silently if no `package.json` or eslint config |
 | `scripts/run-stylelint` | Wrapper for stylelint; skips silently if no `package.json` |
