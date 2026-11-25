@@ -1,6 +1,9 @@
 #!/bin/sh
-# Global pre-push hook — blocks direct pushes to main/master.
+# Global pre-push hook — blocks direct pushes to main/master, and any push
+# from a read-only reference clone.
 # Installed via: git config --global core.hooksPath /path/to/hooks
+
+SCRIPTS_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
 
 # Returns true (0) when running inside a Claude Code Bash-tool session.
 # Claude Code sets CLAUDECODE=1 in every shell it spawns via the Bash tool;
@@ -14,6 +17,8 @@ die() {
 is_ai_agent() {
     [ "${CLAUDECODE}" = "1" ]
 }
+
+sh "$SCRIPTS_DIR/check-reference-repo" || die "push from a read-only reference clone"
 
 while IFS=' ' read -r _local_ref _local_sha remote_ref _remote_sha; do
     case "$remote_ref" in
