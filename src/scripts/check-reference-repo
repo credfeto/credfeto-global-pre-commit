@@ -39,4 +39,4 @@ case "$REAL_TOP_LEVEL" in
         ;;
 esac
 
-die "reference repository rule: commits and pushes are not allowed in read-only reference clones under ${REFERENCE_ROOT} (${REAL_TOP_LEVEL}) — make the change in the matching ${PERSONAL_ROOT}/${REPO_NAME:-<repo>} checkout instead"
+die "reference repository rule: commits and pushes are not allowed in read-only reference clones under ${REFERENCE_ROOT} (${REAL_TOP_LEVEL}); make the change in the matching ${PERSONAL_ROOT}/${REPO_NAME:-<repo>} checkout instead"

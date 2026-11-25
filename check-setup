@@ -198,7 +198,7 @@ if has pre-commit; then
     if pre-commit validate-config "$REPO_DIR/src/.pre-commit-config.yaml"; then
         echo "pre-commit config OK ($(grep -c '^      - id:' "$REPO_DIR/src/.pre-commit-config.yaml") hooks, all language: system)"
     else
-        echo "WARN: pre-commit config validation failed — see above" >&2
+        echo "WARN: pre-commit config validation failed; see above" >&2
         fail
     fi
 fi
@@ -236,7 +236,7 @@ tick  "Shebang scripts are +x"        "check-shebang-scripts-are-executable"
 if has trufflehog; then
     tick  "Secret scanning (trufflehog)" "$(trufflehog --version 2>/dev/null | head -1)"
 else
-    cross "Secret scanning (trufflehog)" "not installed — see install instructions below"
+    cross "Secret scanning (trufflehog)" "not installed; see install instructions below"
 fi
 
 # ── Conditional checks ────────────────────────────────────────────────────────
@@ -255,18 +255,18 @@ fi
 # write to, whatever directory check-setup is run from.
 if $SYSTEM_INSTALL; then
     if CSCLEANUP_RESULT=$(shared_dotnet_tool_usable cscleanup); then
-        skip  "C# format — cscleanup (*.cs)"           "v${CSCLEANUP_RESULT}"
+        skip  "C# format: cscleanup (*.cs)"           "v${CSCLEANUP_RESULT}"
     else
-        cross "C# format — cscleanup (*.cs)"           "$CSCLEANUP_RESULT"
+        cross "C# format: cscleanup (*.cs)"           "$CSCLEANUP_RESULT"
     fi
 else
     CSCLEANUP_VERSION=$(cd "$HOME" && dotnet tool list 2>/dev/null | awk 'tolower($3)=="cscleanup"{print $2}')
     [ -z "$CSCLEANUP_VERSION" ] && CSCLEANUP_VERSION=$(dotnet tool list --global 2>/dev/null | awk 'tolower($3)=="cscleanup"{print $2}')
     [ -z "$CSCLEANUP_VERSION" ] && CSCLEANUP_VERSION=$(shared_dotnet_tool_version cscleanup)
     if [ -n "$CSCLEANUP_VERSION" ]; then
-        skip  "C# format — cscleanup (*.cs)"           "v${CSCLEANUP_VERSION}"
+        skip  "C# format: cscleanup (*.cs)"           "v${CSCLEANUP_VERSION}"
     else
-        cross "C# format — cscleanup (*.cs)"           "not installed: run from ~ (after 'dotnet new tool-manifest' if ~ has none): dotnet tool install Credfeto.DotNet.Repo.Formatter"
+        cross "C# format: cscleanup (*.cs)"           "not installed: run from ~ (after 'dotnet new tool-manifest' if ~ has none): dotnet tool install Credfeto.DotNet.Repo.Formatter"
     fi
 fi
 
@@ -277,25 +277,25 @@ else
 fi
 
 if has dotnet; then
-    skip  "T-SQL lint — dotnet tsqllint (*.sql)"    "dotnet $(dotnet --version 2>/dev/null)"
+    skip  "T-SQL lint: dotnet tsqllint (*.sql)"    "dotnet $(dotnet --version 2>/dev/null)"
 else
-    cross "T-SQL lint — dotnet tsqllint (*.sql)"    "dotnet not installed"
+    cross "T-SQL lint: dotnet tsqllint (*.sql)"    "dotnet not installed"
 fi
 
 SQLFLUFF_OK=false
 if SQLFLUFF_PROBLEM=$(pipx_tool_usable sqlfluff sqlfluff); then
     SQLFLUFF_OK=true
-    skip  "SQL style — sqlfluff (*.sql)"            "$(sqlfluff --version 2>/dev/null)"
+    skip  "SQL style: sqlfluff (*.sql)"            "$(sqlfluff --version 2>/dev/null)"
 else
-    cross "SQL style — sqlfluff (*.sql)"            "${SQLFLUFF_PROBLEM:-not installed}"
+    cross "SQL style: sqlfluff (*.sql)"            "${SQLFLUFF_PROBLEM:-not installed}"
 fi
 
 CFN_LINT_OK=false
 if CFN_LINT_PROBLEM=$(pipx_tool_usable cfn-lint cfn-lint); then
     CFN_LINT_OK=true
-    skip  "CloudFormation — cfn-lint"               "$(cfn-lint --version 2>/dev/null)"
+    skip  "CloudFormation: cfn-lint"               "$(cfn-lint --version 2>/dev/null)"
 else
-    cross "CloudFormation — cfn-lint"               "${CFN_LINT_PROBLEM:-not installed}"
+    cross "CloudFormation: cfn-lint"               "${CFN_LINT_PROBLEM:-not installed}"
 fi
 
 PRE_COMMIT_OK=false
@@ -303,13 +303,13 @@ if PRE_COMMIT_PROBLEM=$(pipx_tool_usable pre-commit pre-commit); then
     PRE_COMMIT_OK=true
     skip  "pre-commit linters"                      "$(pre-commit --version 2>/dev/null)"
 else
-    cross "pre-commit linters"                      "pre-commit ${PRE_COMMIT_PROBLEM:-not installed — linting skipped}"
+    cross "pre-commit linters"                      "pre-commit ${PRE_COMMIT_PROBLEM:-not installed; linting skipped}"
 fi
 
 # ── Super-linter equivalent via pre-commit ────────────────────────────────────
 echo ""
 echo "Super-linter equivalent (run by pre-commit, staged files only):"
-echo "  – every hook is language: system — tools must be on PATH"
+echo "  – every hook is language: system; tools must be on PATH"
 echo ""
 
 # pre-commit-hooks ships ~20 small individual binaries (check-merge-conflict,
@@ -319,102 +319,102 @@ if PRE_COMMIT_HOOKS_PROBLEM=$(pipx_tool_usable check-merge-conflict pre-commit-h
     PRE_COMMIT_HOOKS_OK=true
     skip  "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks (pipx)"
 else
-    cross "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks ${PRE_COMMIT_HOOKS_PROBLEM:-not installed — run: $(shared_pipx_hint pre-commit-hooks)}"
+    cross "VALIDATE_JSON/XML/YAML/TOML syntax (system)" "pre-commit-hooks ${PRE_COMMIT_HOOKS_PROBLEM:-not installed; run: $(shared_pipx_hint pre-commit-hooks)}"
 fi
 
 if has shellcheck; then
-    skip  "VALIDATE_BASH — shellcheck       (system)" "$(shellcheck --version 2>/dev/null | grep ^version: || echo present)"
+    skip  "VALIDATE_BASH: shellcheck       (system)" "$(shellcheck --version 2>/dev/null | grep ^version: || echo present)"
 else
-    cross "VALIDATE_BASH — shellcheck       (system)" "not installed"
+    cross "VALIDATE_BASH: shellcheck       (system)" "not installed"
 fi
 
 YAMLLINT_OK=false
 if YAMLLINT_PROBLEM=$(pipx_tool_usable yamllint yamllint); then
     YAMLLINT_OK=true
-    skip  "VALIDATE_YAML — yamllint         (system)" "$(yamllint --version 2>/dev/null)"
+    skip  "VALIDATE_YAML: yamllint         (system)" "$(yamllint --version 2>/dev/null)"
 else
-    cross "VALIDATE_YAML — yamllint         (system)" "${YAMLLINT_PROBLEM:-not installed}"
+    cross "VALIDATE_YAML: yamllint         (system)" "${YAMLLINT_PROBLEM:-not installed}"
 fi
 
 FLAKE8_OK=false
 if FLAKE8_PROBLEM=$(pipx_tool_usable flake8 flake8); then
     FLAKE8_OK=true
-    skip  "VALIDATE_PYTHON — flake8         (system)" "$(flake8 --version 2>/dev/null | head -1)"
+    skip  "VALIDATE_PYTHON: flake8         (system)" "$(flake8 --version 2>/dev/null | head -1)"
 else
-    cross "VALIDATE_PYTHON — flake8         (system)" "${FLAKE8_PROBLEM:-not installed}"
+    cross "VALIDATE_PYTHON: flake8         (system)" "${FLAKE8_PROBLEM:-not installed}"
 fi
 
 MARKDOWNLINT_OK=false
 if MARKDOWNLINT_PROBLEM=$(npm_tool_usable markdownlint markdownlint-cli); then
     MARKDOWNLINT_OK=true
-    skip  "VALIDATE_MD — markdownlint       (system)" "$(markdownlint --version 2>/dev/null)"
+    skip  "VALIDATE_MD: markdownlint       (system)" "$(markdownlint --version 2>/dev/null)"
 else
-    cross "VALIDATE_MD — markdownlint       (system)" "${MARKDOWNLINT_PROBLEM:-not installed}"
+    cross "VALIDATE_MD: markdownlint       (system)" "${MARKDOWNLINT_PROBLEM:-not installed}"
 fi
 
 ANSIBLE_LINT_OK=false
 if ANSIBLE_LINT_PROBLEM=$(pipx_tool_usable ansible-lint ansible-lint); then
     ANSIBLE_LINT_OK=true
-    skip  "VALIDATE_ANSIBLE — ansible-lint  (system)" "$(ansible-lint --version 2>/dev/null | head -1)"
+    skip  "VALIDATE_ANSIBLE: ansible-lint  (system)" "$(ansible-lint --version 2>/dev/null | head -1)"
 else
-    cross "VALIDATE_ANSIBLE — ansible-lint  (system)" "${ANSIBLE_LINT_PROBLEM:-not installed}"
+    cross "VALIDATE_ANSIBLE: ansible-lint  (system)" "${ANSIBLE_LINT_PROBLEM:-not installed}"
 fi
 
 # System hooks (tool must be on PATH)
 if has hadolint; then
-    skip  "VALIDATE_DOCKERFILE — hadolint   (system)" "$(hadolint --version 2>/dev/null)"
+    skip  "VALIDATE_DOCKERFILE: hadolint   (system)" "$(hadolint --version 2>/dev/null)"
 else
-    cross "VALIDATE_DOCKERFILE — hadolint   (system)" "not installed"
+    cross "VALIDATE_DOCKERFILE: hadolint   (system)" "not installed"
 fi
 
 ACTIONLINT_OK=false
 if ACTIONLINT_PROBLEM=$(shared_tool_usable actionlint shared_install_deps_hint actionlint "$SHARED_BIN_DIR" "$SHARED_BIN_DIR"); then
     ACTIONLINT_OK=true
-    skip  "VALIDATE_GITHUB_ACTIONS workflows — actionlint        (system)" "$(actionlint --version 2>/dev/null | head -1)"
+    skip  "VALIDATE_GITHUB_ACTIONS workflows: actionlint        (system)" "$(actionlint --version 2>/dev/null | head -1)"
 else
-    cross "VALIDATE_GITHUB_ACTIONS workflows — actionlint        (system)" "${ACTIONLINT_PROBLEM:-not installed}"
+    cross "VALIDATE_GITHUB_ACTIONS workflows: actionlint        (system)" "${ACTIONLINT_PROBLEM:-not installed}"
 fi
 
 if has composite-action-lint; then
-    skip  "VALIDATE_GITHUB_ACTIONS actions  — composite-action-lint (system)" "$(composite-action-lint --version 2>/dev/null || echo present)"
+    skip  "VALIDATE_GITHUB_ACTIONS actions: composite-action-lint (system)" "$(composite-action-lint --version 2>/dev/null || echo present)"
 else
-    cross "VALIDATE_GITHUB_ACTIONS actions  — composite-action-lint (system)" "not installed"
+    cross "VALIDATE_GITHUB_ACTIONS actions: composite-action-lint (system)" "not installed"
 fi
 
 PYLINT_OK=false
 if PYLINT_PROBLEM=$(pipx_tool_usable pylint pylint); then
     PYLINT_OK=true
-    skip  "VALIDATE_PYTHON_PYLINT — pylint  (system)" "$(pylint --version 2>/dev/null | head -1)"
+    skip  "VALIDATE_PYTHON_PYLINT: pylint  (system)" "$(pylint --version 2>/dev/null | head -1)"
 else
-    cross "VALIDATE_PYTHON_PYLINT — pylint  (system)" "${PYLINT_PROBLEM:-not installed}"
+    cross "VALIDATE_PYTHON_PYLINT: pylint  (system)" "${PYLINT_PROBLEM:-not installed}"
 fi
 
 STYLELINT_OK=false
 if STYLELINT_PROBLEM=$(npm_tool_usable stylelint stylelint); then
     STYLELINT_OK=true
-    skip  "VALIDATE_CSS — stylelint          (system)" "$(stylelint --version 2>/dev/null)"
+    skip  "VALIDATE_CSS: stylelint          (system)" "$(stylelint --version 2>/dev/null)"
 else
-    cross "VALIDATE_CSS — stylelint          (system)" "${STYLELINT_PROBLEM:-not installed}"
+    cross "VALIDATE_CSS: stylelint          (system)" "${STYLELINT_PROBLEM:-not installed}"
 fi
 
 if has dotenv-linter; then
-    skip  "VALIDATE_ENV — dotenv-linter      (system)" "$(dotenv-linter --version 2>/dev/null)"
+    skip  "VALIDATE_ENV: dotenv-linter      (system)" "$(dotenv-linter --version 2>/dev/null)"
 else
-    cross "VALIDATE_ENV — dotenv-linter      (system)" "not installed"
+    cross "VALIDATE_ENV: dotenv-linter      (system)" "not installed"
 fi
 
 ESLINT_OK=false
 if ESLINT_PROBLEM=$(npm_tool_usable eslint eslint); then
     ESLINT_OK=true
-    skip  "VALIDATE_TYPESCRIPT_ES — eslint   (system)" "$(eslint --version 2>/dev/null)"
+    skip  "VALIDATE_TYPESCRIPT_ES: eslint   (system)" "$(eslint --version 2>/dev/null)"
 else
-    cross "VALIDATE_TYPESCRIPT_ES — eslint   (system)" "${ESLINT_PROBLEM:-not installed}"
+    cross "VALIDATE_TYPESCRIPT_ES: eslint   (system)" "${ESLINT_PROBLEM:-not installed}"
 fi
 
 if has xmllint; then
-    skip  "VALIDATE_XML — xmllint            (system)" ""
+    skip  "VALIDATE_XML: xmllint            (system)" ""
 else
-    cross "VALIDATE_XML — xmllint            (system)" "not installed"
+    cross "VALIDATE_XML: xmllint            (system)" "not installed"
 fi
 
 if has bats; then
@@ -426,16 +426,16 @@ fi
 if has parallel; then
     skip  "bats --jobs N parallelisation (GNU parallel)" "$(parallel --version 2>/dev/null | head -1)"
 else
-    cross "bats --jobs N parallelisation (GNU parallel)" "not installed — bats runs serially"
+    cross "bats --jobs N parallelisation (GNU parallel)" "not installed; bats runs serially"
 fi
 
-skip  "VALIDATE_SQLFLUFF — sqlfluff (*.sql)"  "handled by dedicated SQL check above"
-skip  "VALIDATE_CLOUDFORMATION — cfn-lint"    "handled by dedicated CFN check above"
+skip  "VALIDATE_SQLFLUFF: sqlfluff (*.sql)"  "handled by dedicated SQL check above"
+skip  "VALIDATE_CLOUDFORMATION: cfn-lint"    "handled by dedicated CFN check above"
 
 if has trivy; then
-    skip  "Dependency vulnerabilities — trivy (lockfiles)" "$(trivy --version 2>/dev/null | head -1)"
+    skip  "Dependency vulnerabilities: trivy (lockfiles)" "$(trivy --version 2>/dev/null | head -1)"
 else
-    cross "Dependency vulnerabilities — trivy (lockfiles)" "not installed"
+    cross "Dependency vulnerabilities: trivy (lockfiles)" "not installed"
 fi
 
 # ── Optional tool install hints ───────────────────────────────────────────────
@@ -490,12 +490,12 @@ fi
 
 echo ""
 if [ "$ISSUES" -ne 0 ]; then
-    die "setup incomplete — ${ISSUES} check(s) failed; resolve the items marked ✗ above"
+    die "setup incomplete: ${ISSUES} check(s) failed; resolve the items marked ✗ above"
 fi
 
 if [ -t 1 ]; then
-    printf '\033[32m✓\033[0m %s\n' "setup complete — all checks configured."
+    printf '\033[32m✓\033[0m %s\n' "setup complete: all checks configured."
 else
-    printf '✓ %s\n' "setup complete — all checks configured."
+    printf '✓ %s\n' "setup complete: all checks configured."
 fi
 exit 0

@@ -25,7 +25,7 @@ _sql_tools_available() {
     # .sqlfluff/.tsqllintrc are on the protected-everywhere list (#187) and can
     # never be added through the real hook, so they must be committed as a
     # baseline (hook bypassed via a scratch core.hooksPath, same pattern as
-    # test/core.bats) before the diff under test — otherwise this test would
+    # test/core.bats) before the diff under test; otherwise this test would
     # only pass because the protected-config check rejects the commit, not
     # because of the SQL parse error it claims to cover.
     mkdir -p "${T}/.no-hooks"

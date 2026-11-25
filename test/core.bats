@@ -101,7 +101,7 @@ load test_helper
 # A commit consisting solely of a renamed file whose content was also edited
 # is reported by git as status R, not M. Regression for a bug where STAGED
 # was computed with --diff-filter=ACM, excluding R, so such a commit made
-# STAGED empty and the hook exited 0 before running any check below it —
+# STAGED empty and the hook exited 0 before running any check below it,
 # including this dotnet-tools.json guard.
 @test "rename with content edit (no other staged changes) still runs checks" {
     local T

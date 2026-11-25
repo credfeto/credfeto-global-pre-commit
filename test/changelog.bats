@@ -12,7 +12,7 @@ load test_helper
 
 CHECK_CHANGELOG="${REPO_DIR}/src/scripts/check-changelog"
 
-# The exact blank skeleton `dotnet changelog` writes for a brand new file —
+# The exact blank skeleton `dotnet changelog` writes for a brand new file:
 # used both as the fake tool's canned output and as a valid staged fixture.
 PRISTINE_CHANGELOG='# Changelog
 
@@ -37,10 +37,10 @@ Releases that have at least been deployed to staging, BUT NOT necessarily releas
 # `tool list` and the `changelog` subcommand to drive check-changelog:
 #   - `tool list` reports credfeto.changelog.cmd as installed
 #   - `changelog --lint -f FILE` always reports success (lint correctness is
-#     a pre-existing, separately covered concern — not under test here)
+#     a pre-existing, separately covered concern, not under test here)
 #   - `changelog -f FILE -a ... -m ...` writes FILE to the pristine blank
 #     skeleton, mirroring what the real tool produces for a fresh file, but
-#     only when FILE does not already exist — like the real tool, it errors
+#     only when FILE does not already exist; like the real tool, it errors
 #     against an existing (even empty) file instead of overwriting it. This
 #     is what catches a regression to pre-creating the reference file (e.g.
 #     `mktemp` on a bare path) before the first `-a` call.

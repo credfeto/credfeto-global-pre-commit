@@ -1,5 +1,5 @@
 #!/bin/sh
-# Global pre-push hook — blocks direct pushes to main/master, and any push
+# Global pre-push hook: blocks direct pushes to main/master, and any push
 # from a read-only reference clone.
 # Installed via: git config --global core.hooksPath /path/to/hooks
 
@@ -26,7 +26,7 @@ while IFS=' ' read -r _local_ref _local_sha remote_ref _remote_sha; do
             if is_ai_agent; then
                 die "Prohibited from pushing to ${remote_ref}.  Did you read the .ai-instructions?"
             else
-                die "Direct pushes to ${remote_ref} are not permitted — open a pull request instead."
+                die "Direct pushes to ${remote_ref} are not permitted; open a pull request instead."
             fi
             ;;
     esac

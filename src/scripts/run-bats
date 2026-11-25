@@ -22,7 +22,7 @@ die() {
     exit 1
 }
 
-command -v bats > /dev/null 2>&1 || die "bats is not installed — run ./install-deps-debian or ./install-deps-arch"
+command -v bats > /dev/null 2>&1 || die "bats is not installed; run ./install-deps-debian or ./install-deps-arch"
 
 # bats 1.10.x (Ubuntu 24.04) does not export bats_readlinkf from the wrapper
 # when run from a sh parent process. Without it, the bats library falls back to
@@ -447,7 +447,7 @@ fi
 find /tmp -maxdepth 1 -name 'bats-run-*' -mmin +60 -exec rm -rf {} + 2>/dev/null
 
 # bats reads TMPDIR at startup to derive BATS_TMPDIR; TMPDIR is the only lever
-# that works — pre-setting BATS_TMPDIR here would be overwritten by bats itself.
+# that works; pre-setting BATS_TMPDIR here would be overwritten by bats itself.
 #
 # Prefer a predictable, repo-scoped path under XDG_RUNTIME_DIR (per-user tmpfs,
 # usually /run/user/<uid>) which can be wiped and recreated before each run,
@@ -486,9 +486,9 @@ _bats_resolve_tmpdir() {
     # runtime: bats-core's own /bats-run-XXXXXX/test/NNNN (up to ~26 bytes),
     # a consuming repo's own mktemp layer such as /oneshot.XXXXXX (~15 bytes),
     # and a realistic mock-socket filename such as /S.gpg-agent.extra
-    # (~18 bytes) — ~59 bytes worst case, observed directly in #169. A long
+    # (~18 bytes): ~59 bytes worst case, observed directly in #169. A long
     # owner/repo name (or an unusually long ambient XDG_RUNTIME_DIR) can
-    # otherwise produce a TMPDIR with no room left for what a test appends —
+    # otherwise produce a TMPDIR with no room left for what a test appends;
     # fall back to /tmp rather than hand back a base path that later socket
     # binds fail against.
     local -r _sun_path_usable_max=107
@@ -505,7 +505,7 @@ _bats_resolve_tmpdir() {
 BATS_RESOLVED_TMPDIR=$(_bats_resolve_tmpdir)
 
 # When using the repo-specific XDG_RUNTIME_DIR path, wipe and recreate it so
-# every run starts from a clean slate — stale fixtures from any prior hard-killed
+# every run starts from a clean slate; stale fixtures from any prior hard-killed
 # run are removed before bats even starts.
 if [ "$BATS_RESOLVED_TMPDIR" != "/tmp" ]; then
     rm -rf "$BATS_RESOLVED_TMPDIR"

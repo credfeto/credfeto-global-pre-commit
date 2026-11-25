@@ -141,7 +141,7 @@ CLEAR="http-cache"
 # format to load, so only cscleanup formats the target files.
 CSPROJ=$(find "$PWD" -type f -iname "*.csproj" | head -1)
 if [ -z "$CSPROJ" ]; then
-    info "No .csproj files found — skipping build"
+    info "No .csproj files found, skipping build"
     format_dotnet_sources "" 0
     exit 0
 fi
@@ -149,7 +149,7 @@ fi
 SOLUTION=$(find "$PWD" -type f -iname "*.slnx" | head -1)
 [ -z "$SOLUTION" ] && SOLUTION=$(find "$PWD" -type f -iname "*.sln" | head -1)
 if [ -z "$SOLUTION" ]; then
-    info "No solution file found — skipping build"
+    info "No solution file found, skipping build"
     format_dotnet_sources "" 0
     exit 0
 fi
@@ -238,7 +238,7 @@ run_build \
   "-p:Version=0.0.0.1-test" \
   -nodeReuse:False || die "######## Build Failed ########"
 
-# Fail if the build generated or modified any ApiCompatSuppressions.xml files —
+# Fail if the build generated or modified any ApiCompatSuppressions.xml files;
 # these indicate newly suppressed API compatibility breaks that must be reviewed,
 # staged and committed intentionally rather than silently auto-included.
 # Both git lists are read NUL-separated and converted once, after the loop, to
@@ -249,11 +249,11 @@ COMPAT_CHANGED=$(find "$SOURCE_DIR" -name "ApiCompatSuppressions.xml" 2>/dev/nul
     git ls-files --others --exclude-standard -z -- "$f" 2>/dev/null
 done | tr '\000' '\n')
 if [ -n "$COMPAT_CHANGED" ]; then
-    die "ApiCompatSuppressions.xml was created or modified by the build — review, stage and commit it explicitly:$(printf '\n  %s' "$COMPAT_CHANGED")"
+    die "ApiCompatSuppressions.xml was created or modified by the build; review, stage and commit it explicitly:$(printf '\n  %s' "$COMPAT_CHANGED")"
 fi
 
 if "$DACPAC_ONLY_SCRIPT" "$SOURCE_DIR"; then
-  info "Only project in solution is a SQL Server database project (dacpac) — skipping tests, nothing testable"
+  info "Only project in solution is a SQL Server database project (dacpac); skipping tests, nothing testable"
 else
   info "Testing..."
   # Integration tests are always safe to skip in pre-commit. Every benchmark
@@ -285,16 +285,16 @@ else
   # pull request: a full BenchmarkDotNet run can take several minutes per
   # project and push the commit hook past an agent's command time limit.
   if is_ai_agent; then
-    info "AI agent commit — skipping benchmark tests (CI runs them)"
+    info "AI agent commit, skipping benchmark tests (CI runs them)"
   elif dotnet_sdk_is_prerelease; then
-    info "Pre-release .NET SDK detected ($(dotnet --version)) — skipping benchmark tests"
+    info "Pre-release .NET SDK detected ($(dotnet --version)), skipping benchmark tests"
   else
     info "Determining which benchmarks are affected by staged changes..."
     AFFECTED_SPEC=$("$BENCH_AFFECTED_SCRIPT" "$SOURCE_DIR") \
       || die "######## Benchmark Affected Detection Failed ########"
 
     if [ -z "$AFFECTED_SPEC" ]; then
-      info "No benchmark tests affected by staged changes — skipping benchmark test step"
+      info "No benchmark tests affected by staged changes, skipping benchmark test step"
     else
       while IFS= read -r bench_project; do
           [ -n "$bench_project" ] || continue
@@ -305,7 +305,7 @@ else
           LATEST_FRAMEWORK=$("$LATEST_FRAMEWORK_SCRIPT" "$bench_project") \
             || die "######## Latest Target Framework Detection Failed ($bench_project) ########"
           if [ -n "$LATEST_FRAMEWORK" ]; then
-            info "Multiple target frameworks in $bench_project — testing only $LATEST_FRAMEWORK, assuming older frameworks work"
+            info "Multiple target frameworks in $bench_project; testing only $LATEST_FRAMEWORK, assuming older frameworks work"
             set -- --framework "$LATEST_FRAMEWORK"
           fi
 
@@ -340,7 +340,7 @@ if [ -n "$PUBLISHABLE" ]; then
 
     FRAMEWORKS=$(sed -n 's/.*<TargetFrameworks>\([^<]*\)<\/TargetFrameworks>.*/\1/p' "$project" | head -1)
     [ -z "$FRAMEWORKS" ] && FRAMEWORKS=$(sed -n 's/.*<TargetFramework>\([^<]*\)<\/TargetFramework>.*/\1/p' "$project" | head -1)
-    [ -z "$FRAMEWORKS" ] && die "No TargetFramework or TargetFrameworks found in $project — specify a TargetFramework"
+    [ -z "$FRAMEWORKS" ] && die "No TargetFramework or TargetFrameworks found in $project; specify a TargetFramework"
 
     FRAMEWORKS_NL=$(printf '%s' "$FRAMEWORKS" | tr ';' '\n')
     while IFS= read -r fw; do

@@ -101,7 +101,7 @@ first_line() {
 run_format_dotnet_sources() {
     local _stubdir="$1"
     shift
-    # shellcheck disable=SC2016 # intentionally literal — expanded by the inner sh, not here
+    # shellcheck disable=SC2016 # intentionally literal; expanded by the inner sh, not here
     run env PATH="${_stubdir}:${TEST_PATH}" sh -c '
         die() { printf "DIED: %s\n" "$*"; exit 1; }
         info() { printf "%s\n" "$*"; }

@@ -11,7 +11,7 @@ HOOK="${HOOKS_DIR}/pre-commit"
 # ── git config isolation ──────────────────────────────────────────────────────
 # Without this, `git config <key>` inside a test repo falls through to the
 # real developer's ~/.gitconfig (and any /etc/gitconfig) for any value the
-# test repo hasn't set locally — e.g. `git config --unset user.email` in a
+# test repo hasn't set locally, e.g. `git config --unset user.email` in a
 # test only removes the *local* value, so the check under test would still
 # see the host machine's real global email. Pointing both scopes at /dev/null
 # makes every test repo's git config fully hermetic; make_repo() and each
@@ -75,7 +75,7 @@ export _EXPECTED_DOTNET
 # check-identity requires a working GPG signing key, so every repo made by
 # make_repo() needs one. Generated once per `bats` invocation (cached in
 # BATS_RUN_TMPDIR, which is shared across all test files in the run) rather
-# than once per test, since key generation — while fast — is unnecessary
+# than once per test, since key generation (while fast) is unnecessary
 # overhead to repeat per test.
 TEST_GIT_EMAIL="test@example.com"
 GNUPGHOME="${BATS_RUN_TMPDIR}/gnupg"
@@ -241,7 +241,7 @@ fail_with_run_output() {
 
 # Creates an isolated git repository in BATS_TEST_TMPDIR on the given branch
 # (default: feature/acceptance-test) and prints its path. Configured with a
-# valid identity and GPG signing key so check-identity passes by default —
+# valid identity and GPG signing key so check-identity passes by default;
 # tests that exercise check-identity itself override individual settings.
 make_repo() {
     local _branch="${1:-feature/acceptance-test}"
@@ -314,7 +314,7 @@ run_hook() {
 }
 
 # Runs the hook with IS_AMEND_TEST_OVERRIDE=1, simulating the invoking git
-# commit having been run with --amend (see is_amend in src/hooks/pre-commit —
+# commit having been run with --amend (see is_amend in src/hooks/pre-commit;
 # the real signal is the parent process's own command line, which this
 # bash -c/sh invocation can never make look like `git commit --amend`).
 run_hook_as_amend() {
@@ -340,7 +340,7 @@ run_hook_as_hooks_repo() {
 }
 
 # Returns true (0) when running inside any OCI container (Docker, Podman, etc.).
-# Mirrors is_container() in src/hooks/pre-commit — keep in sync if either changes.
+# Mirrors is_container() in src/hooks/pre-commit; keep in sync if either changes.
 in_container() {
     [ -f /.dockerenv ] || [ -f /run/.containerenv ] || [ -n "${container:-}" ] \
         || grep -q 'docker\|containerd\|kubepods' /proc/1/cgroup 2>/dev/null

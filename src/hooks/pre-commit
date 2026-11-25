@@ -113,7 +113,7 @@ mark_blocked() {
 die_blocked() {
     if is_ai_agent; then
         mark_blocked
-        die "$* — ask the user to resolve this before continuing"
+        die "$*; ask the user to resolve this before continuing"
     else
         die "$*"
     fi
@@ -132,7 +132,7 @@ run_tsqllint() (
 )
 
 # Protected in ALL repos: linter/style/shared config that defines conformance
-# rules and must not be modified or removed to silence a check — fix the
+# rules and must not be modified or removed to silence a check; fix the
 # underlying issue instead. One filename (or glob) per case arm so it is
 # possible to tell by eye whether $1 matches (see issue #186; no regex).
 # Path-scoped entries (a specific directory, not just a filename) are matched
@@ -223,7 +223,7 @@ is_protected_everywhere_file() {
     return 1
 }
 
-# Protected only inside this hooks repo's own checkout — this repo's own
+# Protected only inside this hooks repo's own checkout; this repo's own
 # ai/local/*.md instruction files must not be casually edited. ai/local/*.md
 # in OTHER repos is intentionally NOT protected: committing to it is how the
 # cross-repo AI-memory workflow (.ai-instructions) records what was learned.
@@ -235,7 +235,7 @@ is_protected_hooks_repo_file() {
 }
 
 # Prints $1's declared "# Maintain in repo: X" owner, read from its
-# already-committed HEAD content — never the staged content, so a commit
+# already-committed HEAD content, never the staged content, so a commit
 # cannot rewrite the ownership comment and the file body in the same diff to
 # self-authorise. Prints nothing if $1 has no HEAD version, or its HEAD
 # version has no such comment.
@@ -250,7 +250,7 @@ head_maintain_owner() {
 # Returns 0 if $1's already-committed HEAD content declares the CURRENT repo
 # as its owner. Used to exempt a file from is_protected_everywhere_file's
 # blanket block when this repo is the one actually responsible for
-# maintaining it (issue #186 follow-up) — has no effect on a file that never
+# maintaining it (issue #186 follow-up); it has no effect on a file that never
 # carries the comment, which stays unconditionally blocked as before.
 is_maintained_by_current_repo() {
     [ -n "$CURRENT_REPO_NAME" ] || return 1
@@ -260,7 +260,7 @@ is_maintained_by_current_repo() {
 # Returns 0 if $1 is explicitly whitelisted for the current repo, for a
 # reason other than a Maintain-in-repo comment (issue #186 follow-up).
 #
-# ai/global/*.md and .ai-instructions are whitelisted for cs-template only —
+# ai/global/*.md and .ai-instructions are whitelisted for cs-template only:
 # it is the canonical source both are authored in and distributed from.
 # funfair-server-template and funfair-treasury-reporting only ever receive
 # them via the sync, never author them, so they are deliberately not
@@ -291,7 +291,7 @@ is_explicitly_whitelisted() {
 # itself a template (name ending "-template"): in that case the new file's
 # staged content must self-declare the current repo as owner. A non-template
 # repo may add its own local workflow/action files freely, no marker
-# required — most workflow/action files are never meant to be shared at all.
+# required; most workflow/action files are never meant to be shared at all.
 is_maintained_elsewhere() {
     case "$1" in
         .github/workflows/*.yml | .github/workflows/*.yaml) ;;
@@ -363,7 +363,7 @@ finish_commit() {
     exit 0
 }
 
-# Abort immediately if nothing is staged — prevents accidental empty commits.
+# Abort immediately if nothing is staged; this prevents accidental empty commits.
 # Skipped in all-files mode, which is expected to run against a clean tree,
 # and skipped for a --amend (see is_amend above), which legitimately has
 # nothing staged when only the commit message is being changed (issue #195).
@@ -378,12 +378,12 @@ finish_commit() {
 # still splits into two entries here; such names are not supported.
 ALL_STAGED=$(git diff --cached --name-only -z | tr '\000' '\n')
 if [ "$MODE" = "commit" ] && ! is_amend; then
-    [ -z "$ALL_STAGED" ] && die "nothing is staged — commit would be empty"
+    [ -z "$ALL_STAGED" ] && die "nothing is staged; commit would be empty"
 fi
 
 # Block staged additions, changes, OR deletions of linter/style config files in
 # ALL repos.  These files define conformance rules and must not be modified or
-# removed to silence linter errors — fix the underlying issue instead.
+# removed to silence linter errors; fix the underlying issue instead.
 # Checked here, before the STAGED early-exit, so that a commit consisting solely
 # of a deletion of a protected file is also caught. See is_protected_everywhere_file
 # above for the actual list of protected files (issue #186). A file this repo
@@ -430,10 +430,10 @@ fi
 # Only look at staged files, excluding deletions (lower-casing a diff-filter
 # letter excludes it, per git-diff(1)). Deliberately
 # exclusion-based rather than an inclusion list: an inclusion list (e.g. ACM)
-# silently drops any status letter someone forgot to enumerate — that is
+# silently drops any status letter someone forgot to enumerate; that is
 # exactly how a rename with edited content (status R, not M) was excluded and
 # let rename+edit-only commits skip every check below.
-# Skipped in all-files mode — an empty stage does not mean "nothing to check".
+# Skipped in all-files mode: an empty stage does not mean "nothing to check".
 # Read NUL-separated for the reason given above ALL_STAGED.
 STAGED=$(git diff --cached --name-only --diff-filter=d -z | tr '\000' '\n')
 if [ "$MODE" = "commit" ]; then
@@ -465,7 +465,7 @@ check_files_match() {
 # breaks the expected global tool setup.
 DOTNET_TOOLS_FILES=$(find "$REPO_ROOT" -name "dotnet-tools.json" -not -path "*/.git/*" 2>/dev/null)
 if [ -n "$DOTNET_TOOLS_FILES" ]; then
-    printf '\n\033[31m✗\033[0m %s\n' "Corrupt environment: dotnet-tools.json found in repo — it pins local tool versions and breaks the expected tool setup." >&2
+    printf '\n\033[31m✗\033[0m %s\n' "Corrupt environment: dotnet-tools.json found in repo; it pins local tool versions and breaks the expected tool setup." >&2
     printf '%s\n' "$DOTNET_TOOLS_FILES" | sed 's/^/  /' >&2
     die "delete the dotnet-tools.json file(s) listed above and retry"
 fi
@@ -494,7 +494,7 @@ fi
 # ── Template-only files: block .ai-instructions and ai/global/ in non-template repos ──
 # NOTE: is_protected_everywhere_file() above now also unconditionally blocks
 # .ai-instructions and ai/global/*.md in EVERY repo, including the 3 exempted
-# below (issue #186 follow-up) — so this exemption no longer has any effect
+# below (issue #186 follow-up), so this exemption no longer has any effect
 # for those two patterns; it remains meaningful only for a hypothetical
 # non-.md file under ai/global/.
 # .ai-instructions and ai/global/ may only be changed in cs-template,
@@ -519,7 +519,7 @@ fi
 # A per-user dotnet at $HOME/.dotnet shadows the system binary and causes
 # build/test inconsistencies.  The only valid install is /usr/share/dotnet/dotnet.
 if [ -f "$HOME/.dotnet/dotnet" ]; then
-    die "Corrupt environment: dotnet found at \$HOME/.dotnet/dotnet — remove it; the canonical install is /usr/share/dotnet/dotnet"
+    die "Corrupt environment: dotnet found at \$HOME/.dotnet/dotnet. Remove it; the canonical install is /usr/share/dotnet/dotnet"
 fi
 if has_cmd dotnet; then
     _DOTNET_BIN=$(command -v dotnet)
@@ -539,7 +539,7 @@ if has_cmd cfn-lint;   then HAS_CFNLINT=1;   else HAS_CFNLINT=0;   fi
 # Execution-state flags exported for local scripts to avoid re-running tools.
 # Use := to preserve a value already exported by the calling script (e.g. the
 # local hook pre-sets this to 1 before invoking the global hook so that sqlfluff
-# runs exactly once — in the local hook — rather than in both).
+# runs exactly once (in the local hook) rather than in both).
 : "${SQLFLUFF_EXECUTED:=0}"
 export SQLFLUFF_EXECUTED
 
@@ -549,7 +549,7 @@ export SQLFLUFF_EXECUTED
 # hour under $XDG_CACHE_HOME to avoid a network round-trip on every commit.
 # Silently skipped when curl is absent or the URL is unreachable.  Dies if the
 # installed SHA is stale.
-# Also skipped when running as an AI agent inside any container — the
+# Also skipped when running as an AI agent inside any container: the
 # container image is fixed at build time and cannot self-update.
 if is_ai_agent && is_container; then
     : # skip freshness check
@@ -588,7 +588,7 @@ if [ "$MODE" = "commit" ]; then
             if is_ai_agent; then
                 die "Prohibited from committing to ${CURRENT_BRANCH}.  Did you read the .ai-instructions?"
             else
-                die "direct commits to ${CURRENT_BRANCH} are not permitted — use a branch and open a pull request"
+                die "direct commits to ${CURRENT_BRANCH} are not permitted; use a branch and open a pull request"
             fi
             ;;
     esac
@@ -652,7 +652,7 @@ fi
 
 # ── 3. Changelog: lint CHANGELOG.md if changed ───────────────────────────────
 if check_files_match '(^|/)CHANGELOG\.md$' && [ "$HAS_DOTNET" -eq 1 ]; then
-    info "Detected CHANGELOG.md changes — running changelog lint..."
+    info "Detected CHANGELOG.md changes: running changelog lint..."
     # shellcheck disable=SC2086  # MODE_ARG is a single flag or empty; word-splitting is intentional.
     timed_step check-changelog sh "$SCRIPTS_DIR/check-changelog" $MODE_ARG || die "changelog lint"
 fi
@@ -662,17 +662,17 @@ fi
 # first: a misnamed benchmark project would otherwise run its benchmarks as
 # ordinary tests in buildtest.
 if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$'; then
-    info "Detected .NET changes — checking benchmark project names..."
+    info "Detected .NET changes: checking benchmark project names..."
     timed_step check-benchmark-project-names sh "$SCRIPTS_DIR/check-benchmark-project-names" \
         || die "benchmark project naming"
 fi
 if check_files_match '\.(cs|csproj|sln|slnx|props|targets|globalconfig|ruleset)$' && [ "$HAS_DOTNET" -eq 1 ]; then
-    info "Detected .NET changes — running buildcheck..."
+    info "Detected .NET changes: running buildcheck..."
     timed_step buildcheck sh "$SCRIPTS_DIR/buildcheck" || die "dotnet buildcheck"
     # buildtest restores once, then formats (dotnet format, then cscleanup)
     # and re-stages the target .cs/.csproj files, then builds and tests. It
     # writes its phase timings to BUILDTEST_TIMINGS_FILE for the trailer.
-    info "Detected .NET changes — running buildtest..."
+    info "Detected .NET changes: running buildtest..."
     BUILDTEST_TIMINGS_FILE="$(git rev-parse --absolute-git-dir)/precommit-timings-buildtest"
     export BUILDTEST_TIMINGS_FILE
     rm -f "$BUILDTEST_TIMINGS_FILE"
@@ -688,7 +688,7 @@ fi
 
 # ── 5. NPM: run tests if TypeScript/JS changes ───────────────────────────────
 if check_files_match '\.(ts|tsx|js|jsx)$' && [ -f "$REPO_ROOT/package.json" ] && [ "$HAS_NPM" -eq 1 ]; then
-    info "Detected TypeScript/JS changes — running npm tests..."
+    info "Detected TypeScript/JS changes: running npm tests..."
     if grep -q '"test:noe2e"' "$REPO_ROOT/package.json"; then
         timed_step npm-test npm run test:noe2e || die "npm run test:noe2e"
     else
@@ -700,7 +700,7 @@ fi
 if check_files_match '\.sql$'; then
     if [ "$HAS_DOTNET" -eq 1 ]; then
         dotnet_tool_installed tsqllint TSQLLint || die_blocked "tsqllint dotnet tool is not installed"
-        info "Detected SQL changes — running dotnet tsqllint..."
+        info "Detected SQL changes: running dotnet tsqllint..."
         timed_step tsqllint run_tsqllint || die "dotnet tsqllint"
     fi
     if [ "$HAS_SQLFLUFF" -eq 1 ] && [ "${SQLFLUFF_EXECUTED:-0}" != "1" ]; then
@@ -734,7 +734,7 @@ if check_files_match '\.sql$'; then
                 || sql_die "git add failed, so the sqlfluff fixes were not staged and the commit would contain unfixed SQL"
         }
         if [ "$MODE" = "all-files" ]; then
-            info "Detected SQL changes — running sqlfluff fix..."
+            info "Detected SQL changes: running sqlfluff fix..."
             sqlfluff fix . || sql_die "sqlfluff fix"
             list_sql_files \
                 || sql_die "git diff failed, so the files modified by sqlfluff fix could not be listed and the sqlfluff fixes were not staged"
@@ -756,12 +756,12 @@ if check_files_match '\.sql$'; then
                 printf '%s\n' "$PARTIAL_SQL" | sed 's/^/  /' >&2
                 sql_die "stage or stash the unstaged changes to the SQL files listed above and retry"
             fi
-            info "Detected SQL changes — running sqlfluff fix on staged SQL files..."
+            info "Detected SQL changes: running sqlfluff fix on staged SQL files..."
             xargs -0 sqlfluff fix -- < "$SQL_LIST" || sql_die "sqlfluff fix"
             restage_sql_list
         fi
         rm -rf "$SQL_LIST_DIR"
-        info "Detected SQL changes — running sqlfluff lint..."
+        info "Detected SQL changes: running sqlfluff lint..."
         sqlfluff lint . || die "sqlfluff lint"
         timings_record sqlfluff "$(timings_seconds_since "$SQLFLUFF_STEP_STARTED")s"
         export SQLFLUFF_EXECUTED=1
@@ -776,7 +776,7 @@ if [ "$HAS_CFNLINT" -eq 1 ]; then
             grep -q "AWSTemplateFormatVersion" "$f" 2>/dev/null && printf '%s\n' "$f"
           done)
     if [ -n "$CFN_FILES" ]; then
-        info "Detected CloudFormation changes — running cfn-lint..."
+        info "Detected CloudFormation changes: running cfn-lint..."
         CFN_STEP_STARTED=$(date +%s)
         printf '%s\n' "$CFN_FILES" | xargs cfn-lint --include-checks I --template || die "cfn-lint"
         timings_record cfn-lint "$(timings_seconds_since "$CFN_STEP_STARTED")s"

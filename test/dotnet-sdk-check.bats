@@ -29,7 +29,7 @@ write_fake_dotnet() {
 # first on PATH.
 run_require_compatible_dotnet_sdk() {
     local _fake="$1"
-    # shellcheck disable=SC2016 # intentionally literal — expanded by the inner sh, not here
+    # shellcheck disable=SC2016 # intentionally literal; expanded by the inner sh, not here
     run env PATH="${_fake}:${TEST_PATH}" sh -c '
         die() { printf "DIED: %s\n" "$*"; exit 1; }
         . "$1"
@@ -84,7 +84,7 @@ case "\$1" in
     *) exit 1 ;;
 esac
 EOF
-    # shellcheck disable=SC2016 # intentionally literal — expanded by the inner sh, not here
+    # shellcheck disable=SC2016 # intentionally literal; expanded by the inner sh, not here
     run env PATH="${_fake}:${TEST_PATH}" sh -c '
         . "$1"
         dotnet_sdk_is_prerelease
