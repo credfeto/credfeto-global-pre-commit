@@ -166,6 +166,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Shared install of the cscleanup dotnet tool and actionlint so system-wide hooks work for every account (actionlint comes from a checksum-verified GitHub release); check-setup --system now fails tools that resolve only under the user's home directory and suggests a shared pipx install (#290)
 - install's cross-scope check now fails with a clear error naming the file when the other scope's git config is unreadable, instead of silently passing (#264)
 - Removed em dashes from scripts, tests and docs and added a check rejecting them - #252
+- Shellcheck now runs under a memory and time cap, one process per file (#322)
 
 ### Changed
 - Benchmark test projects are recognised only by the name *.Benchmark.Tests (case-sensitive); the BenchMark, Bench, singular .Test and other case variants are no longer treated as benchmark projects (#294)
